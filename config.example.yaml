@@ -1,0 +1,63 @@
+# GeminiClaw Configuration Example
+# Copy this file to config.yaml and fill in your values.
+# config.yaml is excluded from git — never commit real credentials.
+
+server:
+  port: 18888
+  host: "127.0.0.1"
+  # Bearer token for authenticating API requests
+  authToken: "your-secret-token-here"
+
+# Model providers — configure one or more
+# GeminiClaw will use them in order, with fallback support
+providers:
+  # Anthropic (direct)
+  - name: anthropic
+    type: anthropic
+    apiKey: "sk-ant-..."
+    models:
+      - claude-opus-4
+      - claude-sonnet-4
+
+  # OpenAI
+  - name: openai
+    type: openai
+    apiKey: "sk-..."
+    models:
+      - gpt-4o
+      - gpt-4o-mini
+
+  # mcli (Meituan internal)
+  - name: mcli
+    type: mcli
+    baseUrl: "https://mcli.sankuai.com"
+    apiKey: "your-mcli-token"
+    models:
+      - claude-opus-4-6
+      - claude-sonnet-4-6
+
+  # Friday (Meituan internal, used as fallback)
+  - name: friday
+    type: friday
+    apiKey: "your-friday-token"
+    models:
+      - friday-default
+
+# Default model routing
+routing:
+  default: anthropic/claude-opus-4
+  fallback:
+    - mcli/claude-sonnet-4-6
+    - friday/friday-default
+
+# Memory system
+memory:
+  enabled: true
+  # Path to store session memory (relative to project root)
+  dataDir: "./data/memory"
+  maxSessionAge: 86400  # seconds, 24h
+
+# Agent behavior
+agent:
+  maxTurns: 50
+  timeoutSeconds: 300

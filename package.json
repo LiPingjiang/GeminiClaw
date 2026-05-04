@@ -1,0 +1,25 @@
+{
+  "name": "geminiclaw",
+  "version": "0.1.0",
+  "description": "GeminiClaw — An intelligent agent runtime with multi-model support, memory, and evolution engine",
+  "author": "Li Pingjiang <pingjiang.li@outlook.com>",
+  "license": "SEE LICENSE IN LICENSE",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "test": "vitest"
+  },
+  "keywords": [
+    "ai",
+    "agent",
+    "llm",
+    "multi-model",
+    "memory"
+  ]
+}
