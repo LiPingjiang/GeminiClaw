@@ -40,3 +40,39 @@ it("ensureSession is idempotent", async () => {
   const ctx = await strategy.getContext("s1", "hi")
   expect(ctx.messages).toEqual([])
 })
+
+it("handles limit=1 (only last message kept)", async () => {
+  const strategy = new BufferStrategy({ recentMessageLimit: 1 })
+  await strategy.appendTurn(
+    "s1",
+    { role: "user", content: "first" },
+    { role: "assistant", content: "first reply" },
+  )
+  await strategy.appendTurn(
+    "s1",
+    { role: "user", content: "second" },
+    { role: "assistant", content: "second reply" },
+  )
+  const ctx = await strategy.getContext("s1", "next")
+  expect(ctx.messages).toHaveLength(1)
+  expect(ctx.messages[0].content).toBe("second reply")
+})
+
+it("multiple sessions are isolated", async () => {
+  const strategy = new BufferStrategy({ recentMessageLimit: 20 })
+  await strategy.appendTurn(
+    "sA",
+    { role: "user", content: "session A" },
+    { role: "assistant", content: "reply A" },
+  )
+  await strategy.appendTurn(
+    "sB",
+    { role: "user", content: "session B" },
+    { role: "assistant", content: "reply B" },
+  )
+  const ctxA = await strategy.getContext("sA", "next")
+  const ctxB = await strategy.getContext("sB", "next")
+
+  expect(ctxA.messages.some(m => m.content.includes("session B"))).toBe(false)
+  expect(ctxB.messages.some(m => m.content.includes("session A"))).toBe(false)
+})

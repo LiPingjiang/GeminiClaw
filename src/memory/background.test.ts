@@ -50,6 +50,42 @@ it("appendToTopic creates new topic doc when not exists", async () => {
   expect(topic.doc_level2).toContain("新增内容")
 })
 
+it("runAsync does not throw even when summarize fails", async () => {
+  const failingProvider: Provider = {
+    name: "friday",
+    chat: vi.fn().mockRejectedValue(new Error("network error")),
+    stream: vi.fn(),
+  } as unknown as Provider
+
+  const db = makeDb()
+  const { BackgroundService } = await import("./background.js")
+  const svc = new BackgroundService(failingProvider, db, {
+    compactThresholdBytes: 6144,
+    maxActiveTopics: 16,
+  })
+
+  // runAsync 不应抛出，应静默吞掉错误
+  expect(() => {
+    svc.runAsync(null, { role: "user", content: "hi" }, { role: "assistant", content: "hello" })
+  }).not.toThrow()
+
+  // 等待 fire-and-forget 完成
+  await new Promise(r => setTimeout(r, 50))
+  // 没有崩溃即为通过
+})
+
+it("appendToTopic does nothing for non-existent topic", async () => {
+  const db = makeDb()
+  const { BackgroundService } = await import("./background.js")
+  const svc = new BackgroundService(makeProvider("摘要"), db, {
+    compactThresholdBytes: 6144,
+    maxActiveTopics: 16,
+  })
+
+  // 不应抛出
+  await expect(svc.appendToTopic("non-existent-id", "content")).resolves.toBeUndefined()
+})
+
 it("evictIfNeeded removes least-active topic when over limit", async () => {
   const db = makeDb()
   const { BackgroundService } = await import("./background.js")
