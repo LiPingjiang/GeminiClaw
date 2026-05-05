@@ -26,8 +26,15 @@ routing:
 
 memory:
   enabled: true
-  dataDir: ".data/sessions"
+  dataDir: ".data"
   maxSessionAge: 86400
+  # strategy: buffer    # buffer = 滑动窗口（纯内存，默认）
+  # strategy: layered   # layered = 分层 topics（SQLite，完整记忆系统）
+  strategy: buffer
+  maxActiveTopics: 16
+  compactThresholdBytes: 6144   # 6KB，超过触发摘要压缩
+  recentMessageLimit: 20
+  triageAfterTurns: 3
 
 agent:
   maxTurns: 20

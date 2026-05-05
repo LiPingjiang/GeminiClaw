@@ -21,10 +21,17 @@ export const routingConfigSchema = z.object({
   fallback: z.array(z.string()).default([]),
 })
 
+export const memoryStrategySchema = z.enum(["buffer", "layered"]).default("buffer")
+
 export const memoryConfigSchema = z.object({
   enabled: z.boolean().default(true),
-  dataDir: z.string().default(".data/sessions"),
+  dataDir: z.string().default(".data"),
   maxSessionAge: z.number().int().positive().default(86400),
+  strategy: memoryStrategySchema,
+  maxActiveTopics: z.number().int().min(1).max(50).default(16),
+  compactThresholdBytes: z.number().int().positive().default(6144),
+  recentMessageLimit: z.number().int().positive().default(20),
+  triageAfterTurns: z.number().int().positive().default(3),
 })
 
 export const agentConfigSchema = z.object({
@@ -44,5 +51,6 @@ export type ServerConfig = z.infer<typeof serverConfigSchema>
 export type ProviderConfig = z.infer<typeof providerConfigSchema>
 export type RoutingConfig = z.infer<typeof routingConfigSchema>
 export type MemoryConfig = z.infer<typeof memoryConfigSchema>
+export type MemoryStrategy = z.infer<typeof memoryStrategySchema>
 export type AgentConfig = z.infer<typeof agentConfigSchema>
 export type Config = z.infer<typeof configSchema>
