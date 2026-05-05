@@ -14,6 +14,7 @@ export const providerConfigSchema = z.object({
   apiKey: z.string().optional(),
   baseUrl: z.string().url().optional(),
   models: z.array(z.string()).min(1),
+  headers: z.record(z.string()).optional(),
 })
 
 export const routingConfigSchema = z.object({
