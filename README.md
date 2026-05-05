@@ -78,6 +78,30 @@ GeminiClaw is named after the Gemini twins — because it always runs as **two s
 
 ---
 
+## Design Philosophy
+
+### The runtime that gets better while it runs — without breaking your focus
+
+Most self-improving systems share a hidden flaw: they interrupt you. A notification pops up mid-task, asking you to review a change. You context-switch, lose your train of thought, and spend the next 20 minutes getting back.
+
+GeminiClaw is built around a different principle:
+
+> **"Protect the user's train of thought. Never disrupt it."**
+
+This shapes every decision in the Evolution Engine:
+
+| Principle | What it means in practice |
+|-----------|---------------------------|
+| **Timing isolation** | Evolution Engine stays silent while you're actively chatting. It only surfaces suggestions when you've been idle for 5+ minutes — or when you explicitly ask. |
+| **Context isolation** | All evolution confirmations happen in a **separate session**. Your current task's context is never polluted. Close the evolution session, return to your work exactly where you left it. |
+| **Memory preservation** | Every pending intent stores a human-readable `why_now` field — what was observed, when, and what you were doing at the time. Humans and AI both forget. The record doesn't. |
+| **Deferral without loss** | You can always say "later". The system uses cron to follow up. Intents never silently disappear — they stay in the queue until you explicitly handle them. |
+| **Confidence gating** | The LLM self-evaluates confidence after writing code. Low confidence (< 0.7) automatically escalates risk level. High-confidence, low-risk changes run fully automatically. You only get interrupted when it genuinely matters. |
+
+The Evolution Engine is a background worker, not an interrupting assistant. It reports when you have space, not when it has something to say.
+
+---
+
 ## Memory: Layered Topics
 
 Unlike OpenClaw's flat file memory or Hermes's stateless design, GeminiClaw uses a **4-layer topic hierarchy**:
