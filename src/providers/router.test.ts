@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest"
 import { ProviderRouter } from "./router.js"
-import type { Provider, Message, ChatResponse } from "./types.js"
+import type { Provider, Message, ChatResponse, StreamChunk } from "./types.js"
 
 function makeProvider(name: string, fail = false): Provider {
   return {
@@ -47,4 +47,47 @@ it("passes caller options (temperature) to provider", async () => {
   const router = new ProviderRouter([p1], { default: "p1/m1", fallback: ["p1/m1"] })
   await router.chat(msgs, { temperature: 0.5 })
   expect(p1.chat).toHaveBeenCalledWith(msgs, { model: "m1", temperature: 0.5 })
+})
+
+// ── stream 测试 ──────────────────────────────────────────────
+
+it("stream() delegates to default provider", async () => {
+  const chunks = [
+    { delta: "hello", done: false },
+    { delta: " world", done: false },
+    { delta: "", done: true },
+  ]
+
+  async function* mockStream() {
+    for (const c of chunks) yield c
+  }
+
+  const provider = {
+    name: "p1",
+    chat: vi.fn(),
+    stream: vi.fn().mockReturnValue(mockStream()),
+  } as unknown as Provider
+
+  const router = new ProviderRouter([provider], { default: "p1/m1", fallback: [] })
+
+  const received: StreamChunk[] = []
+  for await (const chunk of router.stream([{ role: "user", content: "hi" }])) {
+    received.push(chunk)
+  }
+
+  expect(received).toHaveLength(3)
+  expect(received[0].delta).toBe("hello")
+  expect(received[2].done).toBe(true)
+  expect(provider.stream).toHaveBeenCalledWith(
+    [{ role: "user", content: "hi" }],
+    expect.objectContaining({ model: "m1" }),
+  )
+})
+
+it("stream() throws when provider not found", async () => {
+  const router = new ProviderRouter([], { default: "missing/m1", fallback: [] })
+
+  await expect(async () => {
+    for await (const _ of router.stream([{ role: "user", content: "hi" }])) { /* drain */ }
+  }).rejects.toThrow('Provider "missing" not found')
 })
