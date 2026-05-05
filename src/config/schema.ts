@@ -38,6 +38,7 @@ export const memoryConfigSchema = z.object({
 export const agentConfigSchema = z.object({
   maxTurns: z.number().int().positive().default(20),
   timeoutSeconds: z.number().int().positive().default(60),
+  systemPrompt: z.string().optional(),
 })
 
 export const configSchema = z.object({
