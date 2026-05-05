@@ -7,6 +7,7 @@ export class McliProvider extends AnthropicProvider {
     const client = new Anthropic({
       apiKey: config.apiKey ?? "mcli",
       baseURL: config.baseUrl,
+      defaultHeaders: config.headers ?? {},
     })
     super(config, client)
   }

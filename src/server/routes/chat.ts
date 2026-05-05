@@ -29,6 +29,12 @@ export async function chatRoute(
     }
 
     const { message, sessionId, model, stream: wantStream } = request.body
+
+    // 输入校验
+    if (!message || typeof message !== "string" || message.trim() === "") {
+      return reply.status(400).send({ error: "message is required and must be a non-empty string" })
+    }
+
     const sid = sessionId ?? crypto.randomUUID()
 
     await opts.strategy.ensureSession(sid)
@@ -40,10 +46,14 @@ export async function chatRoute(
     const allMessages = [...contextMessages, { role: "user" as const, content: message }]
 
     if (wantStream) {
-      // SSE 流式
-      reply.raw.setHeader("Content-Type", "text/event-stream")
-      reply.raw.setHeader("Cache-Control", "no-cache")
-      reply.raw.setHeader("Connection", "keep-alive")
+      // SSE 流式：hijack 接管原始 socket，绕过 Fastify 自动 Content-Length
+      reply.hijack()
+      const raw = reply.raw
+      raw.writeHead(200, {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+      })
 
       let fullContent = ""
 
@@ -52,15 +62,17 @@ export async function chatRoute(
           if (chunk.delta) {
             fullContent += chunk.delta
             const data = JSON.stringify({ choices: [{ delta: { content: chunk.delta } }] })
-            reply.raw.write(`data: ${data}\n\n`)
+            raw.write(`data: ${data}\n\n`)
           }
           if (chunk.done) {
-            reply.raw.write(`data: ${JSON.stringify({ type: "done" })}\n\n`)
-            reply.raw.write("data: [DONE]\n\n")
+            raw.write(`data: ${JSON.stringify({ type: "done" })}\n\n`)
+            raw.write("data: [DONE]\n\n")
           }
         }
+      } catch (err) {
+        raw.write(`data: ${JSON.stringify({ error: String(err) })}\n\n`)
       } finally {
-        reply.raw.end()
+        raw.end()
       }
 
       // 后台追加 + 异步处理
@@ -72,7 +84,7 @@ export async function chatRoute(
         )
       }
 
-      return reply
+      return
     }
 
     // 非流式
