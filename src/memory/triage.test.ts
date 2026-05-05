@@ -72,3 +72,42 @@ it("returns skip on malformed JSON from model", async () => {
   const result = await svc.triage("s1", msgs, [])
   expect(result.action).toBe("skip")
 })
+
+it("triggers triage when turns exactly equal threshold", async () => {
+  const { TriageService } = await import("./triage.js")
+  const responseJson = JSON.stringify({ action: "skip" })
+  const provider = makeProvider(responseJson)
+  const svc = new TriageService(provider, { triageAfterTurns: 3 })
+
+  // 恰好 3 条 user 消息 = threshold
+  const msgs = [
+    { role: "user" as const, content: "msg1" },
+    { role: "assistant" as const, content: "reply1" },
+    { role: "user" as const, content: "msg2" },
+    { role: "assistant" as const, content: "reply2" },
+    { role: "user" as const, content: "msg3" },
+    { role: "assistant" as const, content: "reply3" },
+  ]
+  const result = await svc.triage("s1", msgs, [])
+  // 应该触发（调用了 provider），结果是 skip
+  expect(result.action).toBe("skip")
+  expect(provider.chat).toHaveBeenCalledOnce()
+})
+
+it("does NOT trigger triage when turns one below threshold", async () => {
+  const { TriageService } = await import("./triage.js")
+  const provider = makeProvider("{}")
+  const svc = new TriageService(provider, { triageAfterTurns: 3 })
+
+  // 只有 2 条 user 消息 < threshold
+  const msgs = [
+    { role: "user" as const, content: "msg1" },
+    { role: "assistant" as const, content: "reply1" },
+    { role: "user" as const, content: "msg2" },
+    { role: "assistant" as const, content: "reply2" },
+  ]
+  const result = await svc.triage("s1", msgs, [])
+  expect(result.action).toBe("skip")
+  // 不应调用 provider（直接 skip，不耗 token）
+  expect(provider.chat).not.toHaveBeenCalled()
+})
