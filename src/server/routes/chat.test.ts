@@ -96,3 +96,81 @@ it("passes sessionId from request to strategy", async () => {
   })
   expect(strategy.ensureSession).toHaveBeenCalledWith("my-session")
 })
+
+// ── 输入校验 ──────────────────────────────────────────────────
+
+it("returns 400 when message is empty string", async () => {
+  const app = await buildServer(makeConfig(), makeRouter(), makeStrategy())
+  const res = await app.inject({
+    method: "POST",
+    url: "/v1/agent/chat",
+    payload: { message: "" },
+  })
+  expect(res.statusCode).toBe(400)
+  const body = JSON.parse(res.body)
+  expect(body.error).toMatch(/message/)
+})
+
+it("returns 400 when message is missing", async () => {
+  const app = await buildServer(makeConfig(), makeRouter(), makeStrategy())
+  const res = await app.inject({
+    method: "POST",
+    url: "/v1/agent/chat",
+    payload: {},
+  })
+  expect(res.statusCode).toBe(400)
+})
+
+it("returns 400 when message is whitespace only", async () => {
+  const app = await buildServer(makeConfig(), makeRouter(), makeStrategy())
+  const res = await app.inject({
+    method: "POST",
+    url: "/v1/agent/chat",
+    payload: { message: "   " },
+  })
+  expect(res.statusCode).toBe(400)
+})
+
+// ── appendTurn 被调用 ─────────────────────────────────────────
+
+it("calls appendTurn after successful chat", async () => {
+  const strategy = makeStrategy()
+  const app = await buildServer(makeConfig(), makeRouter(), strategy)
+  await app.inject({
+    method: "POST",
+    url: "/v1/agent/chat",
+    payload: { message: "hello", sessionId: "s1" },
+  })
+  expect(strategy.appendTurn).toHaveBeenCalledWith(
+    "s1",
+    { role: "user", content: "hello" },
+    { role: "assistant", content: "pong" },
+  )
+})
+
+it("calls getContext with the user message", async () => {
+  const strategy = makeStrategy()
+  const app = await buildServer(makeConfig(), makeRouter(), strategy)
+  await app.inject({
+    method: "POST",
+    url: "/v1/agent/chat",
+    payload: { message: "test message", sessionId: "s99" },
+  })
+  expect(strategy.getContext).toHaveBeenCalledWith("s99", "test message")
+})
+
+// ── sessionId 自动生成 ────────────────────────────────────────
+
+it("generates sessionId when not provided", async () => {
+  const app = await buildServer(makeConfig(), makeRouter(), makeStrategy())
+  const res = await app.inject({
+    method: "POST",
+    url: "/v1/agent/chat",
+    payload: { message: "hi" },
+  })
+  expect(res.statusCode).toBe(200)
+  const body = JSON.parse(res.body)
+  expect(body.sessionId).toBeDefined()
+  expect(typeof body.sessionId).toBe("string")
+  expect(body.sessionId.length).toBeGreaterThan(0)
+})
