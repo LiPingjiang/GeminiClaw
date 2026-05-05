@@ -23,18 +23,24 @@
 
 GeminiClaw is a next-generation agent runtime that learns from every conversation and **rewrites its own code** to get better — while always keeping a rollback point.
 
-| | OpenClaw | **GeminiClaw** |
-|---|---|---|
-| Multi-model routing | ✅ | ✅ |
-| Automatic fallback | ⚠️ config-only | ✅ |
-| Persistent memory | ✅ file-based | ✅ SQLite, layered |
-| Memory hierarchy (topics/summaries) | ❌ | ✅ 4-layer |
-| SSE streaming | ✅ | ✅ |
-| Self-evolution (rewrite own code) | ❌ | ✅ **Twin-System** |
-| Hot-swap without downtime | ❌ | ✅ git branch flow |
-| Rollback on regression | ❌ | ✅ circuit breaker |
-| Zero vendor lock-in | ⚠️ | ✅ |
-| Clean-room TypeScript (ESM, strict) | ❌ | ✅ |
+It takes the best of both [OpenClaw](https://github.com/openclaw/openclaw) and [Hermes](https://github.com/NousResearch/hermes-agent), and adds what neither has.
+
+| | OpenClaw | Hermes | **GeminiClaw** |
+|---|---|---|---|
+| **Language** | TypeScript | Python | TypeScript |
+| **Agent loop + tools** | ✅ 30+ tools | ✅ 69 tools | 🔜 Phase G |
+| **Multi-model routing** | ✅ | ✅ | ✅ |
+| **Automatic fallback** | ⚠️ config-only | ✅ | ✅ |
+| **Multi-channel** | ✅ 20+ channels | ✅ Telegram/Discord/Slack/WhatsApp/Signal | ✅ QQBot built-in · plugin system |
+| **Plugin system** | ✅ heavy (40+ APIs) | ✅ lightweight (dir convention) | ✅ lightweight (hermes-style) |
+| **Session persistence** | ✅ JSONL ⚠️ corruption risk | ✅ SQLite WAL | ✅ SQLite WAL |
+| **Cross-session search** | ❌ | ✅ FTS5 + CJK trigram | ✅ FTS5 + CJK trigram |
+| **Memory hierarchy** | ❌ flat file | ❌ flat curator | ✅ 4-layer L0-L3 topics |
+| **Self-evolution** | ❌ | ❌ | ✅ **Twin-System** |
+| **Hot-swap without downtime** | ❌ | ❌ | ✅ git branch flow |
+| **Rollback on regression** | ❌ | ❌ | ✅ circuit breaker |
+| **Zero vendor lock-in** | ⚠️ | ✅ | ✅ |
+| **Codebase size (core)** | ~100K+ lines | ~20K lines | ~5K lines (target) |
 
 ---
 
