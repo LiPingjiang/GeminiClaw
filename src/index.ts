@@ -1,6 +1,7 @@
 import { loadConfig } from "./config/loader.js"
 import { AnthropicProvider } from "./providers/anthropic.js"
 import { McliProvider } from "./providers/mcli.js"
+import { FridayProvider } from "./providers/friday.js"
 import { ProviderRouter } from "./providers/router.js"
 import { SessionMemory } from "./memory/session.js"
 import { buildServer } from "./server/index.js"
@@ -13,6 +14,8 @@ function buildProvider(config: ProviderConfig): Provider {
       return new AnthropicProvider(config)
     case "mcli":
       return new McliProvider(config)
+    case "friday":
+      return new FridayProvider(config)
     default:
       throw new Error(`Unsupported provider type: ${config.type}`)
   }
