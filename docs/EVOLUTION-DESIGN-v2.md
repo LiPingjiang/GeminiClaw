@@ -68,13 +68,30 @@ GeminiClaw2（`gemini/` 目录）的 Phase 1-5 实现是"边跑边造"的产物�
 
 ## 三、核心设计原则（v2）
 
+### 3.1 技术原则
+
 1. **SQLite first**：所有持久化状态统一进 `.gemini-data/gemini.db`，不散落 JSON 文件
 2. **Mutator 内化**：通过 GeminiClaw 自己的 provider 层调用 LLM 做代码修改，不依赖外部命令；`mc --code` 作为可选加速后端
 3. **结构化断言验证**：不比较文本，比较工具调用序列、响应结构、关键字段
 4. **Slot 自动 bootstrap**：`git worktree` 自动创建 slot-b，依赖自动安装
 5. **记忆与进化打通**：Intent 生成时读取 layered memory topics，不只看原始 trace
 6. **Bootstrap intents 预置**：冷启动时有已知优化点（启动速度、prompt cache、记忆质量等）
-7. **人在回路，渐进自动化**：low-risk 自动，medium 等手动确认，high 等人工审核
+7. **人在回路，渐进自动化**：low-risk + 高置信度自动，medium 等手动确认，high 等人工审核
+
+### 3.2 用户体验原则（核心设计理念）
+
+> **「维护用户思绪，不扰乱用户思绪」**
+>
+> 这是 GeminiClaw Evolution Engine 最重要的 UX 原则。
+> 自我进化是后台工人，不是插嘴的助手。
+
+8. **时机隔离**：用户活跃对话期间（最近 5 分钟有消息），Evolution Engine 静默收集，不推送任何确认请求
+9. **上下文隔离**：所有进化确认发生在独立的 evolution session，绝不污染用户正在进行的主任务 session
+10. **记忆保鲜**：每个待处理 Intent 必须存储人类可读的 `why_now` 字段——记录发现问题时的背景、证据、当时用户在做什么，防止人和 AI 回头都忘了为什么要改
+11. **可推迟，不丢失**：用户可以选择「稍后」，系统用 cron 跟进；Intent 永不静默丢弃，直到用户明确处理
+12. **置信度门槛**：LLM 改完代码后自评置信度，低于 0.7 自动升级风险等级，不强行执行低置信度的改动
+
+这些原则贯穿后续所有模块设计，遇到设计决策时优先保证「不扰乱用户思绪」。
 
 ---
 
@@ -549,10 +566,110 @@ export const PROTECTED_PATHS = [
 
 ---
 
-## 十一、开放问题（待决策）
+## 十一、开放问题（已决策）
 
-1. **Mutator 内置 LLM 的 agentic loop 深度**：最多几轮？每轮 retry 成本多少？
-2. **Level 2 验证的请求数量**：10 个请求够不够？怎么选取测试用例？
-3. **bootstrap intents 的触发条件**：只在 trace 为空时触发，还是始终保留在队列里？
-4. **slot-b 的 git worktree 策略**：用同一 branch 还是新建 `gemini/standby` branch？
-5. **UpstreamSyncSource 用哪个 provider**：轻量模型（gemini-flash）还是主模型？
+| # | 问题 | 决策 | 理由 |
+|---|------|------|------|
+| 1 | Mutator agentic loop 深度 | **最多 3 轮** | 超过 3 轮说明 intent 质量有问题，强行修复引入更多风险；每轮约 1-3K tokens，3 轮可接受 |
+| 2 | Level 2 验证请求数量 | **5 条，策略选取** | 最近 1 条 + 失败率最高 1 条 + 工具调用最复杂 1 条 + 最短 1 条 + 随机 1 条；覆盖「边界+典型+随机」，比随机 10 条更有代表性 |
+| 3 | Bootstrap intents 触发条件 | **trace < 10 条时插入** | 系统运行后真实 intent 质量更高，bootstrap 不应长期占队列；用 `source: "bootstrap"` 标记便于过滤 |
+| 4 | slot-b git worktree 策略 | **同一 branch（main）** | 不增加 branch 管理负担；Mutator commit 只在 slot-b 本地，切换成功后可 cherry-pick 回 main |
+| 5 | UpstreamSyncSource provider | **轻量模型（friday/gemini-3-flash-preview）** | 结构化分类任务，不需要深度推理；主模型留给 Mutator 改代码 |
+
+---
+
+## 十二、新增机制（讨论后补充）
+
+### 12.1 置信度自评机制
+
+Mutator 改完代码后，LLM 输出结构化自评：
+
+```typescript
+type MutationConfidence = {
+  score: number          // 0-1，LLM 自评置信度
+  reason: string         // 为什么这么自信/不自信
+  uncertainties: string[] // 不确定的点
+}
+```
+
+置信度与风险等级联动：
+
+| 置信度 | riskLevel=low | riskLevel=medium | riskLevel=high |
+|--------|--------------|-----------------|----------------|
+| ≥ 0.9  | 全自动执行 | 推送摘要，等手动确认 | 必须人工审核 |
+| 0.7-0.9 | 推送摘要，等手动确认 | 推送摘要，等手动确认 | 必须人工审核 |
+| < 0.7  | 自动升级为 medium，推送摘要 | 自动升级为 high，必须人工审核 | 拒绝，重新生成 intent |
+
+**用户指令触发的 Intent**，无论置信度多高，默认 `requiresHumanApproval: true`——因为用户主动说的话往往比 trace 分析更模糊，需要先对齐理解再执行。
+
+### 12.2 Background 机制（不扰乱用户思绪）
+
+**核心原则：Evolution Engine 永远不在主 session 中途插入确认对话。**
+
+```
+用户状态检测：
+  活跃（最近 5 分钟有消息）→ 静默，只收集，不打扰
+  空闲（超过 5 分钟无消息）→ 可推送 evolution inbox 通知
+  显式邀请（用户说「有什么要优化的吗」）→ 立即汇报
+```
+
+**Evolution Inbox 流程：**
+
+```
+[后台持续]
+TraceCollector 收集 → IntentEngine 分析 → Intent 存入 DB（pending）
+                                              ↓
+                                    静默积累，不打扰
+
+[用户空闲 > 5 分钟]
+主 session 推送一条简短通知：
+  「💡 积累了 N 个优化建议，最快的只需 1 分钟确认，要现在看吗？」
+  [现在看] [今天晚些] [本周末] [忽略]
+       ↓
+  用户选「现在看」→ 打开独立 evolution session
+  用户选「今天晚些」→ cron 今天 22:00 再提醒
+  用户选「忽略」→ Intent 状态 snoozed，30 天后重新浮出
+
+[独立 evolution session]
+  展示 Intent 摘要列表，用户逐个确认/拒绝/推迟
+  approved → Mutator 后台执行，不阻塞
+  用户关闭 evolution session → 回到主 session，任务 A 上下文完好
+```
+
+**Intent 的 `why_now` 字段（防止遗忘）：**
+
+```typescript
+type Intent = {
+  // ... 原有字段
+  why_now: string      // 人类可读：为什么现在要改，发现了什么证据
+  discovered_context: string  // 发现问题时用户在做什么（任务背景）
+  snoozed_until?: number      // 推迟到什么时候
+  snooze_count: number        // 推迟次数（推迟太多次可考虑降低优先级）
+}
+```
+
+示例：
+```json
+{
+  "why_now": "过去 3 天里，有 7 次对话因为 mcli 超时而静默失败，用户没有收到任何错误提示",
+  "discovered_context": "2026-05-05 用户正在调试 dragon-stock 部署时发现此问题",
+  "snooze_count": 0
+}
+```
+
+### 12.3 用户指令 Intent 的确认流程
+
+用户说「把响应速度优化一下」时，系统在**生成 Intent 之后、执行之前**先对齐理解：
+
+```
+系统：我理解你的意思是：
+  - 在 providers/anthropic.ts 里给最近 3 条消息加 cache_control
+  - 预计改动 2 个文件，风险低，置信度 0.92
+  是这个方向吗？[确认] [调整描述] [取消]
+
+用户：确认
+→ 进入 Mutator 执行（后台）
+→ 完成后通知用户结果
+```
+
+不在确认前执行，不在执行完再问（已成既成事实）。
