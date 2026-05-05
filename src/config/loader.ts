@@ -5,7 +5,9 @@ import { configSchema, type Config } from "./schema.js"
 import { ZodError } from "zod"
 
 export function loadConfig(configPath?: string): Config {
-  const filePath = resolve(configPath ?? process.cwd() + "/config.yaml")
+  const filePath = resolve(
+    configPath ?? process.env.GEMINICLAW_CONFIG ?? process.cwd() + "/config.yaml"
+  )
 
   let raw: string
   try {
