@@ -1,8 +1,8 @@
 # GeminiClaw Runtime Design v1
 
-> **状态：** 设计稿
+> **状态：** 设计稿（含 Agent 框架选型分析）
 > **作者：** 李平江 + 观澜
-> **日期：** 2026-05-05
+> **日期：** 2026-05-05（更新：2026-05-05 深夜）
 > **语言：** TypeScript（全栈统一，不引入 Python）
 
 ---
@@ -33,8 +33,98 @@
 |------|--------|---------|
 | OpenClaw | Agent Loop 结构、工具清单、QQBot channel | `~/Codes/GeminiClaw2/` |
 | Hermes | 工具注册机制、Session SQLite 设计、Plugin 目录约定、QQBot adapter | `~/Codes/ai/hermes-agent/` |
+| Pi（@mariozechner） | **Session Tree 设计**、EventStream 异步迭代器、beforeToolCall/afterToolCall 钩子 | `~/Codes/GeminiClaw2/node_modules/@mariozechner/pi-agent-core/` |
 
-**核心原则：借鉴 hermes 的轻量设计哲学，不照搬 OpenClaw 的重 plugin 系统。**
+**核心原则：借鉴 hermes 的轻量设计哲学；从 Pi 汲取 Session Tree 这一独门架构思想；不照搬 OpenClaw 的重 plugin 系统。**
+
+---
+
+## 〇、Agent 框架选型（2026-05-05 深夜补充）
+
+> 在动手实现 Agent Loop 之前，我们对三个主流参考做了完整横向对比，结论直接影响后续设计。
+
+### 0.1 三个框架是什么
+
+**Hermes — 完全自研 Python Loop**
+
+`AIAgent` 类（`run_agent.py`，14000 行），无任何第三方 Agent 框架依赖。
+`run_conversation()` 是核心 while 循环：预压缩 → plugin pre_hook → 调 LLM → 工具调用 → 循环。
+工具注册：装饰器 `@registry.register()`，文件级自注册，目录发现，69 个工具。
+
+**Pi（@mariozechner/pi-agent-core）— TypeScript 函数式 Loop**
+
+OpenClaw 的底层 Agent 框架（`@mariozechner/pi-agent-core` v0.71.1，Mario Zechner 个人维护）。
+`agentLoop()` 纯函数，返回 `EventStream<AgentEvent>` 异步迭代器。
+两个关键钩子：`beforeToolCall`（可 block 工具）、`afterToolCall`（可 override 结果）。
+**最核心亮点：Session 是树，不是列表**（见 0.3 节）。
+
+**OpenAI Agents SDK / PydanticAI — Python 声明式框架**
+
+`@agent.tool` 装饰器注册工具，Pydantic 校验参数，原生 MCP 支持。
+AutoGen 已进入 maintenance mode，微软推 Microsoft Agent Framework 接班。
+
+### 0.2 横向对比
+
+| 维度 | Hermes（自研） | Pi（@mariozechner） | OpenAI Agents SDK |
+|------|------|------|------|
+| 语言 | Python | TypeScript | Python |
+| Session 结构 | ❌ 线性 | ✅ **树（branch/rewind）** | ❌ 线性 |
+| Context 压缩 | ✅ 内置，多 pass | ❌ 靠 transformContext 钩子 | ❌ 无 |
+| 多模型 fallback | ✅ 内置 | ❌ 靠 getApiKey 钩子 | ❌ 无 |
+| 工具结果持久化 | ✅ 内置，超限落盘 | ❌ 无 | ❌ 无 |
+| MCP 支持 | ❌ | ❌（哲学反对）| ✅ 原生 |
+| 类型安全 | Python 运行时 | TypeScript 编译期 + typebox | Python + Pydantic |
+| 外部依赖 | 零 | 3 个 @mariozechner 包 | openai-agents |
+| 流式 API | stream_callback 回调 | EventStream 异步迭代器 | 异步生成器 |
+| 工具并行 | ThreadPoolExecutor | `toolExecution: "parallel"` | 内置自动 |
+| 扩展钩子 | plugin pre/post_llm_call | beforeToolCall / afterToolCall | Guardrails / Handoffs |
+
+### 0.3 Pi 的 Session Tree — 最值得移植的设计思想
+
+Pi 与所有其他框架的**根本区别**：Session 不是一条线，而是一棵树。
+
+```
+主线 session（用户对话）
+├── turn 1: 用户问问题
+├── turn 2: 助手回答
+├── branch A: 去修一个 broken tool（支线）
+│   ├── 写代码
+│   ├── 测试
+│   └── 修好了 → merge summary 回主线
+└── turn 3: 继续主线（Pi 自动 summarize 支线发生了什么）
+```
+
+**为什么 GeminiClaw 需要 Session Tree？**
+
+Evolution Engine 的核心流程天然是树形的：
+
+```
+主线 session（用户对话）
+└── evolution branch（改代码的支线）
+    ├── Mutator 轮次 1：读文件 → 生成 diff → 应用
+    ├── Mutator 轮次 2：tsc 报错 → 修复
+    ├── Validator：跑测试
+    └── 成功 → squash merge 回 main，summary 注入主线
+        失败 → revert，支线废弃，主线感知到
+```
+
+如果 Session 是线性列表，Evolution Engine 的修代码过程会污染用户对话的 context。
+如果 Session 是树，evolution branch 完全隔离，主线只看到最终的 summary。
+
+**这正是 GeminiClaw「维护用户思绪」设计原则的技术基础。**
+
+### 0.4 选型决策
+
+| 选项 | 评价 |
+|------|------|
+| ❌ 直接依赖 Pi 包 | 个人维护，API 随时变，版本锁死 |
+| ❌ 照搬 Hermes 风格（Python 自研） | GeminiClaw 是 TypeScript，跨语言迁移成本高 |
+| ❌ OpenAI Agents SDK / PydanticAI | Python，且与 OpenAI 强绑定 |
+| ✅ **自实现 TypeScript Loop，Session 设计为树** | 语言统一，接口自控，Pi 的 EventStream + 钩子模式是目前最干净的 TypeScript Agent 设计 |
+
+**最终决策：自实现 TypeScript Agent Loop，不依赖 Pi 包，但移植 Pi 的两个核心设计思想：**
+1. **Session Tree**（branch/rewind，见三节 Session 管理）
+2. **EventStream 异步迭代器**（替代回调风格，见二节 Agent Loop）
 
 ---
 
@@ -46,6 +136,7 @@
 - 工具调用循环（agentic loop）：LLM → tool calls → results → LLM，直到无工具调用或达到最大轮数
 - 并行工具执行：同一轮的多个工具调用并行执行（参考 hermes `_should_parallelize_tool_batch`）
 - 工具结果超限处理：大输出截断 + 持久化到磁盘，不撑爆 context
+- **流式 API 用 AsyncIterable 而非回调**（借鉴 Pi EventStream 设计）
 
 ### 2.2 工具注册机制（借鉴 hermes）
 
@@ -60,6 +151,7 @@ export interface ToolDefinition {
   handler: ToolHandler      // 执行函数
   toolset?: string[]        // 分组标签（'core' | 'file' | 'web' | 'memory' | 'channel'）
   requiresApproval?: boolean // 危险操作需要用户确认
+  executionMode?: 'sequential' | 'parallel'  // 借鉴 Pi，per-tool 覆盖全局并行策略
 }
 
 export type ToolHandler = (
@@ -72,7 +164,6 @@ export interface ToolContext {
   workdir: string
   logger: Logger
   config: GeminiClawConfig
-  // 允许工具访问记忆系统
   memory?: MemoryStrategy
 }
 
@@ -80,7 +171,6 @@ export class ToolRegistry {
   register(def: ToolDefinition): void
   get(name: string): ToolDefinition | null
   list(toolset?: string): ToolDefinition[]
-  // 扫描 src/tools/ 目录，import 有 registry.register() 调用的文件
   static discover(toolsDir: string): Promise<ToolRegistry>
 }
 ```
@@ -96,14 +186,25 @@ registry.register({
   schema: { /* JSON Schema */ },
   toolset: ['core'],
   requiresApproval: true,
+  executionMode: 'sequential',  // exec 有副作用，不可并行
   handler: async (params, ctx) => { /* ... */ }
 })
 ```
 
-### 2.3 Agent Loop 核心
+### 2.3 Agent Loop 核心（借鉴 Pi EventStream 风格）
 
 ```typescript
 // src/agent/loop.ts
+
+// 借鉴 Pi 的 AgentEvent 类型
+export type AgentEvent =
+  | { type: 'turn_start' }
+  | { type: 'turn_end'; message: Message; toolResults: ToolResult[] }
+  | { type: 'message_delta'; delta: string }
+  | { type: 'tool_start'; toolCallId: string; toolName: string; args: unknown }
+  | { type: 'tool_end'; toolCallId: string; toolName: string; result: ToolResult; isError: boolean }
+  | { type: 'agent_end'; messages: Message[] }
+
 export class AgentLoop {
   constructor(params: {
     providerRouter: ProviderRouter
@@ -113,36 +214,31 @@ export class AgentLoop {
     logger: Logger
   })
 
-  // 单次对话轮次（含工具调用循环）
-  async run(params: {
+  // 返回 AsyncIterable（借鉴 Pi EventStream，替代回调风格）
+  run(params: {
     messages: Message[]
     sessionId: string
+    branchId?: string     // Session Tree 支线 ID（见三节）
     model?: string
-    stream?: boolean
-    onDelta?: (delta: string) => void      // 流式回调
-    onToolCall?: (call: ToolCall) => void  // 工具调用通知
-  }): Promise<AgentResult>
-}
-
-type AgentResult = {
-  message: string
-  toolCallCount: number
-  inputTokens: number
-  outputTokens: number
-  model: string
+    signal?: AbortSignal
+    // 借鉴 Pi 的钩子
+    beforeToolCall?: (ctx: BeforeToolCallContext) => Promise<{ block?: boolean; reason?: string }>
+    afterToolCall?: (ctx: AfterToolCallContext) => Promise<Partial<ToolResult> | undefined>
+  }): AsyncIterable<AgentEvent>
 }
 ```
 
 **Loop 流程：**
 ```
 1. 构造 messages（含 system prompt + 工具 schema）
-2. 调用 LLM（streaming 或 non-streaming）
+2. 调用 LLM（streaming，yield message_delta 事件）
 3. 如果响应有 tool_calls：
-   a. 检测可并行的工具批次（无依赖关系 → 并行，有依赖 → 串行）
-   b. 执行工具（Promise.all 并行 / 串行）
-   c. 把工具结果追加到 messages
-   d. 回到步骤 2
-4. 如果无 tool_calls 或达到 maxTurns（默认 10）：返回最终响应
+   a. yield turn_end 事件
+   b. 对每个 tool_call，调 beforeToolCall 钩子（可 block）
+   c. 检测可并行批次，执行工具（yield tool_start / tool_end 事件）
+   d. 调 afterToolCall 钩子（可 override 结果）
+   e. 把工具结果追加到 messages，回到步骤 1
+4. 如果无 tool_calls 或达到 maxTurns（默认 10）：yield agent_end
 ```
 
 **并行检测逻辑（参考 hermes）：**
@@ -156,7 +252,7 @@ function shouldParallelize(toolCalls: ToolCall[]): boolean {
 }
 ```
 
-### 2.4 核心工具清单（Phase E 实现）
+### 2.4 核心工具清单（Phase G 实现）
 
 优先级基于实际使用频率（参考 OpenClaw 工具调用日志）：
 
@@ -190,7 +286,7 @@ function shouldParallelize(toolCalls: ToolCall[]): boolean {
 
 ---
 
-## 三、Session 管理设计（升级）
+## 三、Session 管理设计（Session Tree + SQLite）
 
 ### 3.1 现状问题
 
@@ -198,37 +294,61 @@ function shouldParallelize(toolCalls: ToolCall[]): boolean {
 - layered 策略：topics SQLite，但 messages 没有持久化
 - 没有跨 session 查询
 - 没有 FTS 全文搜索
+- **Session 是线性的**，无法支持 Evolution Engine 的隔离支线需求
 
-### 3.2 目标设计（借鉴 hermes `hermes_state.py`）
+### 3.2 Session Tree 设计（核心升级，借鉴 Pi）
 
-**统一 SQLite 存储（WAL 模式）：**
+Session 不再是平铺的列表，而是一棵树：
+
+```
+session-main-001（主线，用户对话）
+├── session-main-001 / turn 1~N（正常对话）
+└── session-evo-abc123（evolution branch，子节点）
+    ├── Mutator 工具调用记录
+    ├── Validator 输出
+    └── 结果 summary（merge 回主线时注入）
+```
+
+**关键字段：**
+- `parent_session_id`：指向父 session（NULL 表示根节点）
+- `branch_type`：`'main' | 'evolution' | 'subagent' | 'compress'`
+- `branch_summary`：支线结束时写入，父 session 可读取
+
+这个设计同时解决了三个问题：
+1. Evolution Engine 支线隔离（不污染主线 context）
+2. Context 压缩历史追溯（compress 类型的子 session 保存压缩前快照）
+3. 子 Agent 结果汇报（subagent 类型的子 session）
+
+### 3.3 SQLite Schema（WAL + FTS5）
 
 ```sql
--- sessions 表
+-- sessions 表（树形结构）
 CREATE TABLE sessions (
-  id          TEXT PRIMARY KEY,
-  source      TEXT NOT NULL,           -- 'http' | 'qqbot' | 'telegram' | 'cli'
-  model       TEXT,
-  parent_session_id TEXT,              -- 压缩后的前驱 session
-  started_at  INTEGER NOT NULL,
-  ended_at    INTEGER,
-  end_reason  TEXT,                    -- 'reset' | 'compress' | 'timeout'
-  message_count INTEGER DEFAULT 0,
-  input_tokens  INTEGER DEFAULT 0,
-  output_tokens INTEGER DEFAULT 0,
-  title       TEXT,                    -- LLM 自动生成的标题
+  id                TEXT PRIMARY KEY,
+  parent_session_id TEXT,                    -- NULL = 根节点
+  branch_type       TEXT NOT NULL DEFAULT 'main',  -- 'main'|'evolution'|'subagent'|'compress'
+  branch_summary    TEXT,                    -- 支线结束时写入，父节点可读
+  source            TEXT NOT NULL,           -- 'http' | 'qqbot' | 'telegram' | 'cli'
+  model             TEXT,
+  started_at        INTEGER NOT NULL,
+  ended_at          INTEGER,
+  end_reason        TEXT,                    -- 'done' | 'compress' | 'branch_merged' | 'branch_aborted'
+  message_count     INTEGER DEFAULT 0,
+  input_tokens      INTEGER DEFAULT 0,
+  output_tokens     INTEGER DEFAULT 0,
+  title             TEXT,
   FOREIGN KEY (parent_session_id) REFERENCES sessions(id)
 );
 
 -- messages 表（全量历史）
 CREATE TABLE messages (
-  id          INTEGER PRIMARY KEY AUTOINCREMENT,
-  session_id  TEXT NOT NULL REFERENCES sessions(id),
-  role        TEXT NOT NULL,           -- 'user' | 'assistant' | 'tool'
-  content     TEXT,
-  tool_calls  TEXT,                    -- JSON
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  session_id   TEXT NOT NULL REFERENCES sessions(id),
+  role         TEXT NOT NULL,                -- 'user' | 'assistant' | 'tool'
+  content      TEXT,
+  tool_calls   TEXT,                         -- JSON
   tool_call_id TEXT,
-  created_at  INTEGER NOT NULL
+  created_at   INTEGER NOT NULL
 );
 
 -- FTS5 全文搜索（借鉴 hermes，含 CJK trigram 支持）
@@ -236,29 +356,38 @@ CREATE VIRTUAL TABLE messages_fts USING fts5(
   content,
   content=messages,
   content_rowid=id,
-  tokenize='unicode61 trigram'         -- trigram 支持中文子串搜索
+  tokenize='unicode61 trigram'
 );
 
--- 触发器自动维护 FTS 索引
 CREATE TRIGGER messages_fts_insert AFTER INSERT ON messages
   BEGIN INSERT INTO messages_fts(rowid, content) VALUES (new.id, new.content); END;
 CREATE TRIGGER messages_fts_delete AFTER DELETE ON messages
   BEGIN DELETE FROM messages_fts WHERE rowid = old.id; END;
 ```
 
-### 3.3 Session 生命周期
+### 3.4 SessionStore API
 
 ```typescript
 // src/session/store.ts
 export class SessionStore {
-  // 创建新 session
+  // 创建根节点 session（用户对话）
   create(params: { source: string; model: string }): Session
+
+  // 创建子 session（支线）
+  branch(parentId: string, params: {
+    branchType: 'evolution' | 'subagent' | 'compress'
+    model?: string
+  }): Session
+
+  // 支线结束，写入 summary，通知父 session
+  mergeBranch(branchId: string, summary: string): void
+  abortBranch(branchId: string, reason: string): void
 
   // 追加消息（自动更新 FTS）
   appendMessage(sessionId: string, msg: Message): void
 
-  // 压缩：当前 session 结束，新建子 session
-  compress(sessionId: string, summary: string): Session
+  // 读取 session 树（含子节点摘要）
+  getTree(rootId: string): SessionTree
 
   // 全文搜索（跨所有 sessions）
   search(query: string, limit?: number): SearchResult[]
@@ -266,20 +395,28 @@ export class SessionStore {
   // 按 sessionId 读取历史
   getHistory(sessionId: string, limit?: number): Message[]
 
-  // 列出最近 sessions
+  // 列出最近根节点 sessions
   listRecent(source?: string, limit?: number): Session[]
 }
 ```
 
-### 3.4 压缩策略（parent_session_id 链）
+### 3.5 Evolution Engine 与 Session Tree 的集成
 
-当 context 接近 token 上限时：
-1. 调用 LLM 生成当前 session 的摘要
-2. 把摘要作为第一条 system message 写入新 session
-3. 新 session 的 `parent_session_id` 指向旧 session
-4. 旧 session 标记 `end_reason: 'compress'`
+Evolution Engine 的 `runOnce()` 流程更新为：
 
-这样历史永不丢失，可以通过 `parent_session_id` 链追溯全部历史。
+```typescript
+// 1. 从主线 session 创建 evolution 支线
+const evoBranch = sessionStore.branch(mainSessionId, { branchType: 'evolution' })
+
+// 2. Mutator 在支线 session 里记录工具调用
+await mutator.run(intent, { sessionId: evoBranch.id })
+
+// 3. 验证通过 → merge 支线，summary 注入主线
+sessionStore.mergeBranch(evoBranch.id, `Evolution: ${intent.title} — ${result.summary}`)
+
+// 4. 验证失败 → 废弃支线
+sessionStore.abortBranch(evoBranch.id, result.reason)
+```
 
 ---
 
@@ -366,12 +503,6 @@ src/plugins/
         └── index.ts  ← 导出 ToolDefinition[]
 ```
 
-**用户安装 plugin：**
-```bash
-# 把 plugin 目录放到 ~/.gemini-data/plugins/<type>/<name>/
-# 启动时自动发现，无需重启（热加载，TODO Phase G）
-```
-
 ### 5.3 Plugin 发现（约 60 行代码）
 
 ```typescript
@@ -423,8 +554,8 @@ export async function discoverPlugins(config: GeminiClawConfig): Promise<LoadedP
 
 参考 hermes `web/` 目录（纯 HTML + Vanilla JS，无框架）：
 - 单文件 `index.html`（~500 行）
-- SSE 流式渲染
-- session 切换
+- SSE 流式渲染（消费 AgentEvent AsyncIterable）
+- session 树形切换（主线 + 支线可视化）
 - 不依赖 React/Vue/任何构建工具
 
 ---
@@ -484,15 +615,15 @@ routing:
 
 Evolution Engine 路线（Phase A-E）不变，Runtime 能力补齐作为并行 Phase F-I：
 
-### Phase F：Session 管理升级（1-2天）
-- [ ] `src/session/store.ts` — SQLite WAL + FTS5 + parent_session_id
+### Phase F：Session Tree 升级（1-2天）
+- [ ] `src/session/store.ts` — SQLite WAL + FTS5 + **Session Tree**（branch/mergeBranch/abortBranch）
 - [ ] 迁移现有 buffer/layered 策略使用 SessionStore
 - [ ] `/v1/sessions` + `/v1/sessions/search` HTTP API
-- [ ] session 压缩时 parent_session_id 链接
+- [ ] Evolution Engine 集成 Session Tree（evoBranch 隔离）
 
 ### Phase G：Agent Loop + 核心工具（3-5天）
-- [ ] `src/tools/registry.ts` — ToolRegistry（hermes 风格自注册）
-- [ ] `src/agent/loop.ts` — AgentLoop（工具调用循环，并行执行）
+- [ ] `src/tools/registry.ts` — ToolRegistry（hermes 风格自注册，含 executionMode）
+- [ ] `src/agent/loop.ts` — AgentLoop（**AsyncIterable EventStream**，借鉴 Pi；**beforeToolCall/afterToolCall 钩子**）
 - [ ] P0 工具：exec、read、write、edit、web_fetch、memory_search、memory_get
 - [ ] P1 工具：cron、message、sessions_spawn、sessions_list、sessions_history
 - [ ] chat route 升级：接入 AgentLoop（替换直接调 providerRouter）
@@ -501,7 +632,7 @@ Evolution Engine 路线（Phase A-E）不变，Runtime 能力补齐作为并行 
 - [ ] `src/channels/qqbot/` — QQBot channel（移植 hermes adapter）
 - [ ] `src/channels/index.ts` — ChannelManager
 - [ ] `/v1/chat/completions` — OpenAI 兼容层
-- [ ] 轻量 Web UI（单文件 HTML）
+- [ ] 轻量 Web UI（单文件 HTML，含 Session Tree 可视化）
 
 ### Phase I：Plugin 系统（1-2天）
 - [ ] `src/plugins/loader.ts` — 目录扫描 + 动态 import
@@ -511,13 +642,12 @@ Evolution Engine 路线（Phase A-E）不变，Runtime 能力补齐作为并行 
 
 ---
 
-## 九、README 对比表更新
-
-README 的对比表从两列（OpenClaw vs GeminiClaw）改为三列，加入 Hermes：
+## 九、README 对比表（三列）
 
 | 能力 | OpenClaw | Hermes | **GeminiClaw** |
 |------|----------|--------|----------------|
-| Agent loop | ✅ TypeScript | ✅ Python | 🔜 Phase G |
+| Agent loop | ✅ TypeScript（Pi 框架） | ✅ Python（自研） | 🔜 TypeScript（自实现，Phase G） |
+| Session 结构 | ✅ 线性 | ✅ 线性 | ✅ **树形**（branch/rewind，Phase F） |
 | 内置工具数量 | 30+ | 69 | 🔜 7→20+（Phase G） |
 | Multi-channel | ✅ 20+ | ✅ Telegram/Discord/Slack/WhatsApp/Signal | ✅ QQBot（Phase H）+ plugin |
 | Plugin 系统 | ✅ 重（40+ API） | ✅ 轻（目录约定） | ✅ 轻（hermes 风格，Phase I） |
@@ -528,7 +658,7 @@ README 的对比表从两列（OpenClaw vs GeminiClaw）改为三列，加入 He
 | Control UI | ✅ React SPA | ✅ TUI + Web | 🔜 OpenAI 兼容层（Phase H） |
 | 语言 | TypeScript | Python | TypeScript |
 | 代码量（核心） | ~数万行 | ~2万行 | ~5千行（目标） |
-| 零 vendor lock-in | ⚠️ | ✅ | ✅ |
+| 零 vendor lock-in | ⚠️（依赖 Pi 包） | ✅ | ✅ |
 
 ---
 
@@ -537,9 +667,11 @@ README 的对比表从两列（OpenClaw vs GeminiClaw）改为三列，加入 He
 | # | 问题 | 决策 |
 |---|------|------|
 | 1 | Agent Loop 语言 | **TypeScript**，与现有代码库统一 |
-| 2 | QQBot：内嵌 vs plugin | **内嵌**，核心渠道，不做成可选 |
-| 3 | Plugin 系统风格 | **hermes 轻量风格**，目录约定 + ABC 接口 |
-| 4 | Session 存储 | **SQLite WAL**，借鉴 hermes schema，加 FTS5 |
-| 5 | Control UI 短期方案 | **OpenAI 兼容层**，复用现有前端 |
-| 6 | 工具注册机制 | **hermes 自注册风格**，每个工具文件 `registry.register()` |
-| 7 | 旧版替换时机 | Phase G 完成（Agent Loop 跑通）后才考虑替换 |
+| 2 | Agent 框架依赖 | **自实现**，不依赖 Pi 包；但移植 Pi 的 EventStream + Session Tree 设计 |
+| 3 | Session 结构 | **树形**（branch/rewind），借鉴 Pi；Evolution Engine 支线完全隔离 |
+| 4 | QQBot：内嵌 vs plugin | **内嵌**，核心渠道，不做成可选 |
+| 5 | Plugin 系统风格 | **hermes 轻量风格**，目录约定 + 接口约束 |
+| 6 | Session 存储 | **SQLite WAL**，借鉴 hermes schema，加 FTS5 + branch_type |
+| 7 | Control UI 短期方案 | **OpenAI 兼容层**，复用现有前端 |
+| 8 | 工具注册机制 | **hermes 自注册风格**，每个工具文件 `registry.register()`，加 `executionMode` 字段 |
+| 9 | 旧版替换时机 | Phase G 完成（Agent Loop 跑通）后才考虑替换 |
