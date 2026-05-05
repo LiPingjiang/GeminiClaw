@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/d72de3a7-c4c6-45b0-93c3-eb214fe8dfaa" alt="GeminiClaw" width="180" />
+  <img src="https://github.com/user-attachments/assets/def707b5-a3e5-4c45-870d-78d5b3fbde3d" alt="GeminiClaw" width="600" />
 </p>
 
 <h1 align="center">GeminiClaw</h1>
@@ -20,6 +20,10 @@
 ---
 
 ## What is GeminiClaw?
+
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/502dec60-f090-4675-898f-a4eadee6adde" alt="Self-Evolving Runtime" width="600" />
+</p>
 
 GeminiClaw is a next-generation agent runtime built on the shoulders of [OpenClaw](https://github.com/openclaw/openclaw) and [Hermes](https://github.com/hermes-protocol/hermes), taking the best of both and going further.
 
@@ -54,22 +58,9 @@ GeminiClaw is a next-generation agent runtime built on the shoulders of [OpenCla
 
 GeminiClaw is named after the Gemini twins — because it always runs as **two slots**:
 
-```
-┌─────────────────┐        ┌─────────────────┐
-│   slot-A        │        │   slot-B        │
-│   (active)      │◄──────►│   (standby)     │
-│   serving live  │        │   being improved│
-└────────┬────────┘        └────────┬────────┘
-         │                          │
-         │   Evolution Engine       │
-         │   ┌──────────────────┐   │
-         └──►│ 1. Intent        │◄──┘
-             │ 2. Mutate (code) │
-             │ 3. Validate      │
-             │ 4. Swap slots    │
-             │ 5. Circuit break │
-             └──────────────────┘
-```
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/4d75fab1-81a2-4271-b196-9cb49b4e6ba7" alt="Twin-System Architecture" width="600" />
+</p>
 
 **The cycle:**
 1. **slot-A** serves real traffic, accumulating conversation traces
