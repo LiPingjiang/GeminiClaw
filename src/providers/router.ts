@@ -1,4 +1,4 @@
-import type { Provider, Message, ChatOptions, ChatResponse } from "./types.js"
+import type { Provider, Message, ChatOptions, ChatResponse, StreamChunk } from "./types.js"
 import type { RoutingConfig } from "../config/schema.js"
 
 function parseRoute(route: string): { providerName: string; model: string } {
@@ -38,5 +38,13 @@ export class ProviderRouter {
     }
 
     throw new Error(`All providers failed:\n${errors.join("\n")}`)
+  }
+
+  async *stream(messages: Message[], options?: ChatOptions): AsyncIterable<StreamChunk> {
+    const route = this.routing.default
+    const { providerName, model } = parseRoute(route)
+    const provider = this.providers.get(providerName)
+    if (!provider) throw new Error(`Provider "${providerName}" not found`)
+    yield* provider.stream(messages, { ...options, model })
   }
 }

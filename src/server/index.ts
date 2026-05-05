@@ -1,21 +1,22 @@
+// src/server/index.ts
 import Fastify, { type FastifyInstance } from "fastify"
 import type { Config } from "../config/schema.js"
 import type { ProviderRouter } from "../providers/router.js"
-import type { SessionMemory } from "../memory/session.js"
+import type { MemoryStrategy } from "../memory/strategy.js"
 import { healthRoute } from "./routes/health.js"
 import { chatRoute } from "./routes/chat.js"
 
 export async function buildServer(
   config: Config,
   router: ProviderRouter,
-  memory: SessionMemory,
+  strategy: MemoryStrategy,
 ): Promise<FastifyInstance> {
   const fastify = Fastify({ logger: false })
 
   await fastify.register(healthRoute)
   await fastify.register(chatRoute, {
     router,
-    memory,
+    strategy,
     authToken: config.server.authToken,
   })
 

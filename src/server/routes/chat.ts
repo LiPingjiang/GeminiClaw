@@ -1,16 +1,18 @@
+// src/server/routes/chat.ts
 import type { FastifyInstance } from "fastify"
 import type { ProviderRouter } from "../../providers/router.js"
-import type { SessionMemory } from "../../memory/session.js"
+import type { MemoryStrategy } from "../../memory/strategy.js"
 
 interface ChatBody {
   message: string
   sessionId?: string
   model?: string
+  stream?: boolean
 }
 
 interface ChatRouteOpts {
   router: ProviderRouter
-  memory: SessionMemory
+  strategy: MemoryStrategy
   authToken?: string
 }
 
@@ -26,16 +28,61 @@ export async function chatRoute(
       }
     }
 
-    const { message, sessionId, model } = request.body
-    const sid = sessionId ?? opts.memory.generateId()
-    const history = opts.memory.get(sid)
+    const { message, sessionId, model, stream: wantStream } = request.body
+    const sid = sessionId ?? crypto.randomUUID()
 
-    opts.memory.append(sid, { role: "user", content: message })
+    await opts.strategy.ensureSession(sid)
 
-    const messages = [...history, { role: "user" as const, content: message }]
-    const chatResponse = await opts.router.chat(messages, model ? { model } : undefined)
+    // 1. 获取 context（含 system + 事项索引 + 历史）
+    const { messages: contextMessages } = await opts.strategy.getContext(sid, message)
 
-    opts.memory.append(sid, { role: "assistant", content: chatResponse.content })
+    // 2. 追加当前用户消息
+    const allMessages = [...contextMessages, { role: "user" as const, content: message }]
+
+    if (wantStream) {
+      // SSE 流式
+      reply.raw.setHeader("Content-Type", "text/event-stream")
+      reply.raw.setHeader("Cache-Control", "no-cache")
+      reply.raw.setHeader("Connection", "keep-alive")
+
+      let fullContent = ""
+
+      try {
+        for await (const chunk of opts.router.stream(allMessages, model ? { model } : undefined)) {
+          if (chunk.delta) {
+            fullContent += chunk.delta
+            const data = JSON.stringify({ choices: [{ delta: { content: chunk.delta } }] })
+            reply.raw.write(`data: ${data}\n\n`)
+          }
+          if (chunk.done) {
+            reply.raw.write(`data: ${JSON.stringify({ type: "done" })}\n\n`)
+            reply.raw.write("data: [DONE]\n\n")
+          }
+        }
+      } finally {
+        reply.raw.end()
+      }
+
+      // 后台追加 + 异步处理
+      if (fullContent) {
+        await opts.strategy.appendTurn(
+          sid,
+          { role: "user", content: message },
+          { role: "assistant", content: fullContent },
+        )
+      }
+
+      return reply
+    }
+
+    // 非流式
+    const chatResponse = await opts.router.chat(allMessages, model ? { model } : undefined)
+
+    await opts.strategy.appendTurn(
+      sid,
+      { role: "user", content: message },
+      { role: "assistant", content: chatResponse.content },
+    )
 
     return reply.send({
       response: chatResponse.content,
