@@ -69,3 +69,82 @@ it("uses first model as default", async () => {
   const body = JSON.parse(fetchMock.mock.calls[0][1].body)
   expect(body.model).toBe("gemini-3-flash-preview")
 })
+
+// ── stream 测试 ──────────────────────────────────────────────
+
+it("stream yields delta chunks from SSE", async () => {
+  // 模拟 SSE 响应体
+  const sseBody = [
+    `data: {"choices":[{"delta":{"content":"Hello"}}]}\n\n`,
+    `data: {"choices":[{"delta":{"content":" world"}}]}\n\n`,
+    `data: [DONE]\n\n`,
+  ].join("")
+
+  const encoder = new TextEncoder()
+  const readable = new ReadableStream({
+    start(controller) {
+      controller.enqueue(encoder.encode(sseBody))
+      controller.close()
+    },
+  })
+
+  fetchMock.mockResolvedValue({
+    ok: true,
+    body: readable,
+  })
+
+  const { FridayProvider } = await import("./friday.js")
+  const p = new FridayProvider(makeConfig())
+
+  const chunks: string[] = []
+  for await (const chunk of p.stream([{ role: "user", content: "hi" }])) {
+    if (chunk.delta) chunks.push(chunk.delta)
+    if (chunk.done) break
+  }
+
+  expect(chunks).toEqual(["Hello", " world"])
+})
+
+it("stream throws on non-ok response", async () => {
+  fetchMock.mockResolvedValue({
+    ok: false,
+    status: 503,
+    text: async () => "service unavailable",
+  })
+
+  const { FridayProvider } = await import("./friday.js")
+  const p = new FridayProvider(makeConfig())
+
+  await expect(async () => {
+    for await (const _ of p.stream([{ role: "user", content: "hi" }])) { /* drain */ }
+  }).rejects.toThrow("friday API error 503")
+})
+
+it("stream skips malformed SSE lines", async () => {
+  const sseBody = [
+    `data: not-json\n\n`,
+    `data: {"choices":[{"delta":{"content":"ok"}}]}\n\n`,
+    `data: [DONE]\n\n`,
+  ].join("")
+
+  const encoder = new TextEncoder()
+  const readable = new ReadableStream({
+    start(controller) {
+      controller.enqueue(encoder.encode(sseBody))
+      controller.close()
+    },
+  })
+
+  fetchMock.mockResolvedValue({ ok: true, body: readable })
+
+  const { FridayProvider } = await import("./friday.js")
+  const p = new FridayProvider(makeConfig())
+
+  const chunks: string[] = []
+  for await (const chunk of p.stream([{ role: "user", content: "hi" }])) {
+    if (chunk.delta) chunks.push(chunk.delta)
+    if (chunk.done) break
+  }
+
+  expect(chunks).toEqual(["ok"])
+})
