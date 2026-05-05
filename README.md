@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/assets/logo.png" alt="GeminiClaw" width="180" />
+  <img src="docs/assets/logo-readme.png" alt="GeminiClaw" width="180" />
 </p>
 
 <h1 align="center">GeminiClaw</h1>
