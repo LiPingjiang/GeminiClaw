@@ -7,7 +7,10 @@ providers:
   - name: mcli
     type: mcli
     apiKey: "your-mcli-api-key"
-    baseUrl: "https://mcli.sankuai.com/v1"
+    baseUrl: "https://mcli.sankuai.com"   # 注意：不要带 /v1 后缀， provider 内部会自动拼接
+    # extraHeaders：如果你的 mcli 需要额外 header（如美团内部部署），在此配置
+    # extraHeaders:
+    #   X-Working-Dir: "/your/project/path"
     models:
       - claude-opus-4-6
       - claude-sonnet-4-6
