@@ -22,10 +22,12 @@ secrets/
 
 # Runtime data
 data/
+.data/
 logs/
 *.log
 sessions/
-memory/
+# memory/ is src/memory — do not ignore source files
+# Runtime memory dumps would live under .data/ instead
 
 # OS
 .DS_Store
