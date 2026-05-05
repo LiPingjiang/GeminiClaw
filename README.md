@@ -50,15 +50,56 @@ npm run dev
 ## API
 
 ```
-POST /v1/agent/chat     — Send a message, get a response
-GET  /v1/runs/:id/events — Subscribe to run events (SSE)
+POST /v1/agent/chat     — Send a message, get a response (non-streaming or SSE)
 GET  /v1/health         — Health check
+```
+
+### Chat Request
+
+```json
+// Non-streaming
+{
+  "message": "Hello!",
+  "sessionId": "optional-session-id",
+  "model": "mcli/claude-sonnet-4-6",
+  "stream": false
+}
+
+// Streaming (SSE) — add "stream": true
+// Response: text/event-stream, each line: data: {"delta": "...", "done": false}
+```
+
+### Chat Response
+
+```json
+{
+  "response": "Hello! How can I help?",
+  "sessionId": "abc-123",
+  "model": "mcli/claude-sonnet-4-6"
+}
 ```
 
 ## Configuration
 
 Copy `config.example.yaml` to `config.yaml` and fill in your values.  
 **Never commit `config.yaml`** — it contains your API keys.
+
+> **mcli users:** Set `baseUrl: "https://mcli.sankuai.com"` (no `/v1` suffix). If your deployment requires extra headers (e.g. `X-Working-Dir`), use the `extraHeaders` field.
+
+## Current Status
+
+| Feature | Status |
+|---------|--------|
+| Multi-provider routing (mcli / Friday / Anthropic) | ✅ Done |
+| Automatic fallback | ✅ Done |
+| Bearer auth | ✅ Done |
+| Non-streaming chat | ✅ Done |
+| SSE streaming | ✅ Done |
+| Buffer memory (in-process, dev/test) | ✅ Done |
+| Layered memory (SQLite, persistent) | ✅ Done |
+| Input validation | ✅ Done |
+| Twin-System evolution engine | 🔜 Planned |
+| `/v1/runs/:id/events` async run API | 🔜 Planned |
 
 ## Licensing
 

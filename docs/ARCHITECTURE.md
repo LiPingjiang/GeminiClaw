@@ -201,7 +201,11 @@ GeminiClaw 不做传统 merge，而是**主动筛选**：
 
 > 目标：把基础建好，不急着接自动进化
 
-- [ ] **Step 1**：理清 GeminiClaw 仓库结构，跑通构建流程
+- [x] **Step 1**：理清 GeminiClaw 仓库结构，跑通构建流程
+  - 已完成（2026-05-05）：TypeScript + Fastify 5 + Vitest，78 测试全绿
+  - providers: mcli（含 extraHeaders）、Friday（含 SSE stream）、Anthropic
+  - memory: buffer 策略 + layered 策略（SQLite 分层 topics）
+  - 认证、输入校验、SSE hijack 全部就位
 - [ ] **Step 2**：建立 slot-a / slot-b 目录结构和软链接机制
 - [ ] **Step 3**：把 skill-self-optimizer 合并进来，作为内置能力
 - [ ] **Step 4**：实现手动切换（先不自动）：改 slot-B 代码 → 构建 → 测试 → 手动切换

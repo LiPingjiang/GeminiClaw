@@ -8,7 +8,20 @@ Read `docs/ARCHITECTURE.md` for the full design philosophy before touching any c
 
 ## Current Status
 
-**Phase: Initial build.** src/ is empty. We are building from scratch.
+**Phase: Functional.** 核心功能已实现并通过测试（78 个测试全绿）。
+
+已完成：
+- config 加载与校验（Zod schema）
+- providers：Anthropic、mcli（支持 extraHeaders）、Friday（含 SSE stream）
+- ProviderRouter：主路由 + 有序 fallback
+- memory：buffer 策略（滑动窗口）+ layered 策略（SQLite 分层 topics）
+- server：Fastify 5，`/v1/agent/chat`（非流式 + SSE 流式）、`/v1/health`、Bearer 认证
+- 输入校验：空消息 → 400
+
+待实现：
+- Twin-System slot-a/slot-b 目录结构
+- evolution/ 进化引擎
+- `/v1/runs/:id/events` 异步 run 接口
 
 ## Stack
 
@@ -68,11 +81,18 @@ pnpm build        # tsc
 pnpm test         # vitest
 ```
 
-## What To Build First
+## What To Build Next
 
-1. `src/config/` — load and validate config.yaml
-2. `src/providers/` — at minimum: Anthropic + mcli adapters
-3. `src/server/` — Fastify server, `/v1/agent/chat` and `/v1/health`
-4. `src/memory/` — in-memory session store (file persistence later)
-5. Wire everything in `src/index.ts`
-6. Tests for provider adapters and config loading
+1. Twin-System 目录结构（slot-a / slot-b / active 软链接）
+2. evolution/ 进化引擎（intent → mutator → validator → switcher）
+3. `/v1/runs/:id/events` 异步 run 接口
+4. 上游 OpenClaw diff 追踪 cron job
+
+## Build & Test
+
+```bash
+pnpm install
+pnpm dev          # tsx watch
+pnpm build        # tsc
+pnpm test         # vitest（78 tests，全绿）
+```
