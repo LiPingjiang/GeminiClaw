@@ -4,37 +4,41 @@ server:
   # authToken: "your-secret-token"
 
 providers:
-  - name: anthropic
-    type: anthropic
-    apiKey: "sk-ant-..."
+  - name: mcli
+    type: mcli
+    apiKey: "your-mcli-api-key"
+    baseUrl: "https://mcli.sankuai.com/v1"
     models:
       - claude-opus-4-6
       - claude-sonnet-4-6
 
-  - name: mcli
-    type: mcli
-    apiKey: "your-mcli-key"
-    baseUrl: "https://your-mcli-endpoint/v1"
+  - name: friday
+    type: friday
+    apiKey: "your-friday-api-key"
+    baseUrl: "https:///v1/openai/native"
     models:
-      - mcli-model-default
+      - gemini-3-flash-preview
 
 routing:
-  default: "anthropic/claude-sonnet-4-6"
+  default: "mcli/claude-opus-4-6"
   fallback:
-    - "anthropic/claude-sonnet-4-6"
-    - "mcli/mcli-model-default"
+    - "mcli/claude-sonnet-4-6"
+    - "friday/gemini-3-flash-preview"
 
 memory:
   enabled: true
   dataDir: ".data"
   maxSessionAge: 86400
-  # strategy: buffer    # buffer = 滑动窗口（纯内存，默认）
-  # strategy: layered   # layered = 分层 topics（SQLite，完整记忆系统）
+
+  # 记忆策略：
+  #   buffer  = 滑动窗口（纯内存，重启丢失，适合开发/测试）
+  #   layered = 分层 topics（SQLite 持久化，完整记忆系统，需要 friday provider）
   strategy: buffer
-  maxActiveTopics: 16
-  compactThresholdBytes: 6144   # 6KB，超过触发摘要压缩
-  recentMessageLimit: 20
-  triageAfterTurns: 3
+
+  maxActiveTopics: 16             # 最多保持活跃的事项数
+  compactThresholdBytes: 6144     # 事项文档超过此大小触发摘要压缩（6KB）
+  recentMessageLimit: 20          # 注入 context 的近期消息条数
+  triageAfterTurns: 3             # 累计几轮后触发立项判断
 
 agent:
   maxTurns: 20
