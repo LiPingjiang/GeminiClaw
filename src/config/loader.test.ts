@@ -5,10 +5,20 @@ import { loadConfig } from "./loader.js"
 
 const TMP = "/tmp/geminiclaw-test"
 
-beforeEach(() => { mkdirSync(TMP, { recursive: true }) })
+let savedPort: string | undefined
+
+beforeEach(() => {
+  mkdirSync(TMP, { recursive: true })
+  // Isolate from any PORT env var set by the parent process (e.g. Level 2 validator)
+  savedPort = process.env.PORT
+  delete process.env.PORT
+})
 
 afterEach(() => {
   try { unlinkSync(join(TMP, "config.yaml")) } catch {}
+  // Restore PORT env var
+  if (savedPort !== undefined) process.env.PORT = savedPort
+  else delete process.env.PORT
 })
 
 const VALID_YAML = `
