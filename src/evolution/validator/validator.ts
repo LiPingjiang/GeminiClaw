@@ -105,6 +105,7 @@ interface TraceForTest {
   toolSequence: string[]
   hadFailure: boolean
   messageCount: number
+  responseLength: number
 }
 
 interface BehaviorTestResult {
@@ -444,8 +445,10 @@ export class Validator {
       // Run behavior tests against each trace
       const results: BehaviorTestResult[] = []
       for (const trace of selectedTraces) {
-        // Estimate original response length from messageCount (rough proxy)
-        const estimatedOriginalLength = Math.max(50, trace.messageCount * 100)
+        // Use actual recorded response length; fall back to messageCount estimate only if 0
+        const estimatedOriginalLength = trace.responseLength > 0
+          ? trace.responseLength
+          : Math.max(50, trace.messageCount * 100)
         const result = await testTrace(testPort, trace, estimatedOriginalLength)
         results.push(result)
         this.logger.info(

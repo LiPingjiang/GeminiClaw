@@ -48,6 +48,7 @@ describe("IntentEngine", () => {
         sessionId: "s1",
         toolSequence: ["exec"],
         hadFailure: i < 7,
+        responseLength: 100,
         messageCount: 1,
         recordedAt: Date.now() - i * 1000,
       })
@@ -73,6 +74,7 @@ describe("IntentEngine", () => {
         sessionId: "s1",
         toolSequence: ["exec"],
         hadFailure: i < 7,
+        responseLength: 100,
         messageCount: 1,
         recordedAt: Date.now() - i * 1000,
       })
