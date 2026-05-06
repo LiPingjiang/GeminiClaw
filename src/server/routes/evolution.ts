@@ -106,4 +106,46 @@ export async function evolutionRoute(
       return reply.status(500).send({ error: "Failed to get history" })
     }
   })
+
+  // ---------------------------------------------------------------------------
+  // POST /v1/evolution/generate-intents
+  // ---------------------------------------------------------------------------
+  fastify.post("/v1/evolution/generate-intents", async (_req, reply) => {
+    try {
+      const count = await evolution.generateIntents()
+      return reply.send({ generated: count })
+    } catch (err) {
+      fastify.log.error(err)
+      return reply.status(500).send({ error: "Failed to generate intents" })
+    }
+  })
+
+  // ---------------------------------------------------------------------------
+  // POST /v1/evolution/intents — user-triggered intent
+  // ---------------------------------------------------------------------------
+  fastify.post<{
+    Body: { description: string; targetFiles: string[]; riskLevel: string; evidence?: string[] }
+  }>("/v1/evolution/intents", async (req, reply) => {
+    const body = req.body as {
+      description: string
+      targetFiles: string[]
+      riskLevel: "low" | "medium" | "high"
+      evidence?: string[]
+    }
+    if (!body.description || !body.targetFiles?.length) {
+      return reply.status(400).send({ error: "description and targetFiles are required" })
+    }
+    try {
+      const id = evolution.addUserIntent({
+        description: body.description,
+        targetFiles: body.targetFiles,
+        riskLevel: body.riskLevel ?? "medium",
+        evidence: body.evidence,
+      })
+      return reply.status(201).send({ id })
+    } catch (err) {
+      fastify.log.error(err)
+      return reply.status(500).send({ error: "Failed to add intent" })
+    }
+  })
 }

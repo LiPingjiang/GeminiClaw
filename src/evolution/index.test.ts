@@ -57,6 +57,8 @@ function makeMockDb(intents: Intent[] = []): Partial<EvolutionDB> {
     getIntent: vi.fn().mockReturnValue(null),
     getLastEvolutionRecord: vi.fn().mockReturnValue(null),
     getLastUpstreamCheck: vi.fn().mockReturnValue(null),
+    insertUpstreamCheck: vi.fn(),
+    insertIntent: vi.fn(),
     getRecentTraces: vi.fn().mockReturnValue([]),
     getFailureRate: vi.fn().mockReturnValue(0),
     getEvolutionCountForFile: vi.fn().mockReturnValue(0),
