@@ -11,6 +11,7 @@ export interface RecordParams {
   toolSequence: string[]   // list of tool names called during the conversation
   hadFailure: boolean      // true if any tool call failed or a 5xx occurred
   messageCount: number     // number of messages in this exchange
+  responseLength?: number  // actual response character count (for Level 2 length check)
 }
 
 export class TraceCollector {
@@ -26,7 +27,7 @@ export class TraceCollector {
    * not add latency to the HTTP response.
    */
   record(params: RecordParams): void {
-    const { sessionId, toolSequence, hadFailure, messageCount } = params
+    const { sessionId, toolSequence, hadFailure, messageCount, responseLength } = params
     try {
       this.db.insertTrace({
         id: randomUUID(),
@@ -34,6 +35,7 @@ export class TraceCollector {
         toolSequence,
         hadFailure,
         messageCount,
+        responseLength: responseLength ?? 0,
         recordedAt: Date.now(),
       })
     } catch (err) {

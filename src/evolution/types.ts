@@ -51,6 +51,7 @@ export interface TraceRecord {
   toolSequence: string[]  // JSON array in DB
   hadFailure: boolean
   messageCount: number
+  responseLength: number  // actual response character count, for Level 2 length check
   recordedAt: number      // Unix timestamp ms
 }
 

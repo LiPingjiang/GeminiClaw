@@ -36,6 +36,7 @@ describe("TraceAnalyzer", () => {
         sessionId: "s1",
         toolSequence: ["read", "write"],
         hadFailure: false,
+        responseLength: 100,
         messageCount: 2,
         recordedAt: Date.now() - i * 1000,
       })
@@ -51,6 +52,7 @@ describe("TraceAnalyzer", () => {
         sessionId: "s1",
         toolSequence: ["exec", "read"],
         hadFailure: i < 6,
+        responseLength: 100,
         messageCount: 2,
         recordedAt: Date.now() - i * 1000,
       })
@@ -71,6 +73,7 @@ describe("TraceAnalyzer", () => {
         sessionId: "s1",
         toolSequence: ["exec"],
         hadFailure: i < 3,
+        responseLength: 100,
         messageCount: 1,
         recordedAt: Date.now() - i * 1000,
       })
@@ -86,7 +89,8 @@ describe("TraceAnalyzer", () => {
       sessionId: "s1",
       toolSequence: ["exec"],
       hadFailure: true,
-      messageCount: 1,
+      responseLength: 100,
+        messageCount: 1,
       recordedAt: Date.now(),
     })
     const intents = analyzer.analyze()

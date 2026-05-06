@@ -26,6 +26,7 @@ function recordTrace(
   hadFailure: boolean,
   messageCount: number,
   toolSequence: string[] = [],
+  responseLength = 0,
 ): void {
   if (!evolution) return
   setImmediate(() => {
@@ -34,6 +35,7 @@ function recordTrace(
       toolSequence,
       hadFailure,
       messageCount,
+      responseLength,
     })
   })
 }
@@ -121,7 +123,7 @@ export async function chatRoute(
             { role: "assistant", content: fullContent },
           )
         }
-        recordTrace(opts.evolution, sid, hadFailure, allMessages.length + 1, toolSequence)
+        recordTrace(opts.evolution, sid, hadFailure, allMessages.length + 1, toolSequence, fullContent.length)
         return
       }
 
@@ -158,7 +160,7 @@ export async function chatRoute(
         { role: "assistant", content: finalContent },
       )
 
-      recordTrace(opts.evolution, sid, hadFailure, allMessages.length + 1, toolSequence)
+      recordTrace(opts.evolution, sid, hadFailure, allMessages.length + 1, toolSequence, finalContent.length)
 
       return reply.send({
         response: finalContent,

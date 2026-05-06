@@ -60,6 +60,7 @@ interface TraceRow {
   tool_sequence: string
   had_failure: number
   message_count: number
+  response_length: number
   recorded_at: number
 }
 
@@ -133,6 +134,7 @@ function rowToTrace(row: TraceRow): TraceRecord {
     toolSequence: decodeArr(row.tool_sequence),
     hadFailure: row.had_failure === 1,
     messageCount: row.message_count,
+    responseLength: row.response_length ?? 0,
     recordedAt: row.recorded_at,
   }
 }
@@ -213,9 +215,10 @@ CREATE INDEX IF NOT EXISTS idx_intents_created_at ON intents(created_at);
 CREATE TABLE IF NOT EXISTS traces (
   id             TEXT PRIMARY KEY,
   session_id     TEXT NOT NULL,
-  tool_sequence  TEXT NOT NULL DEFAULT '[]',
-  had_failure    INTEGER NOT NULL DEFAULT 0,
-  message_count  INTEGER NOT NULL DEFAULT 0,
+  tool_sequence    TEXT NOT NULL DEFAULT '[]',
+  had_failure      INTEGER NOT NULL DEFAULT 0,
+  message_count    INTEGER NOT NULL DEFAULT 0,
+  response_length  INTEGER NOT NULL DEFAULT 0,
   recorded_at    INTEGER NOT NULL
 );
 
@@ -364,14 +367,15 @@ export class EvolutionDB {
 
   insertTrace(trace: TraceRecord): void {
     this.db.prepare(`
-      INSERT INTO traces (id, session_id, tool_sequence, had_failure, message_count, recorded_at)
-      VALUES (@id, @sessionId, @toolSequence, @hadFailure, @messageCount, @recordedAt)
+      INSERT INTO traces (id, session_id, tool_sequence, had_failure, message_count, response_length, recorded_at)
+      VALUES (@id, @sessionId, @toolSequence, @hadFailure, @messageCount, @responseLength, @recordedAt)
     `).run({
       id: trace.id,
       sessionId: trace.sessionId,
       toolSequence: encodeArr(trace.toolSequence),
       hadFailure: trace.hadFailure ? 1 : 0,
       messageCount: trace.messageCount,
+      responseLength: trace.responseLength ?? 0,
       recordedAt: trace.recordedAt,
     })
   }

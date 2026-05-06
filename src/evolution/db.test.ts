@@ -50,6 +50,7 @@ function makeTrace(overrides: Partial<TraceRecord> = {}): TraceRecord {
     toolSequence: ["read_file", "write_file"],
     hadFailure: false,
     messageCount: 3,
+    responseLength: 120,
     recordedAt: Date.now(),
     ...overrides,
   }
