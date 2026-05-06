@@ -9,6 +9,8 @@ import { Mutator } from "./mutator/mutator.js"
 import { Validator } from "./validator/validator.js"
 import { Switcher } from "./switcher/switcher.js"
 import { CircuitBreaker } from "./circuit-breaker/circuit-breaker.js"
+import { IntentEngine } from "./intent/engine.js"
+import type { UpstreamRepo } from "./intent/upstream-sync.js"
 import {
   DEFAULT_EVOLUTION_CONFIG,
   type EvolutionConfig,
@@ -48,6 +50,8 @@ export interface EvolutionEngineParams {
   repoRoot: string
   config?: Partial<EvolutionConfig>
   logger?: Logger
+  memoryDbPath?: string
+  upstreamRepos?: UpstreamRepo[]
 }
 
 export class EvolutionEngine {
@@ -61,6 +65,7 @@ export class EvolutionEngine {
   private validator: Validator
   private switcher: Switcher
   private circuitBreaker: CircuitBreaker
+  private intentEngine: IntentEngine
   private running = false
 
   constructor(params: EvolutionEngineParams) {
@@ -111,6 +116,13 @@ export class EvolutionEngine {
       switcher: this.switcher,
       config: this.config.circuitBreaker,
       logger: this.logger,
+    })
+    this.intentEngine = new IntentEngine({
+      db: this.db,
+      providerRouter: this.providerRouter,
+      repoRoot: this.repoRoot,
+      memoryDbPath: params.memoryDbPath ?? "",
+      upstreamRepos: params.upstreamRepos ?? [],
     })
   }
 
@@ -187,6 +199,15 @@ export class EvolutionEngine {
    *  10. Update intent status
    */
   async runOnce(): Promise<RunOnceResult> {
+    // Auto-generate intents if queue is empty
+    const existingPending = this.db.listIntents({ status: "pending" })
+    if (existingPending.length === 0) {
+      const generated = await this.intentEngine.generateIntents()
+      if (generated > 0) {
+        this.logger.info("IntentEngine generated %d new intents", generated)
+      }
+    }
+
     const pendingIntents = this.db.listIntents({ status: "pending" })
     if (pendingIntents.length === 0) {
       return {
@@ -417,6 +438,21 @@ export class EvolutionEngine {
     })
     this.db.updateIntentStatus(intentId, "approved")
     this.logger.info("intent %s approved by %s", intentId, reviewer)
+  }
+
+  /** Manually trigger intent generation from all sources. */
+  async generateIntents(): Promise<number> {
+    return this.intentEngine.generateIntents()
+  }
+
+  /** Add a user-triggered intent. Returns the new intent id. */
+  addUserIntent(params: {
+    description: string
+    targetFiles: string[]
+    riskLevel: "low" | "medium" | "high"
+    evidence?: string[]
+  }): string {
+    return this.intentEngine.addUserIntent(params)
   }
 
   /**
