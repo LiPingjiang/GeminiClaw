@@ -51,6 +51,16 @@ export class SessionStore {
   }
 
   private migrate(): void {
+    // session_meta: per-session key-value store (e.g., agent_mode, uncertainty_cleared)
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS session_meta (
+        session_id  TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+        key         TEXT NOT NULL,
+        value       TEXT NOT NULL,
+        PRIMARY KEY (session_id, key)
+      )
+    `)
+
     // 创建 sessions 表（树形，与现有 chat_sessions 独立）
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS sessions (
@@ -337,6 +347,31 @@ export class SessionStore {
   /** 更新 session 标题 */
   setTitle(sessionId: string, title: string): void {
     this.db.prepare(`UPDATE sessions SET title = ? WHERE id = ?`).run(title, sessionId)
+  }
+
+  // -------------------------------------------------------------------------
+  // Session meta (key-value per session)
+  // -------------------------------------------------------------------------
+
+  getMeta(sessionId: string, key: string): string | null {
+    const row = this.db.prepare(
+      `SELECT value FROM session_meta WHERE session_id = ? AND key = ?`
+    ).get(sessionId, key) as { value: string } | undefined
+    return row?.value ?? null
+  }
+
+  setMeta(sessionId: string, key: string, value: string): void {
+    this.db.prepare(`
+      INSERT INTO session_meta (session_id, key, value)
+      VALUES (?, ?, ?)
+      ON CONFLICT(session_id, key) DO UPDATE SET value = excluded.value
+    `).run(sessionId, key, value)
+  }
+
+  deleteMeta(sessionId: string, key: string): void {
+    this.db.prepare(
+      `DELETE FROM session_meta WHERE session_id = ? AND key = ?`
+    ).run(sessionId, key)
   }
 
   // -------------------------------------------------------------------------
