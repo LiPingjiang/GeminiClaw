@@ -339,6 +339,19 @@ export class EvolutionDB {
     return rows.map(rowToIntent)
   }
 
+  /**
+   * Check if a pending intent with the exact same description already exists.
+   * Used by IntentEngine to avoid duplicate intent generation.
+   */
+  hasPendingIntentWithDescription(description: string): boolean {
+    const row = this.db
+      .prepare(
+        `SELECT id FROM intents WHERE status = 'pending' AND description = ? LIMIT 1`
+      )
+      .get(description)
+    return row !== undefined
+  }
+
   updateIntentStatus(id: string, status: IntentStatus): void {
     this.db.prepare(
       "UPDATE intents SET status = ?, updated_at = ? WHERE id = ?"
