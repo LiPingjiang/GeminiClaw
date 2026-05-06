@@ -1,6 +1,6 @@
 # GeminiClaw Agent Modes - 设计文档
 
-> **状态:** 设计稿,待实现
+> **状态:** ✅ 设计已锁定,实现中
 > **作者:** 李平江 + 观澜
 > **日期:** 2026-05-06
 > **参考:**
@@ -181,58 +181,58 @@ maxUncertaintyRounds: number  // 默认 2
 
 ### 2.5 Reflection 模式(自评重写循环)
 
-**对应的成熟系统和研究：**
-- **Andrew Ng / DeepLearning.AI** “Agentic Design Patterns Part 2: Reflection” (2024) — 工程实践最成熟的概念源头
-- 学术论文：**Self-Refine** (Madaan 2023)、**Reflexion** (Shinn 2023)、**CRITIC** (Gou 2024)
-- Anthropic 将其归类为 “Evaluator-Optimizer workflow”，同一思想的不同命名
+**对应的成熟系统和研究:**
+- **Andrew Ng / DeepLearning.AI** "Agentic Design Patterns Part 2: Reflection" (2024) - 工程实践最成熟的概念源头
+- 学术论文:**Self-Refine** (Madaan 2023)、**Reflexion** (Shinn 2023)、**CRITIC** (Gou 2024)
+- Anthropic 将其归类为 "Evaluator-Optimizer workflow",同一思想的不同命名
 
-> 注：这个模式没有像 Hermes `clarify_tool` 那样现成的生产级代码实现，更多是学术论文和理论框架的级别。不过 Andrew Ng 有明确的工程实验数据支撑它的价值。
+> 注:这个模式没有像 Hermes `clarify_tool` 那样现成的生产级代码实现,更多是学术论文和理论框架的级别。不过 Andrew Ng 有明确的工程实验数据支撑它的价值。
 
-**核心思想：**
+**核心思想:**
 
-> “如果你让模型生成了不满意的输出，你会给它反馈让它重写。
-> 现在把这个反馈步骤自动化——让模型自动批评自己的输出并改进。这就是 Reflection 的精高。”
-> —— Andrew Ng
+> "如果你让模型生成了不满意的输出,你会给它反馈让它重写。
+> 现在把这个反馈步骤自动化--让模型自动批评自己的输出并改进。这就是 Reflection 的精高。"
+> -- Andrew Ng
 
-**与 Evolution Engine 的区别（很重要）：**
+**与 Evolution Engine 的区别(很重要):**
 
 | | Reflection 模式 | Evolution Engine |
 |-|----------------|------------------|
-| 作用对象 | 当前任务的**输出**（文案、代码、回答） | GeminiClaw **自身代码** |
-| 循环周期 | 单次任务内，秒到分钟 | 跨 session，小时到天 |
+| 作用对象 | 当前任务的**输出**(文案、代码、回答) | GeminiClaw **自身代码** |
+| 循环周期 | 单次任务内,秒到分钟 | 跨 session,小时到天 |
 | 目标 | 输出质量提升 | 系统能力进化 |
 
-**为什么要加这个模式？**
+**为什么要加这个模式?**
 
-前四种模式都是“执行前”的控制。Reflection 是“执行后”的质量保障，补全闭环。
+前四种模式都是"执行前"的控制。Reflection 是"执行后"的质量保障,补全闭环。
 
-Andrew Ng 的实验数据：GPT-3.5 全自主模式下 HumanEval 准确率 48.1%，加上 Reflection 循环后达到 **95.1%**。
+Andrew Ng 的实验数据:GPT-3.5 全自主模式下 HumanEval 准确率 48.1%,加上 Reflection 循环后达到 **95.1%**。
 
-**典型场景：**
+**典型场景:**
 ```
-用户：帮我写一份技术方案
+用户:帮我写一份技术方案
 → Agent 写了一版
-→ Evaluator LLM：“结构不清晰，缺少风险分析”
+→ Evaluator LLM:"结构不清晰,缺少风险分析"
 → Agent 根据反馈重写
-→ Evaluator LLM：“通过”
+→ Evaluator LLM:"通过"
 → 返回给用户
 ```
 
-**实现方式：**
+**实现方式:**
 ```typescript
 // AgentConfig 新增
 evaluator?: {
   enabled: boolean
-  rubric: string        // 评估标准（例：“代码必须有单元测试”）
-  maxRetries: number    // 默认 2，防止无限循环
-  model?: string        // 可用较小模型做评估，节省成本
+  rubric: string        // 评估标准(例:"代码必须有单元测试")
+  maxRetries: number    // 默认 2,防止无限循环
+  model?: string        // 可用较小模型做评估,节省成本
 }
 
 // 新增 AgentEvent
 | { type: 'reflection_result'; feedback: string; willRetry: boolean; attempt: number }
 ```
 
-**依赖：** 无（纯 AgentLoop 内部改动，不需要 interrupt point）
+**依赖:** 无(纯 AgentLoop 内部改动,不需要 interrupt point)
 
 ---
 
@@ -277,18 +277,44 @@ GET  /v1/agent/status   { state: 'running' | 'paused' | 'idle', pauseId? }
 | Step | 标准 ReAct | Agent 自主,每步可观测 | 随时可中断 | 调试、学习过程 |
 | Plan | Plan-and-Execute | 人在 Plan 阶段确认 | Plan 完成后 | 复杂多步任务 |
 | 高置信度 | Human-in-the-Loop Checkpoint | 人在执行前消除不确定性 | 首次行动前 | 高风险操作、生产环境 |
-| Reflection | Reflection / Self-Refine | Agent 自评,人设定标准 | 质量标准定义时 | 需要质量保证的输出（**暂不实现**）|
+| Reflection | Reflection / Self-Refine | Agent 自评,人设定标准 | 质量标准定义时 | 需要质量保证的输出(**暂不实现**)|
 
 ---
 
-## 五、实现优先级
+## 五、模式切换交互（已确认）
+
+**作用域：session 级别**。切换后在当前 session 内一直生效，直到再次切换。默认 Auto。
+
+**支持按钮的 channel（one-portal Web UI）：**
+- 输入框左下角显示当前模式（参考 Claude Code 底栏样式）
+- 点击弹出菜单，选择 Auto / Step / Plan / 高置信度
+- 选中后立即生效，下一条消息开始使用新模式
+
+**不支持按钮的 channel（QQ Bot、消息通道等）：**
+```
+/mode           # 查看当前模式
+/mode step      # 切换到 Step 模式
+/mode plan      # 切换到 Plan 模式
+/mode hc        # 切换到高置信度模式
+/mode auto      # 恢复默认
+```
+
+**后端：**
+- 模式存在 `SessionStore`，每次 AgentLoop 启动时读取
+- `POST /v1/agent/chat` 可带 `mode` 字段覆盖（用于 API 调用场景）
+- 不带 `mode` 字段时使用 session 当前模式
+
+---
+
+## 六、实现优先级
 
 | 优先级 | 内容 | 依赖 | 工作量 |
 |--------|------|------|--------|
-| P0 | **interrupt point 基础设施**(AgentLoop 暂停/恢复 + resume API) | 无 | 中 |
-| P1 | **Step 模式**(maxToolCallsPerTurn + tool_guardrails) | 无 | 小 |
-| P2 | **Plan 模式**(todo tool + plan_ready 事件 + resume) | interrupt point | 中 |
-| P3 | **高置信度模式**(clarify_uncertainty + beforeToolCall 拦截) | interrupt point | 中 |
+| P0 | **interrupt point 基础设施**（AgentLoop 暂停/恢复 + resume API） | 无 | 中 |
+| P1 | **Step 模式**（maxToolCallsPerTurn + tool_guardrails） | 无 | 小 |
+| P1 | **模式切换**（SessionStore + /mode 命令 + Web UI 菜单） | 无 | 小 |
+| P2 | **Plan 模式**（plan_ready 事件 + resume） | interrupt point | 中 |
+| P3 | **高置信度模式**（clarify_uncertainty + beforeToolCall 拦截） | interrupt point | 中 |
 
 **interrupt point 是 Plan 和高置信度的共同前置条件，应该先做。**
 
@@ -296,7 +322,7 @@ GET  /v1/agent/status   { state: 'running' | 'paused' | 'idle', pauseId? }
 
 ---
 
-## 六、不做"模式枚举"的原因
+## 七、不做“模式枚举”的原因
 
 参考 Anthropic 和 Hermes 的设计哲学:**不做 `mode` 枚举,而是可组合的行为层**。
 
@@ -317,7 +343,7 @@ interface AgentConfig {
   guardrails?: GuardrailConfig        // tool_guardrails
   planning?: PlanningConfig           // Plan 模式(需要 interrupt point)
   uncertaintyCheck?: UncertaintyConfig // 高置信度模式(需要 interrupt point)
-  // evaluator?: EvaluatorConfig      // Reflection 模式（暂不实现，待观察）
+  // evaluator?: EvaluatorConfig      // Reflection 模式(暂不实现,待观察)
 
   // 快捷预设(底层仍是上面的组合)
   preset?: 'auto' | 'step' | 'plan' | 'high-confidence'
@@ -328,7 +354,7 @@ interface AgentConfig {
 
 ---
 
-## 七、最有价值的组合
+## 八、最有价值的组合
 
 **高置信度 + Plan + Step**(三层控制):
 ```
@@ -337,7 +363,7 @@ interface AgentConfig {
 → 再一步步执行(Step)
 ```
 
-这是目前行业里最严谨的 human-in-the-loop 模式，对高风险任务（生产环境操作、数据库变更、不可逆操作）价值极大。
+这是目前行业里最严谨的 human-in-the-loop 模式,对高风险任务(生产环境操作、数据库变更、不可逆操作)价值极大。
 
 ---
 
