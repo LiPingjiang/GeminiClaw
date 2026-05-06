@@ -46,7 +46,11 @@ function makeIntent(overrides?: Partial<Intent>): Intent {
 
 function makeMockDb(intents: Intent[] = []): Partial<EvolutionDB> {
   return {
-    listIntents: vi.fn().mockReturnValue(intents),
+    // Only return intents for 'pending' status queries; recovery queries (in_progress/validating) return []
+    listIntents: vi.fn().mockImplementation((filter?: { status?: string }) => {
+      if (!filter?.status || filter.status === "pending") return intents
+      return []
+    }),
     updateIntentStatus: vi.fn(),
     countTraces: vi.fn().mockReturnValue(0),
     getSlotState: vi.fn().mockReturnValue(null),
