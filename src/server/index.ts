@@ -10,6 +10,8 @@ import type { ToolResult as AgentToolResult } from "../agent/types.js"
 import { healthRoute } from "./routes/health.js"
 import { chatRoute } from "./routes/chat.js"
 import { evolutionRoute } from "./routes/evolution.js"
+import { runsRoute } from "./routes/runs.js"
+import { RunStore } from "./routes/run-store.js"
 
 // Adapt ToolRegistry (2-arg handler, rich ToolResult) to ToolRegistryLike (1-arg handler, simple ToolResult)
 function makeRegistryAdapter(): ToolRegistryLike {
@@ -84,6 +86,9 @@ export async function buildServer(
   if (evolution) {
     await fastify.register(evolutionRoute, { evolution })
   }
+
+  const runStore = new RunStore()
+  await fastify.register(runsRoute, { runStore })
 
   return fastify
 }
