@@ -208,6 +208,18 @@ export class EvolutionEngine {
       }
     }
 
+    // Also recover intents stuck in in_progress/validating (e.g. after a crash/restart)
+    const stuckIntents = this.db.listIntents({ status: "in_progress" })
+    for (const stuck of stuckIntents) {
+      this.logger.warn("Recovering stuck intent %s (in_progress → pending)", stuck.id)
+      this.db.updateIntentStatus(stuck.id, "pending")
+    }
+    const stuckValidating = this.db.listIntents({ status: "validating" })
+    for (const stuck of stuckValidating) {
+      this.logger.warn("Recovering stuck intent %s (validating → pending)", stuck.id)
+      this.db.updateIntentStatus(stuck.id, "pending")
+    }
+
     const pendingIntents = this.db.listIntents({ status: "pending" })
     if (pendingIntents.length === 0) {
       return {
