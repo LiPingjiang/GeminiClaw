@@ -11,6 +11,7 @@ import { healthRoute } from "./routes/health.js"
 import { chatRoute } from "./routes/chat.js"
 import { evolutionRoute } from "./routes/evolution.js"
 import { runsRoute } from "./routes/runs.js"
+import { qqbotRoute } from "../channels/qqbot/index.js"
 import { RunStore } from "./routes/run-store.js"
 
 // Adapt ToolRegistry (2-arg handler, rich ToolResult) to ToolRegistryLike (1-arg handler, simple ToolResult)
@@ -89,6 +90,17 @@ export async function buildServer(
 
   const runStore = new RunStore()
   await fastify.register(runsRoute, { runStore })
+
+  const qqbotConfig = config.channels?.qqbot
+  if (qqbotConfig?.enabled) {
+    await fastify.register(qqbotRoute, {
+      router,
+      strategy,
+      webhookPath: qqbotConfig.webhookPath ?? "/webhook/qqbot",
+      appId: qqbotConfig.appId ?? "",
+      clientSecret: qqbotConfig.clientSecret ?? "",
+    })
+  }
 
   return fastify
 }
