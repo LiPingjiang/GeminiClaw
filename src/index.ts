@@ -9,6 +9,8 @@ import { buildServer } from "./server/index.js"
 import { openDb } from "./db/client.js"
 import { migrate } from "./db/schema.js"
 import { join } from "path"
+import { mkdirSync } from "fs"
+import { EvolutionEngine, EvolutionDB } from "./evolution/index.js"
 import type { Provider } from "./providers/types.js"
 import type { ProviderConfig } from "./config/schema.js"
 
@@ -43,7 +45,19 @@ async function main(): Promise<void> {
   // 记忆策略
   const strategy = buildStrategy(config, db, routerProvider)
 
-  const server = await buildServer(config, router, strategy)
+  // Evolution Engine 初始化
+  const evolutionDataDir = join(config.memory.dataDir, "evolution")
+  mkdirSync(evolutionDataDir, { recursive: true })
+  const evolutionDb = new EvolutionDB(join(evolutionDataDir, "gemini-evolution.db"))
+  const evolution = new EvolutionEngine({
+    db: evolutionDb,
+    providerRouter: router,
+    repoRoot: process.cwd(),
+    memoryDbPath: dbPath,
+  })
+  await evolution.start()
+
+  const server = await buildServer(config, router, strategy, evolution)
 
   await server.listen({ port: config.server.port, host: config.server.host })
   console.log(`GeminiClaw listening on ${config.server.host}:${config.server.port}`)
