@@ -211,7 +211,9 @@ export interface EvolutionConfig {
     checkIntervalMs: number     // ms between health checks
   }
   background: {
-    idleThresholdMs: number      // ms of inactivity before pushing notifications
+    idleThresholdMs: number      // ms of inactivity before auto-running evolution
+    cooldownMs: number           // ms between successive runOnce executions
+    tickIntervalMs: number       // ms between idle-loop checks (default 60s)
   }
 }
 
@@ -237,7 +239,9 @@ export const DEFAULT_EVOLUTION_CONFIG: EvolutionConfig = {
     checkIntervalMs: 30 * 1000,           // 30 seconds
   },
   background: {
-    idleThresholdMs: 5 * 60 * 1000,  // 5 minutes
+    idleThresholdMs: 5 * 60 * 1000,   // 5 minutes idle before auto-run
+    cooldownMs: 60 * 60 * 1000,       // 1 hour between runs
+    tickIntervalMs: 60 * 1000,        // check every 60s
   },
 }
 

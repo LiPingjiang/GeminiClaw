@@ -37,6 +37,8 @@ function recordTrace(
       messageCount,
       responseLength,
     })
+    // Notify idle loop that new trace data is available
+    evolution.onTraceRecorded()
   })
 }
 
