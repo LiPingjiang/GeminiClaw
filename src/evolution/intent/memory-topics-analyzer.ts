@@ -78,12 +78,10 @@ export class MemoryTopicsAnalyzer {
         const threshold = this.config.tokenThreshold
 
         for (const row of rows) {
-          // Use the richest available content level for size estimation
-          const content =
-            row.doc_level3 ??
-            row.doc_level2 ??
-            row.summary ??
-            ""
+          // Use the longest available content level for size estimation
+          const content = [row.doc_level3, row.doc_level2, row.summary]
+            .filter((s): s is string => typeof s === "string" && s.length > 0)
+            .reduce((a, b) => (a.length >= b.length ? a : b), "")
 
           if (content.length >= threshold) {
             const now = Date.now()
