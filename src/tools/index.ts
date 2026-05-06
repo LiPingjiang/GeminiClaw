@@ -4,6 +4,7 @@ import './read.js'
 import './write.js'
 import './edit.js'
 import './web_fetch.js'
+import './clarify_uncertainty_register.js'
 
 export { registry } from './registry.js'
 export type { ToolDefinition, ToolHandler, ToolResult, ToolContext, JSONSchema } from './types.js'
