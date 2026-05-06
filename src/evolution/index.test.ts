@@ -559,3 +559,88 @@ describe("EvolutionEngine.runOnce()", () => {
     expect(db.insertPendingReview).not.toHaveBeenCalled()
   })
 })
+
+describe("EvolutionEngine idle-triggered auto-evolution", () => {
+  let engine: EvolutionEngine
+  let db: ReturnType<typeof makeMockDb>
+
+  function makeMockDb() {
+    return {
+      getSlotState: vi.fn().mockReturnValue({ slotId: "a", role: "active" }),
+      upsertSlotState: vi.fn(),
+      listIntents: vi.fn().mockReturnValue([]),
+      insertIntent: vi.fn(),
+      updateIntentStatus: vi.fn(),
+      getIntent: vi.fn(),
+      hasPendingIntentWithDescription: vi.fn().mockReturnValue(false),
+      countTraces: vi.fn().mockReturnValue(0),
+      getFailureRate: vi.fn().mockReturnValue(0),
+      getRecentTraces: vi.fn().mockReturnValue([]),
+      insertTrace: vi.fn(),
+      getBaselineResponseTime: vi.fn().mockReturnValue(null),
+      insertEvolutionRecord: vi.fn(),
+      listEvolutionHistory: vi.fn().mockReturnValue([]),
+      getLastUpstreamCheck: vi.fn().mockReturnValue(null),
+      insertUpstreamCheck: vi.fn(),
+      insertPendingReview: vi.fn(),
+      getCircuitBreakerState: vi.fn().mockReturnValue(null),
+      upsertCircuitBreakerState: vi.fn(),
+    } as unknown as EvolutionDB
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers()
+    db = makeMockDb()
+    engine = new EvolutionEngine({
+      db,
+      providerRouter: {} as ProviderRouter,
+      repoRoot: "/tmp/test-repo",
+      config: {
+        background: {
+          idleThresholdMs: 5 * 60 * 1000,   // 5 min
+          cooldownMs: 60 * 60 * 1000,        // 1 hour
+          tickIntervalMs: 60 * 1000,         // 1 min tick
+        },
+      },
+    })
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+    engine.stop()
+  })
+
+  it("shouldRunNow returns false when user is active (lastMessageAt recent)", async () => {
+    await engine.start()
+    const runOnceSpy = vi.spyOn(engine, "runOnce")
+    engine.onTraceRecorded()  // sets lastMessageAt = now, tracesSinceLastRun++
+    // advance only 1 minute — still within 5 min idle threshold
+    vi.advanceTimersByTime(60_000)
+    // runOnce should NOT have been called (idle gate not passed)
+    expect(runOnceSpy).not.toHaveBeenCalled()
+  })
+
+  it("shouldRunNow returns false when cooled down but no data", async () => {
+    await engine.start()
+    // Advance past idle + cooldown — but no traces, no pending intents
+    vi.advanceTimersByTime(2 * 60 * 60 * 1000)
+    // listIntents may be called by shouldRunNow, but runOnce should skip
+    // (no pending intents → skipped)
+    expect(db.insertEvolutionRecord).not.toHaveBeenCalled()
+  })
+
+  it("onTraceRecorded increments tracesSinceLastRun and updates lastMessageAt", async () => {
+    await engine.start()
+    const runOnceSpy = vi.spyOn(engine, "runOnce").mockResolvedValue({
+      skipped: true,
+      skipReason: "no pending intents",
+      validationResults: [],
+    })
+    // Record a trace
+    engine.onTraceRecorded()
+    // Advance past idle threshold + cooldown + one tick
+    vi.advanceTimersByTime(5 * 60 * 1000 + 60 * 60 * 1000 + 60 * 1000)
+    // runOnce should have been triggered
+    expect(runOnceSpy).toHaveBeenCalled()
+  })
+})

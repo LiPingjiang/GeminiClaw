@@ -67,6 +67,10 @@ export class EvolutionEngine {
   private circuitBreaker: CircuitBreaker
   private intentEngine: IntentEngine
   private running = false
+  private idleTimer: ReturnType<typeof setInterval> | null = null
+  private lastMessageAt = 0
+  private lastRunAt = 0
+  private tracesSinceLastRun = 0
 
   constructor(params: EvolutionEngineParams) {
     this.db = params.db
@@ -164,13 +168,70 @@ export class EvolutionEngine {
     }
 
     this.logger.info("started (dataDir=%s)", dataDir)
+    this.startIdleLoop()
   }
 
   async stop(): Promise<void> {
     if (!this.running) return
     this.running = false
+    if (this.idleTimer) {
+      clearInterval(this.idleTimer)
+      this.idleTimer = null
+    }
     this.circuitBreaker.stopMonitoring()
     this.logger.info("stopped")
+  }
+
+  // -------------------------------------------------------------------------
+  // Idle-triggered auto-evolution
+  // -------------------------------------------------------------------------
+
+  /**
+   * Called by the chat route after each conversation turn completes.
+   * Records that new data is available and updates the last-message timestamp.
+   */
+  onTraceRecorded(): void {
+    this.tracesSinceLastRun++
+    this.lastMessageAt = Date.now()
+  }
+
+  /**
+   * Three-gate check (all must pass before auto-running):
+   *   1. Idle gate   — no message for idleThresholdMs (user not in active chat)
+   *   2. Cooldown    — enough time since last runOnce
+   *   3. Has data    — new traces since last run OR pending intents in queue
+   */
+  private shouldRunNow(): boolean {
+    const now = Date.now()
+    const { idleThresholdMs, cooldownMs } = this.config.background
+    const isIdle = (now - this.lastMessageAt) > idleThresholdMs
+    const cooledDown = (now - this.lastRunAt) > cooldownMs
+    const hasPendingIntents = this.db.listIntents({ status: "pending" }).length > 0
+    const hasData = this.tracesSinceLastRun > 0 || hasPendingIntents
+    return isIdle && cooledDown && hasData
+  }
+
+  /**
+   * Start the background idle loop. Checks every tickIntervalMs whether
+   * conditions are met; if so, fires runOnce() asynchronously.
+   */
+  private startIdleLoop(): void {
+    const { tickIntervalMs } = this.config.background
+    this.idleTimer = setInterval(() => {
+      if (!this.shouldRunNow()) return
+      this.logger.info("[idle-loop] conditions met — triggering runOnce")
+      void this.runOnce().then(result => {
+        this.lastRunAt = Date.now()
+        this.tracesSinceLastRun = 0
+        if (result.skipped) {
+          this.logger.info("[idle-loop] runOnce skipped: %s", result.skipReason)
+        } else {
+          this.logger.info("[idle-loop] runOnce completed for intent %s", result.intentId)
+        }
+      }).catch(err => {
+        this.logger.error("[idle-loop] runOnce error: %s", (err as Error).message)
+      })
+    }, tickIntervalMs)
   }
 
   // -------------------------------------------------------------------------
