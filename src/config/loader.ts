@@ -23,6 +23,15 @@ export function loadConfig(configPath?: string): Config {
     throw new Error(`Failed to parse YAML in ${filePath}: ${(err as Error).message}`)
   }
 
+  // Allow PORT env var to override server.port (used by Level 2 validator for temporary process)
+  if (process.env.PORT) {
+    const port = parseInt(process.env.PORT, 10)
+    if (!isNaN(port) && typeof parsed === "object" && parsed !== null) {
+      const p = parsed as Record<string, unknown>
+      p.server = { ...(typeof p.server === "object" && p.server !== null ? p.server as object : {}), port }
+    }
+  }
+
   try {
     return configSchema.parse(parsed)
   } catch (err) {
