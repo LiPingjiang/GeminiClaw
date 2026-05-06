@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto'
 import type { Message } from '../providers/types.js'
 import type {
   AgentEvent,
@@ -6,7 +7,9 @@ import type {
   ToolResult,
   BeforeToolCallContext,
   AfterToolCallContext,
+  PausePayload,
 } from './types.js'
+import { GuardrailController } from './guardrails.js'
 
 // Internal message types supporting tool calls
 type UserOrSystemMessage = { role: 'user' | 'system'; content: string }
@@ -36,6 +39,9 @@ interface Logger {
 
 const SEQUENTIAL_TOOLS = new Set(['exec', 'write', 'edit'])
 
+// Tools that mutate state — used by high-confidence mode beforeToolCall check
+const MUTATING_TOOLS = new Set(['exec', 'write', 'edit', 'file_write'])
+
 interface ToolExecutionResult {
   toolCallId: string
   content: string
@@ -50,8 +56,12 @@ interface ExecuteToolsOutput {
 export class AgentLoop {
   private chatFn: ChatFn
   private toolRegistry: ToolRegistryLike
-  private config: Required<AgentConfig>
+  private config: Required<Pick<AgentConfig, 'maxTurns' | 'toolExecutionMode' | 'maxToolOutputChars' | 'systemPrompt'>> & Omit<AgentConfig, 'maxTurns' | 'toolExecutionMode' | 'maxToolOutputChars' | 'systemPrompt'>
   private logger: Logger
+
+  // ── Interrupt point state ──────────────────────────────────────────────────
+  private pauseId: string | null = null
+  private pauseResolve: ((input: unknown) => void) | null = null
 
   constructor(params: {
     chatFn: ChatFn
@@ -66,12 +76,42 @@ export class AgentLoop {
       toolExecutionMode: params.config?.toolExecutionMode ?? 'parallel',
       maxToolOutputChars: params.config?.maxToolOutputChars ?? 8000,
       systemPrompt: params.config?.systemPrompt ?? '',
+      maxToolCallsPerTurn: params.config?.maxToolCallsPerTurn,
+      guardrails: params.config?.guardrails,
+      planning: params.config?.planning,
+      uncertaintyCheck: params.config?.uncertaintyCheck,
     }
     this.logger = params.logger ?? {
       debug: () => undefined,
       error: () => undefined,
     }
   }
+
+  // ── Public: resume after pause ─────────────────────────────────────────────
+
+  /**
+   * Resume a paused loop. Called externally (e.g., from the HTTP route handler)
+   * after the user confirms a plan or answers uncertainty questions.
+   */
+  resume(pauseId: string, userInput: unknown): boolean {
+    if (this.pauseId !== pauseId || !this.pauseResolve) {
+      return false
+    }
+    this.pauseResolve(userInput)
+    this.pauseResolve = null
+    this.pauseId = null
+    return true
+  }
+
+  get isPaused(): boolean {
+    return this.pauseResolve !== null
+  }
+
+  get currentPauseId(): string | null {
+    return this.pauseId
+  }
+
+  // ── Main run loop ──────────────────────────────────────────────────────────
 
   async *run(params: {
     messages: InternalMessage[]
@@ -84,6 +124,11 @@ export class AgentLoop {
     let messages = [...params.messages]
     let turn = 0
     const maxTurns = this.config.maxTurns
+
+    // Guardrails — only active when config.guardrails is set
+    const guardrails = this.config.guardrails
+      ? new GuardrailController(this.config.guardrails)
+      : null
 
     while (turn < maxTurns) {
       if (params.signal?.aborted) {
@@ -116,6 +161,40 @@ export class AgentLoop {
         yield { type: 'message_delta', delta: response.content }
       }
 
+      // ── Plan mode: detect <plan>...</plan> and pause ─────────────────────
+      if (this.config.planning?.enabled && response.content) {
+        const planResult = this.extractPlan(response.content)
+        if (planResult) {
+          const assistantMsg: AssistantMessage = {
+            role: 'assistant',
+            content: response.content,
+          }
+          messages = [...messages, assistantMsg]
+
+          yield {
+            type: 'turn_end',
+            message: { role: 'assistant', content: response.content } satisfies Message,
+            toolCallCount: 0,
+          }
+
+          // Pause and wait for user confirmation
+          const userInput = yield* this.doPause({
+            kind: 'plan_ready',
+            data: { plan: planResult },
+          })
+
+          // Inject confirmation into context and continue
+          const confirmMsg = typeof userInput === 'string' && userInput.trim()
+            ? userInput
+            : 'Plan confirmed. Please proceed with execution.'
+          messages = [
+            ...messages,
+            { role: 'user', content: confirmMsg } satisfies UserOrSystemMessage,
+          ]
+          continue
+        }
+      }
+
       const assistantMsg: AssistantMessage = {
         role: 'assistant',
         content: response.content,
@@ -134,8 +213,13 @@ export class AgentLoop {
         return
       }
 
+      // ── Step mode: limit tool calls per turn ─────────────────────────────
+      const toolCallsToRun = this.config.maxToolCallsPerTurn
+        ? response.tool_calls.slice(0, this.config.maxToolCallsPerTurn)
+        : response.tool_calls
+
       const { events, results } = await this.executeTools(
-        response.tool_calls,
+        toolCallsToRun,
         params.sessionId,
         params.beforeToolCall,
         params.afterToolCall,
@@ -143,6 +227,45 @@ export class AgentLoop {
 
       for (const event of events) {
         yield event
+      }
+
+      // ── Guardrails: check results ─────────────────────────────────────────
+      if (guardrails) {
+        let anySuccess = false
+        let shouldHalt = false
+
+        for (const result of results) {
+          const toolName = toolCallsToRun.find(tc => tc.id === result.toolCallId)?.name ?? 'unknown'
+          const decision = guardrails.record(toolName, result.isError)
+
+          if (decision.action === 'warn') {
+            yield { type: 'guardrail_warn', toolName, message: decision.message }
+          } else if (decision.action === 'halt') {
+            yield { type: 'guardrail_halt', toolName, message: decision.message }
+            shouldHalt = true
+            break
+          }
+
+          if (!result.isError) anySuccess = true
+        }
+
+        if (shouldHalt) {
+          yield { type: 'agent_end', totalTurns: turn, stopReason: 'aborted' }
+          return
+        }
+
+        if (anySuccess) {
+          guardrails.recordProgress()
+        } else {
+          const noProgressDecision = guardrails.recordNoProgress()
+          if (noProgressDecision.action === 'warn') {
+            yield { type: 'guardrail_warn', toolName: '', message: noProgressDecision.message }
+          } else if (noProgressDecision.action === 'halt') {
+            yield { type: 'guardrail_halt', toolName: '', message: noProgressDecision.message }
+            yield { type: 'agent_end', totalTurns: turn, stopReason: 'aborted' }
+            return
+          }
+        }
       }
 
       for (const tr of results) {
@@ -155,6 +278,42 @@ export class AgentLoop {
 
     yield { type: 'agent_end', totalTurns: turn, stopReason: 'max_turns' }
   }
+
+  // ── Interrupt point implementation ────────────────────────────────────────
+
+  /**
+   * Yields a 'paused' event and waits until resume() is called.
+   * This is a generator method so it can yield into the parent run() generator.
+   */
+  private async *doPause(payload: PausePayload): AsyncGenerator<AgentEvent, unknown, undefined> {
+    const pauseId = randomUUID()
+    this.pauseId = pauseId
+
+    yield { type: 'paused', pauseId, payload }
+
+    // Wait for resume() to be called externally
+    const userInput = await new Promise<unknown>((resolve) => {
+      this.pauseResolve = resolve
+    })
+
+    return userInput
+  }
+
+  // ── Plan extraction ───────────────────────────────────────────────────────
+
+  private extractPlan(content: string): unknown[] | null {
+    const match = content.match(/<plan>([\s\S]*?)<\/plan>/)
+    if (!match) return null
+    try {
+      const parsed = JSON.parse(match[1].trim())
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed
+    } catch {
+      // not valid JSON, ignore
+    }
+    return null
+  }
+
+  // ── Tool execution ────────────────────────────────────────────────────────
 
   private shouldParallelize(toolCalls: ToolCall[]): boolean {
     if (this.config.toolExecutionMode === 'sequential') return false
@@ -181,6 +340,34 @@ export class AgentLoop {
       toolName: tc.name,
       args: tc.args,
     })
+
+    // ── High-confidence mode: block mutating tools until uncertainties cleared ──
+    if (
+      this.config.uncertaintyCheck?.enabled &&
+      MUTATING_TOOLS.has(tc.name)
+    ) {
+      // The beforeToolCall hook (provided by the route layer) handles the
+      // actual session-state check. Here we just ensure it's always called.
+      // If no hook is provided, we block by default in high-confidence mode.
+      if (!beforeToolCall) {
+        const result: ToolResult = {
+          content: `[high-confidence mode] Cannot run "${tc.name}" before uncertainties are resolved. Please answer the clarifying questions first.`,
+          isError: true,
+        }
+        events.push({
+          type: 'tool_end',
+          toolCallId: tc.id,
+          toolName: tc.name,
+          result,
+          isError: true,
+          durationMs: 0,
+        })
+        return {
+          events,
+          result: { toolCallId: tc.id, content: result.content, isError: true },
+        }
+      }
+    }
 
     // beforeToolCall hook
     if (beforeToolCall) {
