@@ -14,6 +14,8 @@ import type {
   SlotState,
   UpstreamCheck,
   PendingReview,
+  ConversationSample,
+  EvolutionPreview,
 } from "./types.js"
 
 // ---------------------------------------------------------------------------
@@ -104,6 +106,28 @@ interface PendingReviewRow {
   resolved_at: number | null
 }
 
+interface ConversationSampleRow {
+  id: string
+  session_id: string
+  trace_id: string | null
+  user_message: string
+  agent_reply: string
+  tool_sequence: string
+  had_failure: number
+  recorded_at: number
+}
+
+interface EvolutionPreviewRow {
+  id: string
+  intent_id: string
+  sample_id: string
+  user_message: string
+  before_reply: string
+  after_reply: string
+  summary: string
+  generated_at: number
+}
+
 // ---------------------------------------------------------------------------
 // Mappers: DB row → domain type
 // ---------------------------------------------------------------------------
@@ -187,6 +211,32 @@ function rowToPendingReview(row: PendingReviewRow): PendingReview {
   }
 }
 
+function rowToConversationSample(row: ConversationSampleRow): ConversationSample {
+  return {
+    id: row.id,
+    sessionId: row.session_id,
+    traceId: row.trace_id ?? undefined,
+    userMessage: row.user_message,
+    agentReply: row.agent_reply,
+    toolSequence: decodeArr(row.tool_sequence),
+    hadFailure: row.had_failure === 1,
+    recordedAt: row.recorded_at,
+  }
+}
+
+function rowToEvolutionPreview(row: EvolutionPreviewRow): EvolutionPreview {
+  return {
+    id: row.id,
+    intentId: row.intent_id,
+    sampleId: row.sample_id,
+    userMessage: row.user_message,
+    beforeReply: row.before_reply,
+    afterReply: row.after_reply,
+    summary: row.summary,
+    generatedAt: row.generated_at,
+  }
+}
+
 // ---------------------------------------------------------------------------
 // DDL
 // ---------------------------------------------------------------------------
@@ -266,6 +316,32 @@ CREATE TABLE IF NOT EXISTS pending_reviews (
   requested_at  INTEGER NOT NULL,
   resolved_at   INTEGER
 );
+
+CREATE TABLE IF NOT EXISTS conversation_samples (
+  id           TEXT PRIMARY KEY,
+  session_id   TEXT NOT NULL,
+  trace_id     TEXT,
+  user_message TEXT NOT NULL,
+  agent_reply  TEXT NOT NULL,
+  tool_sequence TEXT NOT NULL DEFAULT '[]',
+  had_failure  INTEGER NOT NULL DEFAULT 0,
+  recorded_at  INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_samples_session ON conversation_samples(session_id);
+CREATE INDEX IF NOT EXISTS idx_samples_recorded ON conversation_samples(recorded_at DESC);
+CREATE INDEX IF NOT EXISTS idx_samples_failure ON conversation_samples(had_failure);
+
+CREATE TABLE IF NOT EXISTS evolution_previews (
+  id           TEXT PRIMARY KEY,
+  intent_id    TEXT NOT NULL,
+  sample_id    TEXT NOT NULL,
+  user_message TEXT NOT NULL,
+  before_reply TEXT NOT NULL,
+  after_reply  TEXT NOT NULL,
+  summary      TEXT NOT NULL,
+  generated_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_previews_intent ON evolution_previews(intent_id);
 `
 
 // ---------------------------------------------------------------------------
@@ -495,6 +571,26 @@ export class EvolutionDB {
   // Pending Reviews
   // -------------------------------------------------------------------------
 
+  listPendingReviews(): PendingReview[] {
+    const rows = this.db.prepare(
+      `SELECT * FROM pending_reviews WHERE status = 'pending' ORDER BY requested_at ASC`
+    ).all() as PendingReviewRow[]
+    return rows.map(rowToPendingReview)
+  }
+
+  resolvePendingReview(intentId: string, status: "approved" | "rejected", reviewer?: string): void {
+    this.db.prepare(`
+      UPDATE pending_reviews
+      SET status = @status, reviewer = @reviewer, resolved_at = @resolvedAt
+      WHERE intent_id = @intentId
+    `).run({
+      intentId,
+      status,
+      reviewer: reviewer ?? null,
+      resolvedAt: Date.now(),
+    })
+  }
+
   insertPendingReview(review: PendingReview): void {
     this.db.prepare(`
       INSERT INTO pending_reviews (
@@ -550,6 +646,84 @@ export class EvolutionDB {
     this.db.prepare(
       `UPDATE pending_reviews SET ${fields.join(", ")} WHERE intent_id = @intentId`
     ).run(values)
+  }
+
+  // -------------------------------------------------------------------------
+  // ConversationSample
+  // -------------------------------------------------------------------------
+
+  insertConversationSample(sample: ConversationSample): void {
+    this.db.prepare(`
+      INSERT INTO conversation_samples
+        (id, session_id, trace_id, user_message, agent_reply, tool_sequence, had_failure, recorded_at)
+      VALUES
+        (@id, @sessionId, @traceId, @userMessage, @agentReply, @toolSequence, @hadFailure, @recordedAt)
+    `).run({
+      id: sample.id,
+      sessionId: sample.sessionId,
+      traceId: sample.traceId ?? null,
+      userMessage: sample.userMessage,
+      agentReply: sample.agentReply,
+      toolSequence: encodeArr(sample.toolSequence),
+      hadFailure: sample.hadFailure ? 1 : 0,
+      recordedAt: sample.recordedAt,
+    })
+    // Prune: keep only the most recent 500 samples
+    this.db.prepare(`
+      DELETE FROM conversation_samples
+      WHERE id NOT IN (
+        SELECT id FROM conversation_samples ORDER BY recorded_at DESC LIMIT 500
+      )
+    `).run()
+  }
+
+  listConversationSamples(opts: { limit?: number; failureOnly?: boolean } = {}): ConversationSample[] {
+    const { limit = 20, failureOnly = false } = opts
+    const rows = failureOnly
+      ? this.db.prepare(`SELECT * FROM conversation_samples WHERE had_failure = 1 ORDER BY recorded_at DESC LIMIT ?`).all(limit) as ConversationSampleRow[]
+      : this.db.prepare(`SELECT * FROM conversation_samples ORDER BY recorded_at DESC LIMIT ?`).all(limit) as ConversationSampleRow[]
+    return rows.map(rowToConversationSample)
+  }
+
+  countConversationSamples(): number {
+    const row = this.db.prepare(`SELECT COUNT(*) as cnt FROM conversation_samples`).get() as { cnt: number }
+    return row.cnt
+  }
+
+  // -------------------------------------------------------------------------
+  // EvolutionPreview
+  // -------------------------------------------------------------------------
+
+  insertEvolutionPreview(preview: EvolutionPreview): void {
+    this.db.prepare(`
+      INSERT OR REPLACE INTO evolution_previews
+        (id, intent_id, sample_id, user_message, before_reply, after_reply, summary, generated_at)
+      VALUES
+        (@id, @intentId, @sampleId, @userMessage, @beforeReply, @afterReply, @summary, @generatedAt)
+    `).run({
+      id: preview.id,
+      intentId: preview.intentId,
+      sampleId: preview.sampleId,
+      userMessage: preview.userMessage,
+      beforeReply: preview.beforeReply,
+      afterReply: preview.afterReply,
+      summary: preview.summary,
+      generatedAt: preview.generatedAt,
+    })
+  }
+
+  listEvolutionPreviews(intentId: string): EvolutionPreview[] {
+    const rows = this.db.prepare(
+      `SELECT * FROM evolution_previews WHERE intent_id = ? ORDER BY generated_at DESC`
+    ).all(intentId) as EvolutionPreviewRow[]
+    return rows.map(rowToEvolutionPreview)
+  }
+
+  hasEvolutionPreview(intentId: string): boolean {
+    const row = this.db.prepare(
+      `SELECT COUNT(*) as cnt FROM evolution_previews WHERE intent_id = ?`
+    ).get(intentId) as { cnt: number }
+    return row.cnt > 0
   }
 
   // -------------------------------------------------------------------------
