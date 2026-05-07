@@ -23,18 +23,14 @@ GeminiClaw 是 OpenClaw 的 fork，采用 **Twin-System（双槽位）架构**�
 
 ```
 GeminiClaw/
-├── slot-a/                  ← 槽位 A（源码 + 构建产物）
-│   ├── src/                 ← TypeScript 源码
-│   ├── dist/                ← 编译产物
-│   └── package.json
+├── src/                     ← TypeScript 源码（运行态 = main branch）
+├── dist/                    ← 编译产物
 │
-├── slot-b/                  ← 槽位 B（源码 + 构建产物）
-│   ├── src/
-│   ├── dist/
-│   └── package.json
-│
-├── active -> slot-a/        ← 软链接，指向当前运行态
-├── standby -> slot-b/       ← 软链接，指向当前待机态
+│   ── 槽位机制（git branch 方案）──
+│   main branch              ← slot-A（运行态）
+│   evolution/<id> branch    ← slot-B（待机态，Mutator 在此改代码）
+│   切换 = git merge --squash → main + SIGUSR1 重启
+│   回滚 = git revert HEAD
 │
 ├── evolution/               ← 进化引擎（核心）
 │   ├── intent/              ← 意图层：从哪里发现"该改什么"
