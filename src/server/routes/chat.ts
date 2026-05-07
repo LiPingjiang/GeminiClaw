@@ -98,6 +98,8 @@ function recordTrace(
   messageCount: number,
   toolSequence: string[] = [],
   responseLength = 0,
+  userMessage?: string,
+  agentReply?: string,
 ): void {
   if (!evolution) return
   setImmediate(() => {
@@ -109,6 +111,16 @@ function recordTrace(
       responseLength,
     })
     evolution.onTraceRecorded()
+    // Save conversation content for PreviewService
+    if (userMessage && agentReply) {
+      evolution.getConversationStore().save({
+        sessionId,
+        userMessage,
+        agentReply,
+        toolSequence,
+        hadFailure,
+      })
+    }
   })
 }
 
@@ -167,6 +179,43 @@ export async function chatRoute(
     if (modeResponse !== null) {
       return reply.send({ response: modeResponse, sessionId: sid })
     }
+
+      // ── Evolution ritual intent check ──────────────────────────────────────
+      if (opts.evolution) {
+        const classifier = opts.evolution.getIntentClassifier()
+        const ritualHandler = opts.evolution.getRitualHandler()
+        const classified = await classifier.classify(message)
+
+        if (classified.intent === "evolve") {
+          const ritualReply = ritualHandler.listCandidates(sid)
+          return reply.send({ response: ritualReply, sessionId: sid, totalTurns: 0, toolsUsed: [] })
+        }
+
+        if (classified.intent === "evolve_show" && classified.index !== undefined) {
+          const ritualReply = ritualHandler.showPreview(sid, classified.index)
+          return reply.send({ response: ritualReply, sessionId: sid, totalTurns: 0, toolsUsed: [] })
+        }
+
+        if (classified.intent === "evolve_confirm") {
+          const intentId = ritualHandler.getSelectedIntentId(sid)
+          if (!intentId) {
+            return reply.send({ response: '请先说"看第N个"选择一个优化项，再确认应用。', sessionId: sid, totalTurns: 0, toolsUsed: [] })
+          }
+          try {
+            await opts.evolution.approveIntent(intentId, "user-chat")
+            ritualHandler.clearState(sid)
+            return reply.send({ response: "✅ 优化已应用！Evolution Engine 正在切换到新版本。", sessionId: sid, totalTurns: 0, toolsUsed: [] })
+          } catch (err) {
+            return reply.send({ response: `应用失败：${(err as Error).message}`, sessionId: sid, totalTurns: 0, toolsUsed: [] })
+          }
+        }
+
+        if (classified.intent === "evolve_reject") {
+          ritualHandler.clearState(sid)
+          return reply.send({ response: "好的，已退出进化仪式。继续正常对话。", sessionId: sid, totalTurns: 0, toolsUsed: [] })
+        }
+        // classified.intent === "chat" → fall through to normal handling
+      }
 
     // ── Resolve session mode ─────────────────────────────────────────────────
     let activeMode: AgentMode = 'auto'
@@ -278,7 +327,7 @@ export async function chatRoute(
             { role: "assistant", content: fullContent },
           )
         }
-        recordTrace(opts.evolution, sid, hadFailure, allMessages.length + 1, toolSequence, fullContent.length)
+        recordTrace(opts.evolution, sid, hadFailure, allMessages.length + 1, toolSequence, fullContent.length, message, fullContent)
         return
       }
 
@@ -327,7 +376,7 @@ export async function chatRoute(
         { role: "user", content: message },
         { role: "assistant", content: finalContent },
       )
-      recordTrace(opts.evolution, sid, hadFailure, allMessages.length + 1, toolSequence, finalContent.length)
+      recordTrace(opts.evolution, sid, hadFailure, allMessages.length + 1, toolSequence, finalContent.length, message, finalContent)
 
       return reply.send({
         response: finalContent,
@@ -378,7 +427,7 @@ export async function chatRoute(
           { role: "assistant", content: fullContent },
         )
       }
-      recordTrace(opts.evolution, sid, streamFailed, allMessages.length + 1)
+      recordTrace(opts.evolution, sid, streamFailed, allMessages.length + 1, [], fullContent.length, message, fullContent)
       return
     }
 
@@ -397,7 +446,7 @@ export async function chatRoute(
       { role: "user", content: message },
       { role: "assistant", content: chatResponse.content },
     )
-    recordTrace(opts.evolution, sid, chatFailed, allMessages.length + 1)
+    recordTrace(opts.evolution, sid, chatFailed, allMessages.length + 1, [], 0, message, chatResponse.content)
 
     return reply.send({
       response: chatResponse.content,
