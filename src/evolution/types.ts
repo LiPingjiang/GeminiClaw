@@ -267,3 +267,64 @@ export interface RunOnceResult {
   skipped: boolean
   skipReason?: string
 }
+
+// ---------------------------------------------------------------------------
+// Conversation Sample
+// ---------------------------------------------------------------------------
+
+export interface ConversationSample {
+  id: string
+  sessionId: string
+  traceId?: string
+  userMessage: string
+  agentReply: string
+  toolSequence: string[]
+  hadFailure: boolean
+  recordedAt: number
+}
+
+// ---------------------------------------------------------------------------
+// Evolution Preview
+// ---------------------------------------------------------------------------
+
+export interface EvolutionPreview {
+  id: string
+  intentId: string
+  sampleId: string
+  userMessage: string
+  beforeReply: string
+  afterReply: string
+  summary: string
+  generatedAt: number
+}
+
+// ---------------------------------------------------------------------------
+// Ritual Session State
+// ---------------------------------------------------------------------------
+
+export interface RitualSessionState {
+  candidates: Array<{
+    index: number
+    intentId: string
+    description: string
+    riskLevel: RiskLevel
+    targetFiles: string[]
+  }>
+  selectedIntentId?: string
+}
+
+// ---------------------------------------------------------------------------
+// Intent Classification
+// ---------------------------------------------------------------------------
+
+export type ChatIntent =
+  | "evolve"
+  | "evolve_show"
+  | "evolve_confirm"
+  | "evolve_reject"
+  | "chat"
+
+export interface ClassifyResult {
+  intent: ChatIntent
+  index?: number   // for evolve_show: which candidate (1-based)
+}
