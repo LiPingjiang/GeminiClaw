@@ -23,6 +23,10 @@ import {
   type ValidationResult,
 } from "./types.js"
 import type { ProviderRouter } from "../providers/router.js"
+import { ConversationStore } from "./conversation-store.js"
+import { PreviewService } from "./preview-service.js"
+import { IntentClassifier } from "./intent-classifier.js"
+import { RitualHandler } from "./ritual-handler.js"
 
 // ---------------------------------------------------------------------------
 // Logger interface (minimal, no external dependency)
@@ -71,6 +75,10 @@ export class EvolutionEngine {
   private lastMessageAt = 0
   private lastRunAt = 0
   private tracesSinceLastRun = 0
+  private conversationStore: ConversationStore
+  private previewService: PreviewService
+  private intentClassifier: IntentClassifier
+  private ritualHandler: RitualHandler
 
   constructor(params: EvolutionEngineParams) {
     this.db = params.db
@@ -128,6 +136,14 @@ export class EvolutionEngine {
       memoryDbPath: params.memoryDbPath ?? "",
       upstreamRepos: params.upstreamRepos ?? [],
     })
+    this.conversationStore = new ConversationStore(this.db)
+    this.previewService = new PreviewService({
+      db: this.db,
+      providerRouter: this.providerRouter,
+      logger: this.logger,
+    })
+    this.intentClassifier = new IntentClassifier(this.providerRouter)
+    this.ritualHandler = new RitualHandler(this.db)
   }
 
   // -------------------------------------------------------------------------
@@ -397,54 +413,36 @@ export class EvolutionEngine {
       )
     }
 
-    // Decide whether to auto-switch or require approval
-    if (effectiveIntent.riskLevel === "low" && !effectiveIntent.requiresHumanApproval) {
-      // Auto switch
-      this.logger.info("Auto-switching for low-risk intent %s", intent.id)
-      const switchResult = await this.switcher.switch(branchName, effectiveIntent)
+    // All intents require user approval — no auto-switch regardless of risk level
+    this.logger.info(
+      "Intent %s queued for user approval (riskLevel=%s)",
+      intent.id,
+      effectiveIntent.riskLevel
+    )
+    this.db.updateIntentStatus(intent.id, "approved")  // awaiting manual switch via ritual
 
-      if (switchResult.success) {
-        this.db.updateIntentStatus(intent.id, "applied")
-        // Start CircuitBreaker monitoring after successful switch
-        this.circuitBreaker.startMonitoring(intent.id)
-      } else {
-        this.db.updateIntentStatus(intent.id, "rejected")
-      }
+    this.db.insertPendingReview({
+      intentId: intent.id,
+      description: effectiveIntent.description,
+      targetFiles: effectiveIntent.targetFiles,
+      riskLevel: effectiveIntent.riskLevel,
+      status: "pending",
+      requestedAt: Date.now(),
+    })
 
-      return {
-        intentId: intent.id,
-        mutationResult,
-        validationResults,
-        switchResult,
-        skipped: false,
-      }
-    } else {
-      // Needs approval
-      this.logger.info(
-        "Intent %s requires approval (riskLevel=%s, requiresHumanApproval=%s)",
-        intent.id,
-        effectiveIntent.riskLevel,
-        effectiveIntent.requiresHumanApproval
-      )
-      this.db.updateIntentStatus(intent.id, "approved")  // awaiting manual switch
-
-      // Add to pending reviews
-      this.db.insertPendingReview({
-        intentId: intent.id,
-        description: effectiveIntent.description,
-        targetFiles: effectiveIntent.targetFiles,
-        riskLevel: effectiveIntent.riskLevel,
-        status: "pending",
-        requestedAt: Date.now(),
+    // Asynchronously generate before/after previews (non-blocking)
+    setImmediate(() => {
+      void this.previewService.generate(effectiveIntent).catch(err => {
+        this.logger.warn("[runOnce] PreviewService.generate failed: %s", (err as Error).message)
       })
+    })
 
-      return {
-        intentId: intent.id,
-        mutationResult,
-        validationResults,
-        skipped: false,
-        skipReason: `Needs approval (riskLevel=${effectiveIntent.riskLevel})`,
-      }
+    return {
+      intentId: intent.id,
+      mutationResult,
+      validationResults,
+      skipped: false,
+      skipReason: `Queued for user approval (riskLevel=${effectiveIntent.riskLevel})`,
     }
   }
 
@@ -499,6 +497,17 @@ export class EvolutionEngine {
   /**
    * Approve a high-risk intent that is waiting for human review.
    */
+  async rejectIntent(intentId: string, reason: string): Promise<void> {
+    const reviews = this.db.listPendingReviews()
+    const review = reviews.find(r => r.intentId === intentId)
+    if (!review) {
+      throw new Error(`No pending review found for intent ${intentId}`)
+    }
+    this.db.resolvePendingReview(intentId, "rejected", reason)
+    this.db.updateIntentStatus(intentId, "rejected")
+    this.logger.info("Intent %s rejected: %s", intentId, reason)
+  }
+
   async approveIntent(intentId: string, reviewer: string): Promise<void> {
     const review = this.db.getPendingReview(intentId)
     if (!review) {
@@ -570,6 +579,18 @@ export class EvolutionEngine {
   /** @internal */
   getDb(): EvolutionDB {
     return this.db
+  }
+
+  getConversationStore(): ConversationStore {
+    return this.conversationStore
+  }
+
+  getIntentClassifier(): IntentClassifier {
+    return this.intentClassifier
+  }
+
+  getRitualHandler(): RitualHandler {
+    return this.ritualHandler
   }
 
   /** @internal */
