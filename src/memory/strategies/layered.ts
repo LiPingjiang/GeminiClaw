@@ -20,6 +20,7 @@ interface LayeredStrategyConfig {
   compactThresholdBytes: number
   maxActiveTopics: number
 }
+const SUMMARY_LARGE_THRESHOLD_CHARS = 3000
 
 export class LayeredStrategy implements MemoryStrategy {
   readonly name = "layered"
