@@ -62,6 +62,7 @@ export class AgentLoop {
   // ── Interrupt point state ──────────────────────────────────────────────────
   private pauseId: string | null = null
   private pauseResolve: ((input: unknown) => void) | null = null
+  private uncertaintyCleared = false  // set after first clarify_uncertainty is answered
 
   constructor(params: {
     chatFn: ChatFn
@@ -121,6 +122,9 @@ export class AgentLoop {
     beforeToolCall?: (ctx: BeforeToolCallContext) => Promise<{ block?: boolean; reason?: string }>
     afterToolCall?: (ctx: AfterToolCallContext) => Promise<Partial<ToolResult> | undefined>
   }): AsyncIterable<AgentEvent> {
+    // Reset per-run state
+    this.uncertaintyCleared = false
+
     let messages = [...params.messages]
     let turn = 0
     const maxTurns = this.config.maxTurns
@@ -218,6 +222,82 @@ export class AgentLoop {
         ? response.tool_calls.slice(0, this.config.maxToolCallsPerTurn)
         : response.tool_calls
 
+      // ── High-confidence mode: intercept clarify_uncertainty tool call ────
+      // When the agent calls clarify_uncertainty, we pause the loop here
+      // (before executeTools) so the route layer can stream the paused event
+      // and wait for user answers via /v1/agent/resume.
+      if (this.config.uncertaintyCheck?.enabled && !this.uncertaintyCleared) {
+        const clarifyIdx = toolCallsToRun.findIndex(tc => tc.name === 'clarify_uncertainty')
+        if (clarifyIdx !== -1) {
+          const clarifyTc = toolCallsToRun[clarifyIdx]
+
+          // Emit tool_start so the client knows the tool was invoked
+          yield { type: 'tool_start', toolCallId: clarifyTc.id, toolName: clarifyTc.name, args: clarifyTc.args }
+
+          // Pause and wait for user to answer the uncertainty questions
+          const userAnswers = yield* this.doPause({
+            kind: 'uncertainty_check',
+            data: { items: clarifyTc.args['items'] ?? [] },
+          })
+
+          // Build a synthetic tool result containing the user's answers,
+          // and inject it into messages so the loop can continue
+          let answersText: string
+          if (typeof userAnswers === 'string' && userAnswers.trim()) {
+            answersText = userAnswers
+          } else if (userAnswers && typeof userAnswers === 'object') {
+            // {answers: {id: text}, skipAll: bool} from resume route
+            const obj = userAnswers as Record<string, unknown>
+            if (obj.skipAll) {
+              answersText = '[User chose to skip all questions — proceed with best judgment]'
+            } else if (obj.answers && typeof obj.answers === 'object') {
+              const ans = obj.answers as Record<string, string>
+              const lines = Object.entries(ans)
+                .filter(([, v]) => v && String(v).trim())
+                .map(([k, v]) => `- ${k}: ${v}`)
+              answersText = lines.length > 0
+                ? `User provided answers:\n${lines.join('\n')}`
+                : '[User confirmed: proceed with best judgment]'
+            } else {
+              answersText = `[User input: ${JSON.stringify(userAnswers)}]`
+            }
+          } else {
+            answersText = '[User confirmed: proceed with best judgment]'
+          }
+
+          yield {
+            type: 'tool_end',
+            toolCallId: clarifyTc.id,
+            toolName: clarifyTc.name,
+            result: { content: answersText, isError: false },
+            isError: false,
+            durationMs: 0,
+          }
+
+          // Inject assistant message (with tool_calls) + tool result into context
+          messages = [
+            ...messages,
+            {
+              role: 'assistant' as const,
+              content: response.content,
+              tool_calls: response.tool_calls,
+            },
+            {
+              role: 'tool' as const,
+              tool_call_id: clarifyTc.id,
+              content: answersText,
+            },
+          ]
+
+          // Mark uncertainties as cleared so subsequent clarify_uncertainty calls
+          // are not intercepted again (model may call it again after seeing answers)
+          this.uncertaintyCleared = true
+
+          // Skip normal executeTools for this turn — continue to next LLM turn
+          continue
+        }
+      }
+
       const { events, results } = await this.executeTools(
         toolCallsToRun,
         params.sessionId,
@@ -289,12 +369,16 @@ export class AgentLoop {
     const pauseId = randomUUID()
     this.pauseId = pauseId
 
+    // Set up the promise BEFORE yielding, so resume() can call it
+    // even if called synchronously inside the consumer's for-await loop body.
+    const waitForResume = new Promise<unknown>((resolve) => {
+      this.pauseResolve = resolve
+    })
+
     yield { type: 'paused', pauseId, payload }
 
     // Wait for resume() to be called externally
-    const userInput = await new Promise<unknown>((resolve) => {
-      this.pauseResolve = resolve
-    })
+    const userInput = await waitForResume
 
     return userInput
   }

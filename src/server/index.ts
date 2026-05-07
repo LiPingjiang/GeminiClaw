@@ -9,6 +9,7 @@ import { registry } from "../tools/index.js"
 import type { ToolResult as AgentToolResult } from "../agent/types.js"
 import { healthRoute } from "./routes/health.js"
 import { chatRoute } from "./routes/chat.js"
+import { completionsRoute } from "./routes/completions.js"
 import { evolutionRoute } from "./routes/evolution.js"
 import { runsRoute } from "./routes/runs.js"
 import { qqbotRoute } from "../channels/qqbot/index.js"
@@ -52,17 +53,71 @@ export async function buildServer(
 ): Promise<FastifyInstance> {
   const fastify = Fastify({ logger: false })
 
+  // CORS — allow all origins for local dev
+  // Must use onRequest (not onSend) because SSE routes use reply.hijack()
+  // which bypasses Fastify's reply pipeline entirely.
+  fastify.addHook('onRequest', async (request, reply) => {
+    reply.header('Access-Control-Allow-Origin', '*')
+    reply.header('Access-Control-Allow-Methods', 'GET,POST,OPTIONS')
+    reply.header('Access-Control-Allow-Headers', 'Authorization,Content-Type')
+    if (request.method === 'OPTIONS') {
+      reply.status(204).send()
+    }
+  })
+
   // Wrap ProviderRouter.chat as ChatFn for AgentLoop
   const chatFn: ChatFn = async (messages: InternalMessage[], options?: { model?: string; tools?: unknown[] }) => {
-    // tool role messages → user messages (ProviderRouter only handles user/assistant/system)
-    const providerMessages = messages.map(m => {
-      if (m.role === "tool") {
-        return { role: "user" as const, content: `[Tool result for ${m.tool_call_id}]: ${m.content}` }
+    // Convert InternalMessage to provider Message format.
+    // assistant messages with tool_calls need function.arguments serialized.
+    // tool messages pass through with tool_call_id.
+    type ProviderMsg = import('../providers/types.js').Message
+    const providerMessages: ProviderMsg[] = messages.map(m => {
+      if (m.role === 'tool') {
+        return { role: 'tool' as const, content: m.content, tool_call_id: m.tool_call_id }
       }
-      return { role: m.role as "user" | "assistant" | "system", content: m.content }
+      if (m.role === 'assistant' && m.tool_calls && m.tool_calls.length > 0) {
+        // Convert agent tool_calls (flat) back to OpenAI format for the provider
+        return {
+          role: 'assistant' as const,
+          content: m.content,
+          tool_calls: m.tool_calls.map(tc => ({
+            id: tc.id,
+            type: 'function' as const,
+            function: { name: tc.name, arguments: JSON.stringify(tc.args) },
+          })),
+        }
+      }
+      return { role: m.role as 'user' | 'assistant' | 'system', content: m.content }
     })
-    const response = await router.chat(providerMessages, options ? { model: options.model } : undefined)
-    return { content: response.content }
+    // Convert AgentLoop tool schema format (Anthropic: input_schema)
+    // to OpenAI-compatible format (function: { name, description, parameters })
+    // which Friday and mcli providers expect.
+    type AgentTool = { name: string; description: string; input_schema: unknown }
+    const providerTools = options?.tools
+      ? (options.tools as AgentTool[]).map(t => ({
+          type: 'function' as const,
+          function: {
+            name: t.name,
+            description: t.description,
+            parameters: t.input_schema as Record<string, unknown>,
+          },
+        }))
+      : undefined
+
+    const response = await router.chat(providerMessages, options ? { model: options.model, tools: providerTools } : undefined)
+
+    // Convert provider tool_calls (OpenAI format: function.name + function.arguments string)
+    // back to AgentLoop format (flat: name + args object)
+    type ProviderToolCall = { id: string; type: string; function: { name: string; arguments: string } }
+    const agentToolCalls = response.tool_calls
+      ? (response.tool_calls as unknown as ProviderToolCall[]).map(tc => ({
+          id: tc.id,
+          name: tc.function.name,
+          args: (() => { try { return JSON.parse(tc.function.arguments) } catch { return {} } })(),
+        }))
+      : undefined
+
+    return { content: response.content ?? '', tool_calls: agentToolCalls }
   }
 
   const agentLoop = new AgentLoop({
@@ -76,6 +131,10 @@ export async function buildServer(
   })
 
   await fastify.register(healthRoute)
+  await fastify.register(completionsRoute, {
+    router,
+    authToken: config.server.authToken,
+  })
   await fastify.register(chatRoute, {
     router,
     strategy,
@@ -89,7 +148,12 @@ export async function buildServer(
   }
 
   const runStore = new RunStore()
-  await fastify.register(runsRoute, { runStore })
+  await fastify.register(runsRoute, {
+    runStore,
+    agentLoop,
+    sessionStore: strategy,
+    authToken: config.server.authToken,
+  })
 
   const qqbotConfig = config.channels?.qqbot
   if (qqbotConfig?.enabled) {

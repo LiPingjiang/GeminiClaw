@@ -55,7 +55,7 @@ it("appends topic docs as system messages", async () => {
     recentMessageLimit: 20,
   })
   const systemMsgs = ctx.filter(m => m.role === "system")
-  expect(systemMsgs.some(m => m.content.includes("详细概览内容"))).toBe(true)
+  expect(systemMsgs.some(m => (typeof m.content === "string" ? m.content : "").includes("详细概览内容"))).toBe(true)
 })
 
 it("trims history to recentMessageLimit", async () => {

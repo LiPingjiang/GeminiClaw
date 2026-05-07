@@ -317,3 +317,88 @@ describe('AgentLoop', () => {
     expect(toolEnd.result.content).toContain('[truncated')
   })
 })
+
+describe('high-confidence mode — clarify_uncertainty intercept', () => {
+  const baseMessages: InternalMessage[] = [{ role: 'user', content: 'do something risky' }]
+
+  it('pauses when agent calls clarify_uncertainty, resumes with user answers', async () => {
+    // Turn 1: agent calls clarify_uncertainty
+    // Turn 2 (after resume): agent finishes with no more tool calls
+    const chatFn = makeMockChatFn([
+      {
+        content: 'Let me check first.',
+        tool_calls: [{
+          id: 'cu1',
+          name: 'clarify_uncertainty',
+          args: { items: [{ id: 'q1', question: 'Which env?', impact: 'blocking' }] },
+        }],
+      },
+      { content: 'Got it, proceeding.', tool_calls: [] },
+    ])
+
+    const registry = makeMockRegistry({})
+    const loop = new AgentLoop({
+      chatFn,
+      toolRegistry: registry,
+      config: { uncertaintyCheck: { enabled: true } },
+    })
+
+    const events: unknown[] = []
+
+    // Drain all events; when we see 'paused', immediately call resume() so
+    // the generator can continue without deadlocking.
+    for await (const event of loop.run({ messages: baseMessages, sessionId: 'hc-sess' })) {
+      events.push(event)
+      if ((event as { type: string }).type === 'paused') {
+        const paused = event as { type: string; pauseId: string; payload: unknown }
+        expect(paused.payload).toMatchObject({ kind: 'uncertainty_check' })
+        // Resume synchronously inside the loop — generator will continue
+        loop.resume(paused.pauseId, 'Use production env')
+      }
+    }
+
+    const types = events.map((e) => (e as { type: string }).type)
+    expect(types).toContain('paused')
+    expect(types).toContain('tool_start')
+    expect(types).toContain('tool_end')
+    expect(types).toContain('agent_end')
+
+    // tool_end for clarify_uncertainty should carry the user's answer
+    const toolEnd = events.find(
+      (e) => (e as { type: string; toolName?: string }).type === 'tool_end'
+        && (e as { toolName: string }).toolName === 'clarify_uncertainty'
+    ) as { result: ToolResult }
+    expect(toolEnd.result.content).toBe('Use production env')
+    expect(toolEnd.result.isError).toBe(false)
+  }, 10000)
+
+  it('does NOT intercept clarify_uncertainty when uncertaintyCheck is disabled', async () => {
+    const chatFn = makeMockChatFn([
+      {
+        content: 'Checking.',
+        tool_calls: [{
+          id: 'cu2',
+          name: 'clarify_uncertainty',
+          args: { items: [{ id: 'q1', question: 'Confirm?', impact: 'optional' }] },
+        }],
+      },
+      { content: 'Done.', tool_calls: [] },
+    ])
+
+    // Register clarify_uncertainty as a normal tool
+    const registry = makeMockRegistry({
+      clarify_uncertainty: async () => ({
+        content: JSON.stringify({ status: 'pending_user_input', items: [] }),
+        isError: false,
+      }),
+    })
+
+    const loop = new AgentLoop({ chatFn, toolRegistry: registry })
+    // uncertaintyCheck NOT enabled → no pause
+    const events = await collectEvents(loop.run({ messages: baseMessages, sessionId: 'hc-sess2' }))
+
+    const types = events.map((e) => (e as { type: string }).type)
+    expect(types).not.toContain('paused')
+    expect(types).toContain('agent_end')
+  })
+})
