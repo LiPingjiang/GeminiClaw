@@ -148,4 +148,65 @@ export async function evolutionRoute(
       return reply.status(500).send({ error: "Failed to add intent" })
     }
   })
+
+  // ---------------------------------------------------------------------------
+  // GET /v1/evolution/candidates
+  // ---------------------------------------------------------------------------
+  fastify.get("/v1/evolution/candidates", async (_req, reply) => {
+    try {
+      const reviews = evolution.getDb().listPendingReviews()
+      const candidates = reviews.map((r, i) => ({
+        index: i + 1,
+        intentId: r.intentId,
+        description: r.description,
+        riskLevel: r.riskLevel,
+        targetFiles: r.targetFiles,
+        hasPreview: evolution.getDb().hasEvolutionPreview(r.intentId),
+        requestedAt: r.requestedAt,
+      }))
+      return reply.send({ candidates, count: candidates.length })
+    } catch (err) {
+      fastify.log.error(err)
+      return reply.status(500).send({ error: "Failed to list candidates" })
+    }
+  })
+
+  // ---------------------------------------------------------------------------
+  // GET /v1/evolution/previews/:intentId
+  // ---------------------------------------------------------------------------
+  fastify.get<{ Params: { intentId: string } }>(
+    "/v1/evolution/previews/:intentId",
+    async (req, reply) => {
+      const { intentId } = req.params
+      try {
+        const previews = evolution.getDb().listEvolutionPreviews(intentId)
+        return reply.send({ previews, count: previews.length, ready: previews.length > 0 })
+      } catch (err) {
+        fastify.log.error(err)
+        return reply.status(500).send({ error: "Failed to get previews" })
+      }
+    }
+  )
+
+  // ---------------------------------------------------------------------------
+  // POST /v1/evolution/reject/:id
+  // ---------------------------------------------------------------------------
+  fastify.post<{
+    Params: { id: string }
+    Body: { reason?: string }
+  }>("/v1/evolution/reject/:id", async (req, reply) => {
+    const { id } = req.params
+    const reason = (req.body as { reason?: string })?.reason ?? "user-rejected"
+    try {
+      await evolution.rejectIntent(id, reason)
+      return reply.send({ success: true, intentId: id })
+    } catch (err) {
+      const message = (err as Error).message
+      if (message.includes("not found") || message.includes("No pending review")) {
+        return reply.status(404).send({ error: message })
+      }
+      fastify.log.error(err)
+      return reply.status(500).send({ error: "Failed to reject intent" })
+    }
+  })
 }
