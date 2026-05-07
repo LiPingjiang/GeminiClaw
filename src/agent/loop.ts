@@ -334,9 +334,13 @@ export class AgentLoop {
           return
         }
 
-        if (anySuccess) {
+        // Any tool call (success or failure) counts as progress.
+        // "No progress" means the model produced no tool calls at all
+        // (stuck in a loop of pure text output).
+        const anyToolCalled = results.length > 0
+        if (anyToolCalled) {
           guardrails.recordProgress()
-        } else {
+        } else if (!anySuccess) {
           const noProgressDecision = guardrails.recordNoProgress()
           if (noProgressDecision.action === 'warn') {
             yield { type: 'guardrail_warn', toolName: '', message: noProgressDecision.message }
