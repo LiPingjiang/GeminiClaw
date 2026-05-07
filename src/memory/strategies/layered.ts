@@ -1,5 +1,6 @@
 // src/memory/strategies/layered.ts
 import { randomUUID } from "crypto"
+import { stderr } from "process"
 import type { Message } from "../../providers/types.js"
 import type { MemoryStrategy, ConversationContext } from "../strategy.js"
 import type { Db } from "../../db/client.js"
@@ -74,6 +75,16 @@ export class LayeredStrategy implements MemoryStrategy {
       } | undefined
 
       if (!topic) continue
+
+      // Warn if summary content is unusually large
+      const summaryLen = (topic.summary ?? "").length
+      if (summaryLen > SUMMARY_LARGE_THRESHOLD_CHARS) {
+        stderr.write(
+          `[layered] Warning: Memory topic "${topic.title}" (${topic.id}) has large summary content ` +
+          `(${summaryLen} chars > threshold ${SUMMARY_LARGE_THRESHOLD_CHARS}). ` +
+          `Consider summarizing or archiving to reduce memory retrieval overhead.\n`
+        )
+      }
 
       // 更新访问记录
       this.db.prepare(`
