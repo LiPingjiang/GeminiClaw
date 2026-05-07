@@ -217,9 +217,8 @@ GeminiClaw 不做传统 merge，而是**主动筛选**：
   - CircuitBreaker（错误率监控 + 自动回滚）
   - 完整 auto-switch 路径验证通过（249 tests 全绿）
 - [x] **Step 4**：上游跟踪（UpstreamSyncSource 已实现，通过 idle loop 自动触发，无需单独 cron）
-- [ ] **Step 5**：Bootstrap intents（冷启动预置意图，避免新部署 trace 为空时无法进化）
-- [ ] **Step 6**：时机隔离 + Evolution session 隔离（用户活跃时静默，进化确认不污染主对话）
-- [ ] **Step 7**：部署替换生产 18888 端口
+- [ ] **Step 5**：时机隔离 + Evolution session 隔离（用户活跃时静默，进化确认不污染主对话）
+- [ ] **Step 6**：部署替换生产 18888 端口
 
 ---
 

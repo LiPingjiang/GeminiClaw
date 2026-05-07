@@ -26,7 +26,6 @@ Read `docs/ARCHITECTURE.md` for the full design philosophy before touching any c
 
 ### 待实现
 
-- Bootstrap intents（冷启动预置意图，trace 为空时的初始进化素材）
 - 时机隔离（用户活跃时静默进化，进化确认不污染主对话）
 - 部署替换生产 18888 端口
 
