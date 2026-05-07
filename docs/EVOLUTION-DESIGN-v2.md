@@ -1,6 +1,6 @@
 # GeminiClaw Evolution Engine — Design v2
 
-> **状态：** 设计稿，待实现
+> **状态：** ⚠️ 已废弃 — 此文档描述的是 git worktree + 物理 slot 目录方案，实际实现采用了 git branch 方案（见 ARCHITECTURE.md Step 2 决策记录）。保留仅供参考。
 > **作者：** 李平江 + 观澜
 > **日期：** 2026-05-05
 > **基于：** GeminiClaw v0.2.1（`~/Codes/GeminiClaw`）
