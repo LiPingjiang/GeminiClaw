@@ -18,10 +18,18 @@ Read `docs/ARCHITECTURE.md` for the full design philosophy before touching any c
 - server：Fastify 5，`/v1/agent/chat`（非流式 + SSE 流式）、`/v1/health`、Bearer 认证
 - 输入校验：空消息 → 400
 
+已完成：
+- Twin-System 槽位机制（git branch 方案：main=slot-A，evolution/<id>=slot-B）
+- Evolution Engine（IntentEngine、Mutator、Validator、Switcher、CircuitBreaker）
+- `/v1/runs/:id/events` 异步 run 接口（+ `POST /v1/runs` 创建接口）
+- 工具调用链路（schema 转换 + pause/resume 机制）
+- High-confidence 模式（clarify_uncertainty 拦截 + SSE/非流式 resume）
+
 待实现：
-- Twin-System slot-a/slot-b 目录结构
-- evolution/ 进化引擎
-- `/v1/runs/:id/events` 异步 run 接口
+- 上游 OpenClaw diff 追踪 cron job
+- Bootstrap intents（冷启动预置意图）
+- 时机隔离（用户活跃时静默进化）
+- 部署替换生产 18888 端口
 
 ## Stack
 

@@ -40,6 +40,20 @@ export class ProviderRouter {
     throw new Error(`All providers failed:\n${errors.join("\n")}`)
   }
 
+  listModels(): string[] {
+    const models: string[] = []
+    for (const [providerName, provider] of this.providers) {
+      for (const model of provider.models ?? []) {
+        models.push(`${providerName}/${model}`)
+      }
+    }
+    // also include routing defaults
+    if (models.length === 0) {
+      models.push(this.routing.default, ...this.routing.fallback)
+    }
+    return [...new Set(models)]
+  }
+
   async *stream(messages: Message[], options?: ChatOptions): AsyncIterable<StreamChunk> {
     const route = this.routing.default
     const { providerName, model } = parseRoute(route)
