@@ -13,6 +13,8 @@ import type {
   SlotState,
   UpstreamCheck,
   PendingReview,
+  ConversationSample,
+  EvolutionPreview,
 } from "./types.js"
 
 // ---------------------------------------------------------------------------
@@ -436,6 +438,70 @@ describe("EvolutionDB", () => {
       const latest = db.getLastUpstreamCheck()
       expect(latest!.newCommits).toEqual(["new"])
       expect(latest!.intentGenerated).toBe(true)
+    })
+  })
+
+  // -------------------------------------------------------------------------
+  // ConversationSample CRUD
+  // -------------------------------------------------------------------------
+
+  describe("ConversationSample CRUD", () => {
+    it("inserts and lists conversation samples", () => {
+      const db = new EvolutionDB(":memory:")
+      db.insertConversationSample({
+        id: "s1",
+        sessionId: "sess-1",
+        userMessage: "hello",
+        agentReply: "hi there",
+        toolSequence: ["tool_a"],
+        hadFailure: false,
+        recordedAt: Date.now(),
+      })
+      const samples = db.listConversationSamples()
+      expect(samples).toHaveLength(1)
+      expect(samples[0].userMessage).toBe("hello")
+      expect(samples[0].toolSequence).toEqual(["tool_a"])
+    })
+
+    it("prunes to 500 samples on insert", () => {
+      const db = new EvolutionDB(":memory:")
+      for (let i = 0; i < 502; i++) {
+        db.insertConversationSample({
+          id: `s${i}`,
+          sessionId: "sess-1",
+          userMessage: `msg ${i}`,
+          agentReply: `reply ${i}`,
+          toolSequence: [],
+          hadFailure: false,
+          recordedAt: Date.now() + i,
+        })
+      }
+      expect(db.countConversationSamples()).toBe(500)
+    })
+  })
+
+  // -------------------------------------------------------------------------
+  // EvolutionPreview CRUD
+  // -------------------------------------------------------------------------
+
+  describe("EvolutionPreview CRUD", () => {
+    it("inserts and lists previews by intentId", () => {
+      const db = new EvolutionDB(":memory:")
+      db.insertEvolutionPreview({
+        id: "p1",
+        intentId: "intent-1",
+        sampleId: "s1",
+        userMessage: "what is X?",
+        beforeReply: "old answer",
+        afterReply: "new better answer",
+        summary: "improved clarity",
+        generatedAt: Date.now(),
+      })
+      const previews = db.listEvolutionPreviews("intent-1")
+      expect(previews).toHaveLength(1)
+      expect(previews[0].afterReply).toBe("new better answer")
+      expect(db.hasEvolutionPreview("intent-1")).toBe(true)
+      expect(db.hasEvolutionPreview("intent-999")).toBe(false)
     })
   })
 
