@@ -244,7 +244,7 @@ describe("EvolutionEngine.runOnce()", () => {
 
     expect(result.skipped).toBe(false)
     // Medium risk → needs approval path
-    expect(result.skipReason).toContain("Needs approval")
+    expect(result.skipReason).toContain("Queued for user approval")
     expect(result.skipReason).toContain("medium")
     // insertPendingReview should be called with medium riskLevel
     expect(db.insertPendingReview).toHaveBeenCalledWith(
@@ -295,9 +295,9 @@ describe("EvolutionEngine.runOnce()", () => {
   })
 
   // -------------------------------------------------------------------------
-  // 7. Low-risk auto-switch succeeds
+  // 7. Low-risk intent is now queued for approval (no auto-switch)
   // -------------------------------------------------------------------------
-  it("auto-switches and marks applied for low-risk intent", async () => {
+  it("queues low-risk intent for approval instead of auto-switching", async () => {
     const intent = makeIntent({ riskLevel: "low", requiresHumanApproval: false })
     const db = makeMockDb([intent])
     const engine = makeEngine(db)
@@ -327,28 +327,28 @@ describe("EvolutionEngine.runOnce()", () => {
 
     ;(db.countTraces as ReturnType<typeof vi.fn>).mockReturnValue(0)
 
-    const switchSuccess: SwitchResult = {
-      success: true,
-      fromSlot: "b",
-      toSlot: "a",
-    }
-    vi.spyOn(engine.getSwitcher(), "switch").mockResolvedValue(switchSuccess)
-
+    const switchSpy = vi.spyOn(engine.getSwitcher(), "switch")
     const startMonitoringSpy = vi.spyOn(engine.getCircuitBreaker(), "startMonitoring")
 
     const result = await engine.runOnce()
 
     expect(result.skipped).toBe(false)
-    expect(result.switchResult).toBe(switchSuccess)
+    expect(result.skipReason).toContain("Queued for user approval")
+    expect(result.skipReason).toContain("low")
     expect(result.validationResults).toHaveLength(1)
-    expect(db.updateIntentStatus).toHaveBeenCalledWith(intent.id, "applied")
-    expect(startMonitoringSpy).toHaveBeenCalledWith(intent.id)
+    expect(db.updateIntentStatus).toHaveBeenCalledWith(intent.id, "approved")
+    expect(db.insertPendingReview).toHaveBeenCalledWith(
+      expect.objectContaining({ riskLevel: "low", status: "pending" })
+    )
+    // switch should NOT be called automatically
+    expect(switchSpy).not.toHaveBeenCalled()
+    expect(startMonitoringSpy).not.toHaveBeenCalled()
   })
 
   // -------------------------------------------------------------------------
-  // 8. Low-risk auto-switch fails
+  // 8. Low-risk intent queued for approval (replaces old auto-switch-fails test)
   // -------------------------------------------------------------------------
-  it("rejects intent when auto-switch fails", async () => {
+  it("queues low-risk intent for approval and does not call switch", async () => {
     const intent = makeIntent({ riskLevel: "low", requiresHumanApproval: false })
     const db = makeMockDb([intent])
     const engine = makeEngine(db)
@@ -378,20 +378,16 @@ describe("EvolutionEngine.runOnce()", () => {
 
     ;(db.countTraces as ReturnType<typeof vi.fn>).mockReturnValue(0)
 
-    const switchFail: SwitchResult = {
-      success: false,
-      fromSlot: "b",
-      toSlot: "a",
-      error: "merge conflict",
-    }
-    vi.spyOn(engine.getSwitcher(), "switch").mockResolvedValue(switchFail)
+    const switchSpy = vi.spyOn(engine.getSwitcher(), "switch")
     const startMonitoringSpy = vi.spyOn(engine.getCircuitBreaker(), "startMonitoring")
 
     const result = await engine.runOnce()
 
     expect(result.skipped).toBe(false)
-    expect(result.switchResult).toBe(switchFail)
-    expect(db.updateIntentStatus).toHaveBeenCalledWith(intent.id, "rejected")
+    expect(result.skipReason).toContain("Queued for user approval")
+    expect(db.updateIntentStatus).toHaveBeenCalledWith(intent.id, "approved")
+    expect(db.insertPendingReview).toHaveBeenCalledOnce()
+    expect(switchSpy).not.toHaveBeenCalled()
     expect(startMonitoringSpy).not.toHaveBeenCalled()
   })
 
@@ -431,7 +427,7 @@ describe("EvolutionEngine.runOnce()", () => {
     const result = await engine.runOnce()
 
     expect(result.skipped).toBe(false)
-    expect(result.skipReason).toContain("Needs approval")
+    expect(result.skipReason).toContain("Queued for user approval")
     expect(result.skipReason).toContain("medium")
     expect(db.insertPendingReview).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -490,12 +486,7 @@ describe("EvolutionEngine.runOnce()", () => {
       .spyOn(engine.getValidator(), "validateLevel2")
       .mockResolvedValue(level2Pass)
 
-    const switchSuccess: SwitchResult = {
-      success: true,
-      fromSlot: "b",
-      toSlot: "a",
-    }
-    vi.spyOn(engine.getSwitcher(), "switch").mockResolvedValue(switchSuccess)
+    const switchSpy = vi.spyOn(engine.getSwitcher(), "switch")
     vi.spyOn(engine.getCircuitBreaker(), "startMonitoring")
 
     const result = await engine.runOnce()
@@ -503,7 +494,10 @@ describe("EvolutionEngine.runOnce()", () => {
     expect(validateLevel2Spy).toHaveBeenCalledOnce()
     expect(result.validationResults).toHaveLength(2)
     expect(result.validationResults[1]).toBe(level2Pass)
-    expect(db.updateIntentStatus).toHaveBeenCalledWith(intent.id, "applied")
+    // After ritual refactor: all intents go to approval queue, no auto-switch
+    expect(db.updateIntentStatus).toHaveBeenCalledWith(intent.id, "approved")
+    expect(db.insertPendingReview).toHaveBeenCalledOnce()
+    expect(switchSpy).not.toHaveBeenCalled()
   })
 
   // -------------------------------------------------------------------------
