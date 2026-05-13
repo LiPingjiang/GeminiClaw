@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 import { Command } from "commander"
+import { registerIdentityCommand } from "./commands/identity.js"
+import { registerMemoryCommand } from "./commands/memory.js"
 
 const program = new Command()
 
@@ -36,8 +38,8 @@ ENVIRONMENT
   .version("0.1.0")
 
 // Commands will be registered here by subsequent tasks:
-// registerIdentityCommand(program)
-// registerMemoryCommand(program)
+registerIdentityCommand(program)
+registerMemoryCommand(program)
 // registerSkillCommand(program)
 // registerConfigCommand(program)
 // registerStatusCommand(program)
