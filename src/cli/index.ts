@@ -4,6 +4,7 @@ import { registerIdentityCommand } from "./commands/identity.js"
 import { registerMemoryCommand } from "./commands/memory.js"
 import { registerSkillCommand } from "./commands/skill.js"
 import { registerConfigCommand } from "./commands/config.js"
+import { registerStatusCommand } from "./commands/status.js"
 
 const program = new Command()
 
@@ -44,7 +45,7 @@ registerIdentityCommand(program)
 registerMemoryCommand(program)
 registerSkillCommand(program)
 registerConfigCommand(program)
-// registerStatusCommand(program)
+registerStatusCommand(program)
 // registerSyncCommand(program)
 
 program.parse()
