@@ -24,6 +24,8 @@ function makeConfig(authToken?: string): Config {
       triageAfterTurns: 3,
     },
     agent: { maxTurns: 10, timeoutSeconds: 30 },
+    workspace: { dir: ".workspace" },
+    skills: { dir: "skills" },
   }
 }
 
