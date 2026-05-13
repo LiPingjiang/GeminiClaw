@@ -48,6 +48,14 @@ export const agentConfigSchema = z.object({
   systemPrompt: z.string().optional(),
 })
 
+export const workspaceConfigSchema = z.object({
+  dir: z.string().default(".workspace"),
+})
+
+export const skillsConfigSchema = z.object({
+  dir: z.string().default("skills"),
+})
+
 export const configSchema = z.object({
   server: serverConfigSchema,
   providers: z.array(providerConfigSchema).min(1),
@@ -57,6 +65,8 @@ export const configSchema = z.object({
   channels: z.object({
     qqbot: qqBotChannelSchema.optional(),
   }).optional(),
+  workspace: workspaceConfigSchema.default({}),
+  skills: skillsConfigSchema.default({}),
 })
 
 export type ServerConfig = z.infer<typeof serverConfigSchema>
@@ -66,4 +76,6 @@ export type MemoryConfig = z.infer<typeof memoryConfigSchema>
 export type MemoryStrategy = z.infer<typeof memoryStrategySchema>
 export type AgentConfig = z.infer<typeof agentConfigSchema>
 export type QQBotChannelConfig = z.infer<typeof qqBotChannelSchema>
+export type WorkspaceConfig = z.infer<typeof workspaceConfigSchema>
+export type SkillsDirConfig = z.infer<typeof skillsConfigSchema>
 export type Config = z.infer<typeof configSchema>

@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest"
 import { writeFileSync, unlinkSync, mkdirSync } from "fs"
 import { join } from "path"
 import { loadConfig } from "./loader.js"
+import { configSchema } from "./schema.js"
 
 const TMP = "/tmp/geminiclaw-test"
 
@@ -59,4 +60,17 @@ it("throws on missing file", () => {
 it("throws on invalid yaml structure", () => {
   writeFileSync(join(TMP, "config.yaml"), "server: invalid_not_an_object: 123\n")
   expect(() => loadConfig(join(TMP, "config.yaml"))).toThrow()
+})
+
+it("parses workspace config with defaults", () => {
+  const raw = {
+    server: { port: 3000 },
+    providers: [{ name: "mcli", type: "mcli", apiKey: "k", models: ["m"] }],
+    routing: { default: "mcli/m" },
+    memory: { strategy: "buffer" },
+    agent: {},
+  }
+  const config = configSchema.parse(raw)
+  expect(config.workspace.dir).toBe(".workspace")
+  expect(config.skills.dir).toBe("skills")
 })
