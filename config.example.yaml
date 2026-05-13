@@ -46,3 +46,9 @@ memory:
 agent:
   maxTurns: 20
   timeoutSeconds: 60
+
+workspace:
+  dir: ".workspace"   # 身份/记忆文件目录（SOUL.md, MEMORY.md, memory/）
+
+skills:
+  dir: "skills"       # Skill 目录（含 .registry.json 溯源注册表）
