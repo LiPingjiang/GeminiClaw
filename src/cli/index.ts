@@ -2,6 +2,7 @@
 import { Command } from "commander"
 import { registerIdentityCommand } from "./commands/identity.js"
 import { registerMemoryCommand } from "./commands/memory.js"
+import { registerSkillCommand } from "./commands/skill.js"
 
 const program = new Command()
 
@@ -40,7 +41,7 @@ ENVIRONMENT
 // Commands will be registered here by subsequent tasks:
 registerIdentityCommand(program)
 registerMemoryCommand(program)
-// registerSkillCommand(program)
+registerSkillCommand(program)
 // registerConfigCommand(program)
 // registerStatusCommand(program)
 // registerSyncCommand(program)
