@@ -215,6 +215,122 @@ Full configuration reference: [docs/CONFIGURATION.md](docs/CONFIGURATION.md) *(c
 
 ---
 
+## gc CLI — Agent Management Tool
+
+`gc` is the command-line interface for GeminiClaw. It provides identity, memory, skill, config, and sync management for agents and operators.
+
+### Installation
+
+```bash
+# From GeminiClaw project root
+pnpm link --global
+
+# Verify
+gc --help
+```
+
+### Commands
+
+#### `gc identity show`
+Show agent identity files (SOUL.md, USER.md, IDENTITY.md).
+
+```bash
+gc identity show          # human-readable
+gc identity show --json   # machine-readable
+```
+
+**Agent guidance:** Call at session start to understand your own identity and context.
+
+#### `gc memory show`
+Show long-term memory (MEMORY.md).
+
+```bash
+gc memory show            # long-term memory
+gc memory daily           # today's daily memory
+gc memory daily 2026-05-13  # specific date
+gc memory append "insight text"  # append to MEMORY.md
+```
+
+**Agent guidance:** Call before complex tasks to recall relevant knowledge.
+
+#### `gc skill list`
+List installed skills with provenance information.
+
+```bash
+gc skill list             # all skills with source badges
+gc skill info <name>      # skill details + SKILL.md preview
+gc skill install <path>   # install from local directory
+gc skill sources          # provenance summary grouped by source
+```
+
+Source badges: 🐙 GitHub · 🏢 SkillHub · 🏠 local · ⚪ unknown
+
+#### `gc config show`
+Show current configuration (secrets redacted).
+
+```bash
+gc config show            # formatted YAML
+gc config show --json     # JSON format
+gc config path            # show config.yaml path
+```
+
+#### `gc status`
+System health check.
+
+```bash
+gc status                 # human-readable status report
+gc status --json          # structured JSON with ok:boolean
+```
+
+Checks: config.yaml · workspace files · skills · server process · git state
+
+#### `gc sync from <path>`
+Import identity and memory from an OpenClaw workspace.
+
+```bash
+gc sync from ~/.openclaw/workspace --dry-run  # preview
+gc sync from ~/.openclaw/workspace            # execute
+```
+
+Copies: SOUL.md · USER.md · IDENTITY.md · MEMORY.md · AGENTS.md · TOOLS.md · memory/
+
+Also generates `TOOLS-ADAPTATION-NOTES.md` to flag OpenClaw-specific configuration.
+
+### Skill Provenance
+
+Every skill has a source record in `skills/.registry.json`:
+
+```json
+{
+  "brainstorming": {
+    "source": "github:obra/superpowers",
+    "version": "v5.1.0",
+    "installedAt": "2026-05-13T...",
+    "updateUrl": "https://github.com/obra/superpowers/tree/main/skills/brainstorming"
+  }
+}
+```
+
+Sources: `github:<owner>/<repo>` · `mt-skillhub:<name>` · `local`
+
+### JSON Output
+
+All commands support `--json` for machine-readable output, useful for agent tool calls:
+
+```bash
+gc status --json | jq '.ok'
+gc skill list --json | jq '.[].name'
+gc identity show --json | jq '.soul'
+```
+
+### Environment
+
+| Variable | Description |
+|----------|-------------|
+| `GC_CONFIG` | Path to config.yaml (default: auto-detect from cwd) |
+
+---
+
 ## Roadmap
 
 | Phase | Feature | Status |
