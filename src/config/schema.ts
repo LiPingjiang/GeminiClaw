@@ -6,11 +6,11 @@ export const serverConfigSchema = z.object({
   authToken: z.string().optional(),
 })
 
-export const providerTypeSchema = z.enum(["anthropic", "openai"])
+export const providerApiSchema = z.enum(["anth-messages", "openai-completions"])
 
 export const providerConfigSchema = z.object({
   name: z.string().min(1),
-  type: providerTypeSchema,
+  api: providerApiSchema,
   apiKey: z.string().optional(),
   baseUrl: z.string().url().optional(),
   models: z.array(z.string()).min(1),
@@ -70,6 +70,7 @@ export const configSchema = z.object({
 })
 
 export type ServerConfig = z.infer<typeof serverConfigSchema>
+export type ProviderApi = z.infer<typeof providerApiSchema>
 export type ProviderConfig = z.infer<typeof providerConfigSchema>
 export type RoutingConfig = z.infer<typeof routingConfigSchema>
 export type MemoryConfig = z.infer<typeof memoryConfigSchema>

@@ -7,7 +7,7 @@ vi.stubGlobal("fetch", fetchMock)
 function makeConfig() {
   return {
     name: "openai",
-    type: "openai" as const,
+    api: "openai-completions" as const,
     apiKey: "test-key",
     baseUrl: "https://aigc.example.com/v1/openai/native",
     models: ["gemini-3-flash-preview"],

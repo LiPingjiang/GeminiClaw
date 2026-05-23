@@ -1,7 +1,6 @@
 // src/index.ts
 import { loadConfig } from "./config/loader.js"
-import { AnthropicProvider } from "./providers/anthropic.js"
-import { OpenAIProvider } from "./providers/openai.js"
+import { UniversalProvider } from "./providers/universal.js"
 import { ProviderRouter } from "./providers/router.js"
 import { buildStrategy } from "./memory/strategy.js"
 import { buildServer } from "./server/index.js"
@@ -14,14 +13,7 @@ import type { Provider } from "./providers/types.js"
 import type { ProviderConfig } from "./config/schema.js"
 
 function buildProvider(config: ProviderConfig): Provider {
-  switch (config.type) {
-    case "anthropic":
-      return new AnthropicProvider(config)
-    case "openai":
-      return new OpenAIProvider(config)
-    default:
-      throw new Error(`Unsupported provider type: ${config.type}`)
-  }
+  return new UniversalProvider(config)
 }
 
 async function main(): Promise<void> {

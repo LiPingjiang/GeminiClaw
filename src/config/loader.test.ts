@@ -28,7 +28,7 @@ server:
   host: "0.0.0.0"
 providers:
   - name: anthropic
-    type: anthropic
+    api: anth-messages
     apiKey: sk-test
     models:
       - claude-sonnet-4-6
@@ -65,7 +65,7 @@ it("throws on invalid yaml structure", () => {
 it("parses workspace config with defaults", () => {
   const raw = {
     server: { port: 3000 },
-    providers: [{ name: "mcli", type: "mcli", apiKey: "k", models: ["m"] }],
+    providers: [{ name: "mcli", api: "anth-messages", apiKey: "k", models: ["m"] }],
     routing: { default: "mcli/m" },
     memory: { strategy: "buffer" },
     agent: {},

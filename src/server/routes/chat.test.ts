@@ -11,7 +11,7 @@ import type { AgentLoop, AgentEvent } from "../../agent/index.js"
 function makeConfig(authToken?: string): Config {
   return {
     server: { port: 3000, host: "0.0.0.0", authToken },
-    providers: [{ name: "p1", type: "anthropic", models: ["m1"] }],
+    providers: [{ name: "p1", api: "anth-messages", models: ["m1"] }],
     routing: { default: "p1/m1", fallback: ["p1/m1"] },
     memory: {
       enabled: true,

@@ -4,16 +4,17 @@ server:
   # authToken: "your-secret-token"   # optional, for API auth
 
 # ── Providers ──────────────────────────────────────────────────────────────────
-# type: "anthropic"  — Anthropic-compatible API (official or any proxy)
-# type: "openai"     — OpenAI-compatible API (OpenAI, DeepSeek, Gemini, Hunyuan, Ollama, etc.)
+# api: "anth-messages"        — Anthropic Messages API (official or any proxy)
+# api: "openai-completions"   — OpenAI Chat Completions API (OpenAI, DeepSeek, Gemini, Hunyuan, Ollama, etc.)
 #
 # Tip: if you use a local proxy (e.g. proxy.py) that handles auth/billing,
-# just point baseUrl at the proxy — GeminiClaw will treat it as a regular provider.
+# just point baseUrl at the proxy and use api: "anth-messages" — GeminiClaw
+# will treat it as a regular Anthropic-protocol provider.
 
 providers:
   # ── Example 1: Anthropic (official) ────────────────────────────────────────
   - name: anthropic
-    type: anthropic
+    api: "anth-messages"
     apiKey: "sk-ant-..."
     models:
       - claude-opus-4-5
@@ -21,7 +22,7 @@ providers:
 
   # ── Example 2: OpenAI ───────────────────────────────────────────────────────
   # - name: openai
-  #   type: openai
+  #   api: "openai-completions"
   #   apiKey: "sk-..."
   #   baseUrl: "https://api.openai.com/v1"
   #   models:
@@ -30,7 +31,7 @@ providers:
 
   # ── Example 3: DeepSeek ─────────────────────────────────────────────────────
   # - name: deepseek
-  #   type: openai
+  #   api: "openai-completions"
   #   apiKey: "sk-..."
   #   baseUrl: "https://api.deepseek.com/v1"
   #   models:
@@ -39,7 +40,7 @@ providers:
 
   # ── Example 4: Tencent Hunyuan (腾讯混元) ───────────────────────────────────
   # - name: hunyuan
-  #   type: openai
+  #   api: "openai-completions"
   #   apiKey: "your-hunyuan-api-key"
   #   baseUrl: "https://api.hunyuan.cloud.tencent.com/v1"
   #   models:
@@ -48,7 +49,7 @@ providers:
 
   # ── Example 5: Local proxy (e.g. internal proxy.py) ─────────────────────────
   # - name: my-proxy
-  #   type: anthropic
+  #   api: "anth-messages"
   #   apiKey: "your-key"
   #   baseUrl: "http://127.0.0.1:15231"   # proxy handles billing/auth
   #   models:
@@ -57,7 +58,7 @@ providers:
 
   # ── Example 6: Ollama (local) ───────────────────────────────────────────────
   # - name: ollama
-  #   type: openai
+  #   api: "openai-completions"
   #   apiKey: "ollama"
   #   baseUrl: "http://localhost:11434/v1"
   #   models:
