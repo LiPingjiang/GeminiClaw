@@ -9,6 +9,7 @@ import { migrate } from "./db/schema.js"
 import { join } from "path"
 import { mkdirSync } from "fs"
 import { EvolutionEngine, EvolutionDB } from "./evolution/index.js"
+import { agentPool } from "./mesh/index.js"
 import type { Provider } from "./providers/types.js"
 import type { ProviderConfig } from "./config/schema.js"
 
@@ -63,6 +64,9 @@ async function main(): Promise<void> {
   await server.listen({ port: config.server.port, host: config.server.host })
   console.log(`GeminiClaw listening on ${config.server.host}:${config.server.port}`)
   console.log(`Memory strategy: ${strategy.name}`)
+
+  // Initialize AgentPool (always-on misc agents)
+  await agentPool.initialize()
 }
 
 main().catch(err => {

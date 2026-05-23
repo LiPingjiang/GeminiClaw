@@ -15,6 +15,7 @@ import { runsRoute } from "./routes/runs.js"
 import { ChannelRegistry } from "../channels/registry.js"
 import { QQBotChannel } from "../channels/qqbot/index.js"
 import { RunStore } from "./routes/run-store.js"
+import { getMeshStatus } from "../mesh/index.js"
 
 // Adapt ToolRegistry (2-arg handler, rich ToolResult) to ToolRegistryLike (1-arg handler, simple ToolResult)
 function makeRegistryAdapter(): ToolRegistryLike {
@@ -168,6 +169,17 @@ export async function buildServer(
     agentLoop,
     sessionStore: strategy,
     authToken: config.server.authToken,
+  })
+
+  // Mesh status endpoint
+  fastify.get('/v1/mesh/status', async (request, reply) => {
+    if (config.server.authToken) {
+      const auth = (request.headers as Record<string, string>)["authorization"]
+      if (!auth || auth !== `Bearer ${config.server.authToken}`) {
+        return reply.status(401).send({ error: "Unauthorized" })
+      }
+    }
+    return reply.send(getMeshStatus())
   })
 
   // Channel framework
