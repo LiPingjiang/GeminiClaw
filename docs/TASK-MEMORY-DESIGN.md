@@ -266,6 +266,9 @@ function findSafeCutPoint(messages: InternalMessage[], cutIdx: number): number {
 
 ## 五、AI 工具集（Task 相关）
 
+AI **不直接操作 SQL**，所有任务操作通过封装好的工具调用完成。
+工具是 GeminiClaw 的内置 Skill，隐藏所有 DB 细节，AI 只接触干净的接口。
+
 ```typescript
 // 搜索任务
 task_search(query: string, level?: 1|2|3, status?: string): Task[]
