@@ -26,7 +26,27 @@
 
 ---
 
-## 二、SQLite 存储层
+## 二、存储双层架构
+
+```
+SQLite（source of truth）          ← 结构化数据，支持查询和关联
+    │
+    └── compile ──→ .gemini-data/wiki/    ← 编译产物，Markdown，AI 可直接读
+                        users/{openid}/profile.md   ← 用户画像，注入 system prompt
+                        projects/{slug}/summary.md  ← 项目总结
+                        tasks/{id}/l1.md            ← 任务 L1 快照
+```
+
+| 存什么 | 存哪 | 原因 |
+|--------|------|------|
+| 原始对话消息、任务数据、任务关系、L1/L2/L3 摘要 | SQLite | 结构化，需要查询、索引、关联 |
+| 用户画像、项目总结、长期结论 | Markdown 文件 | AI 可直接读入 context，人也可编辑 |
+
+Buffer 存内存是临时方案，不可持久化。SQLite 是 source of truth，Markdown 是编译产物——参考 Claw memory-wiki 设计。知识图谱 side task 将来也可 compile 成 `wiki/graph/` 下的 Markdown 实体页。
+
+---
+
+## 三、SQLite 存储层（原 二）
 
 ### 数据库位置
 ```
@@ -107,7 +127,7 @@ CREATE VIRTUAL TABLE messages_fts USING fts5(
 
 ---
 
-## 三、任务管理系统
+## 四、任务管理系统（原 三）
 
 ### 3.1 任务层级（L1/L2/L3）
 
@@ -189,7 +209,7 @@ AI 通过工具调用主动加载上下文，**迭代检索**：
 
 ---
 
-## 四、Compaction 系统（更新版）
+## 五、Compaction 系统（原 四）
 
 ### 4.1 架构：Decorator Pattern
 
@@ -264,7 +284,36 @@ function findSafeCutPoint(messages: InternalMessage[], cutIdx: number): number {
 
 ---
 
-## 五、AI 工具集（Task 相关）
+## 六、搜索策略：FTS5 优先 + haiku 语义兜底
+
+### 三种方案对比
+
+| 方案 | 语义精度 | 代价 | 适用场景 |
+|------|----------|------|----------|
+| FTS5（SQLite 内置）| 关键词匹配，无语义 | 零依赖 | 精确词搜索 |
+| HRR（numpy 本地）| 中低，哈希符号向量 | 免费，无外部依赖 | 知识图谱结构检索（未来）|
+| LLM 语义判断（haiku）| 高，真正语义 | 已有，消耗 token | 语义兜底搜索 |
+| 本地 Embedding（Ollama）| 高，神经网络 | 免费，需跑 Ollama | 未来可选升级 |
+
+**HRR 说明**：HRR（Holographic Reduced Representations）是基于 hashlib 的符号向量，不是神经网络 embedding，"car" 和 "automobile" 向量完全不同。优势是结构组合（实体+关系+实体三元组编码），适合知识图谱，不适合同义词语义匹配。
+
+### 搜索执行流程
+
+```
+1. FTS5 关键词搜索
+      ↓ 有结果 → 返回
+      ↓ 无结果或结果置信度低
+2. 把所有活跃任务 L1 + 查询词 → haiku
+   "以下哪些任务和 [query] 相关？"
+      ↓
+3. haiku 返回相关 task_id 列表 → 加载对应上下文
+```
+
+这个模式与任务识别流程一致（都用 haiku 做语义判断），无需引入新依赖。
+
+---
+
+## 七、AI 工具集（Task 相关）（原 五）
 
 AI **不直接操作 SQL**，所有任务操作通过封装好的工具调用完成。
 工具是 GeminiClaw 的内置 Skill，隐藏所有 DB 细节，AI 只接触干净的接口。
@@ -297,7 +346,7 @@ task_promote(tempTaskId: string, parentId?: string): Task
 
 ---
 
-## 六、命令系统
+## 八、命令系统（原 六）
 
 所有命令统一处理，AI 是主要使用者，用户也可通过 QQBot 输入。
 
@@ -319,7 +368,7 @@ task_promote(tempTaskId: string, parentId?: string): Task
 
 ---
 
-## 七、实现阶段规划
+## 九、实现阶段规划（原 七）
 
 ```
 Phase 1：持久化地基
@@ -353,7 +402,7 @@ Phase 5：命令系统
 
 ---
 
-## 八、知识图谱（规划，暂不实现）
+## 十、知识图谱（规划，暂不实现）（原 八）
 
 **思路**：作为 side task 后台静默运行，从所有对话中抽取实体与关系，构建用户画像。
 
@@ -375,7 +424,7 @@ Phase 5：命令系统
 
 ---
 
-## 九、Token 估算误差测算计划
+## 十一、Token 估算误差测算计划（原 九）
 
 **方法**：
 1. 采样 20 轮真实对话（含工具调用）
