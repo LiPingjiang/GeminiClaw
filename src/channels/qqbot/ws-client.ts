@@ -96,14 +96,14 @@ export class QQBotWSClient {
       this._handlePayload(payload, token)
     })
 
-    ws.on("close", (code, reason) => {
+    ws.on("close", (code: number, reason: Buffer) => {
       console.warn(`[QQBotWSClient] WebSocket closed: code=${code} reason=${reason.toString()}`)
       if (!this.stopped) {
         this._scheduleReconnect()
       }
     })
 
-    ws.on("error", (err) => {
+    ws.on("error", (err: Error) => {
       console.error("[QQBotWSClient] WebSocket error:", err)
     })
   }
