@@ -6,8 +6,8 @@ vi.stubGlobal("fetch", fetchMock)
 
 function makeConfig() {
   return {
-    name: "friday",
-    type: "friday" as const,
+    name: "openai",
+    type: "openai" as const,
     apiKey: "test-key",
     baseUrl: "https://aigc.example.com/v1/openai/native",
     models: ["gemini-3-flash-preview"],
@@ -20,17 +20,17 @@ it("sends correct request and parses response", async () => {
   fetchMock.mockResolvedValue({
     ok: true,
     json: async () => ({
-      choices: [{ message: { content: "hello friday" } }],
+      choices: [{ message: { content: "hello openai" } }],
       model: "gemini-3-flash-preview",
       usage: { prompt_tokens: 10, completion_tokens: 5 },
     }),
   })
 
-  const { FridayProvider } = await import("./friday.js")
-  const p = new FridayProvider(makeConfig())
+  const { OpenAIProvider } = await import("./openai.js")
+  const p = new OpenAIProvider(makeConfig())
   const resp = await p.chat([{ role: "user", content: "hi" }])
 
-  expect(resp.content).toBe("hello friday")
+  expect(resp.content).toBe("hello openai")
   expect(resp.model).toBe("gemini-3-flash-preview")
   expect(fetchMock).toHaveBeenCalledOnce()
 
@@ -48,9 +48,9 @@ it("throws on non-ok response", async () => {
     text: async () => "rate limited",
   })
 
-  const { FridayProvider } = await import("./friday.js")
-  const p = new FridayProvider(makeConfig())
-  await expect(p.chat([{ role: "user", content: "hi" }])).rejects.toThrow("friday API error 429")
+  const { OpenAIProvider } = await import("./openai.js")
+  const p = new OpenAIProvider(makeConfig())
+  await expect(p.chat([{ role: "user", content: "hi" }])).rejects.toThrow("openai API error 429")
 })
 
 it("uses first model as default", async () => {
@@ -63,8 +63,8 @@ it("uses first model as default", async () => {
     }),
   })
 
-  const { FridayProvider } = await import("./friday.js")
-  const p = new FridayProvider(makeConfig())
+  const { OpenAIProvider } = await import("./openai.js")
+  const p = new OpenAIProvider(makeConfig())
   await p.chat([{ role: "user", content: "hi" }])
   const body = JSON.parse(fetchMock.mock.calls[0][1].body)
   expect(body.model).toBe("gemini-3-flash-preview")
@@ -93,8 +93,8 @@ it("stream yields delta chunks from SSE", async () => {
     body: readable,
   })
 
-  const { FridayProvider } = await import("./friday.js")
-  const p = new FridayProvider(makeConfig())
+  const { OpenAIProvider } = await import("./openai.js")
+  const p = new OpenAIProvider(makeConfig())
 
   const chunks: string[] = []
   for await (const chunk of p.stream([{ role: "user", content: "hi" }])) {
@@ -112,12 +112,12 @@ it("stream throws on non-ok response", async () => {
     text: async () => "service unavailable",
   })
 
-  const { FridayProvider } = await import("./friday.js")
-  const p = new FridayProvider(makeConfig())
+  const { OpenAIProvider } = await import("./openai.js")
+  const p = new OpenAIProvider(makeConfig())
 
   await expect(async () => {
     for await (const _ of p.stream([{ role: "user", content: "hi" }])) { /* drain */ }
-  }).rejects.toThrow("friday API error 503")
+  }).rejects.toThrow("openai API error 503")
 })
 
 it("stream skips malformed SSE lines", async () => {
@@ -137,8 +137,8 @@ it("stream skips malformed SSE lines", async () => {
 
   fetchMock.mockResolvedValue({ ok: true, body: readable })
 
-  const { FridayProvider } = await import("./friday.js")
-  const p = new FridayProvider(makeConfig())
+  const { OpenAIProvider } = await import("./openai.js")
+  const p = new OpenAIProvider(makeConfig())
 
   const chunks: string[] = []
   for await (const chunk of p.stream([{ role: "user", content: "hi" }])) {

@@ -1,54 +1,87 @@
 server:
-  port: 3000
-  host: "0.0.0.0"
-  # authToken: "your-secret-token"
+  port: 18888
+  host: "127.0.0.1"
+  # authToken: "your-secret-token"   # optional, for API auth
+
+# ── Providers ──────────────────────────────────────────────────────────────────
+# type: "anthropic"  — Anthropic-compatible API (official or any proxy)
+# type: "openai"     — OpenAI-compatible API (OpenAI, DeepSeek, Gemini, Hunyuan, Ollama, etc.)
+#
+# Tip: if you use a local proxy (e.g. proxy.py) that handles auth/billing,
+# just point baseUrl at the proxy — GeminiClaw will treat it as a regular provider.
 
 providers:
-  - name: mcli
-    type: mcli
-    apiKey: "your-mcli-api-key"
-    baseUrl: "https://mcli.sankuai.com"   # 注意：不要带 /v1 后缀， provider 内部会自动拼接
-    # extraHeaders：如果你的 mcli 需要额外 header（如美团内部部署），在此配置
-    # extraHeaders:
-    #   X-Working-Dir: "/your/project/path"
+  # ── Example 1: Anthropic (official) ────────────────────────────────────────
+  - name: anthropic
+    type: anthropic
+    apiKey: "sk-ant-..."
     models:
-      - claude-opus-4-6
-      - claude-sonnet-4-6
+      - claude-opus-4-5
+      - claude-sonnet-4-5
 
-  - name: friday
-    type: friday
-    apiKey: "your-friday-api-key"
-    baseUrl: "https://aigc.sankuai.com/v1/openai/native"
-    models:
-      - gemini-3-flash-preview
+  # ── Example 2: OpenAI ───────────────────────────────────────────────────────
+  # - name: openai
+  #   type: openai
+  #   apiKey: "sk-..."
+  #   baseUrl: "https://api.openai.com/v1"
+  #   models:
+  #     - gpt-4o
+  #     - gpt-4o-mini
+
+  # ── Example 3: DeepSeek ─────────────────────────────────────────────────────
+  # - name: deepseek
+  #   type: openai
+  #   apiKey: "sk-..."
+  #   baseUrl: "https://api.deepseek.com/v1"
+  #   models:
+  #     - deepseek-chat
+  #     - deepseek-reasoner
+
+  # ── Example 4: Tencent Hunyuan (腾讯混元) ───────────────────────────────────
+  # - name: hunyuan
+  #   type: openai
+  #   apiKey: "your-hunyuan-api-key"
+  #   baseUrl: "https://api.hunyuan.cloud.tencent.com/v1"
+  #   models:
+  #     - hunyuan-turbos-latest
+  #     - hunyuan-lite
+
+  # ── Example 5: Local proxy (e.g. internal proxy.py) ─────────────────────────
+  # - name: my-proxy
+  #   type: anthropic
+  #   apiKey: "your-key"
+  #   baseUrl: "http://127.0.0.1:15231"   # proxy handles billing/auth
+  #   models:
+  #     - claude-opus-4-5
+  #     - claude-sonnet-4-5
+
+  # ── Example 6: Ollama (local) ───────────────────────────────────────────────
+  # - name: ollama
+  #   type: openai
+  #   apiKey: "ollama"
+  #   baseUrl: "http://localhost:11434/v1"
+  #   models:
+  #     - llama3.2
+  #     - qwen2.5
 
 routing:
-  default: "mcli/claude-opus-4-6"
+  default: "anthropic/claude-sonnet-4-5"
   fallback:
-    - "mcli/claude-sonnet-4-6"
-    - "friday/gemini-3-flash-preview"
+    - "anthropic/claude-opus-4-5"
 
 memory:
   enabled: true
   dataDir: ".data"
-  maxSessionAge: 86400
-
-  # 记忆策略：
-  #   buffer  = 滑动窗口（纯内存，重启丢失，适合开发/测试）
-  #   layered = 分层 topics（SQLite 持久化，完整记忆系统，需要 friday provider）
-  strategy: buffer
-
-  maxActiveTopics: 16             # 最多保持活跃的事项数
-  compactThresholdBytes: 6144     # 事项文档超过此大小触发摘要压缩（6KB）
-  recentMessageLimit: 20          # 注入 context 的近期消息条数
-  triageAfterTurns: 3             # 累计几轮后触发立项判断
+  strategy: buffer          # buffer (in-memory) or layered (SQLite, persistent)
+  maxActiveTopics: 16
+  recentMessageLimit: 20
 
 agent:
   maxTurns: 20
   timeoutSeconds: 60
 
 workspace:
-  dir: ".workspace"   # 身份/记忆文件目录（SOUL.md, MEMORY.md, memory/）
+  dir: ".workspace"         # put SOUL.md, USER.md, MEMORY.md, memory/ here
 
 skills:
-  dir: "skills"       # Skill 目录（含 .registry.json 溯源注册表）
+  dir: "skills"             # put skill .md files here

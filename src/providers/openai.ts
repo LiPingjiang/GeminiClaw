@@ -1,7 +1,8 @@
 import type { ProviderConfig } from "../config/schema.js"
 import type { Message, ChatOptions, ChatResponse, StreamChunk, Provider, ToolCall } from "./types.js"
 
-export class FridayProvider implements Provider {
+/** Generic OpenAI-compatible provider. Works with OpenAI, DeepSeek, Gemini, Hunyuan, Ollama etc. */
+export class OpenAIProvider implements Provider {
   readonly name: string
   readonly models: string[]
   private apiKey: string
@@ -87,7 +88,7 @@ export class FridayProvider implements Provider {
 
     if (!res.ok) {
       const text = await res.text()
-      throw new Error(`friday API error ${res.status}: ${text}`)
+      throw new Error(`openai API error ${res.status}: ${text}`)
     }
 
     const data = await res.json() as {
@@ -140,7 +141,7 @@ export class FridayProvider implements Provider {
 
     if (!res.ok) {
       const text = await res.text()
-      throw new Error(`friday API error ${res.status}: ${text}`)
+      throw new Error(`openai API error ${res.status}: ${text}`)
     }
 
     const reader = res.body!.getReader()

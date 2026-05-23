@@ -1,8 +1,7 @@
 // src/index.ts
 import { loadConfig } from "./config/loader.js"
 import { AnthropicProvider } from "./providers/anthropic.js"
-import { McliProvider } from "./providers/mcli.js"
-import { FridayProvider } from "./providers/friday.js"
+import { OpenAIProvider } from "./providers/openai.js"
 import { ProviderRouter } from "./providers/router.js"
 import { buildStrategy } from "./memory/strategy.js"
 import { buildServer } from "./server/index.js"
@@ -18,10 +17,8 @@ function buildProvider(config: ProviderConfig): Provider {
   switch (config.type) {
     case "anthropic":
       return new AnthropicProvider(config)
-    case "mcli":
-      return new McliProvider(config)
-    case "friday":
-      return new FridayProvider(config)
+    case "openai":
+      return new OpenAIProvider(config)
     default:
       throw new Error(`Unsupported provider type: ${config.type}`)
   }
@@ -39,8 +36,9 @@ async function main(): Promise<void> {
   const db = openDb(dbPath)
   migrate(db)
 
-  // 路由 provider（friday，用于 layered 策略的摘要/路由）
-  const routerProvider = providers.find(p => p.name === "friday") ?? null
+  // 用于 layered 记忆策略的摘要/路由 provider，使用默认路由对应的 provider
+  const defaultProviderName = config.routing.default.split("/")[0]
+  const routerProvider = providers.find(p => p.name === defaultProviderName) ?? providers[0] ?? null
 
   // 记忆策略
   const strategy = buildStrategy(config, db, routerProvider)

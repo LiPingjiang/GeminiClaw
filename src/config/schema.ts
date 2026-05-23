@@ -6,7 +6,7 @@ export const serverConfigSchema = z.object({
   authToken: z.string().optional(),
 })
 
-export const providerTypeSchema = z.enum(["anthropic", "openai", "mcli", "friday"])
+export const providerTypeSchema = z.enum(["anthropic", "openai"])
 
 export const providerConfigSchema = z.object({
   name: z.string().min(1),
