@@ -16,6 +16,7 @@ function makeConfig(authToken?: string): Config {
     memory: {
       enabled: true,
       dataDir: ".data",
+      dbPath: ".gemini-data/memory.db",
       maxSessionAge: 3600,
       strategy: "buffer",
       maxActiveTopics: 16,

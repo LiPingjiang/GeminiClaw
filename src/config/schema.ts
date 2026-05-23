@@ -22,11 +22,12 @@ export const routingConfigSchema = z.object({
   fallback: z.array(z.string()).default([]),
 })
 
-export const memoryStrategySchema = z.enum(["buffer", "layered"]).default("buffer")
+export const memoryStrategySchema = z.enum(["buffer", "layered", "sqlite"]).default("buffer")
 
 export const memoryConfigSchema = z.object({
   enabled: z.boolean().default(true),
   dataDir: z.string().default(".data"),
+  dbPath: z.string().default(".gemini-data/memory.db"),
   maxSessionAge: z.number().int().positive().default(86400),
   strategy: memoryStrategySchema,
   maxActiveTopics: z.number().int().min(1).max(50).default(16),

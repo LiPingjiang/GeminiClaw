@@ -24,6 +24,7 @@ import type { Db } from "../db/client.js"
 import type { Provider } from "../providers/types.js"
 import { BufferStrategy } from "./strategies/buffer.js"
 import { LayeredStrategy } from "./strategies/layered.js"
+import { SqliteStrategy } from "./strategies/sqlite.js"
 
 function loadSystemPrompt(): string {
   // 优先加载项目根目录的 AGENT.md
@@ -58,6 +59,9 @@ export function buildStrategy(
   db: Db,
   routerProvider: Provider | null,
 ): MemoryStrategy {
+  if (config.memory.strategy === "sqlite") {
+    return new SqliteStrategy(db, config.memory.recentMessageLimit)
+  }
   if (config.memory.strategy === "layered" && routerProvider) {
     return new LayeredStrategy({
       db,
