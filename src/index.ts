@@ -57,6 +57,17 @@ async function main(): Promise<void> {
   })
   await evolution.start()
 
+  // 初始化 SkillSystem
+  const { SkillSystem } = await import("./skills/index.js")
+  const skillsDir = join(process.cwd(), "skills")
+  mkdirSync(skillsDir, { recursive: true })
+  const skillSystem = new SkillSystem(skillsDir)
+  skillSystem.initialize(evolutionDb)
+
+  // 设置全局 EvolutionEngine 引用
+  const { setEvolutionEngine } = await import("./server/routes/evolution-deps.js")
+  setEvolutionEngine(evolution)
+
   const server = await buildServer(config, router, strategy, evolution)
 
   await server.listen({ port: config.server.port, host: config.server.host })

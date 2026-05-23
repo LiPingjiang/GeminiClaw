@@ -46,12 +46,7 @@ interface IntentRow {
   target_files: string
   evidence: string
   risk_level: string
-  requires_human_approval: number
   status: string
-  why_now: string
-  discovered_context: string
-  snoozed_until: number | null
-  snooze_count: number
   created_at: number
   updated_at: number
 }
@@ -135,17 +130,12 @@ interface EvolutionPreviewRow {
 function rowToIntent(row: IntentRow): Intent {
   return {
     id: row.id,
-    type: row.type as Intent["type"],
+    type: row.type,
     description: row.description,
     targetFiles: decodeArr(row.target_files),
     evidence: decodeArr(row.evidence),
     riskLevel: row.risk_level as Intent["riskLevel"],
-    requiresHumanApproval: row.requires_human_approval === 1,
     status: row.status as IntentStatus,
-    whyNow: row.why_now,
-    discoveredContext: row.discovered_context,
-    snoozedUntil: row.snoozed_until ?? undefined,
-    snoozeCount: row.snooze_count,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }
@@ -243,20 +233,15 @@ function rowToEvolutionPreview(row: EvolutionPreviewRow): EvolutionPreview {
 
 const DDL = `
 CREATE TABLE IF NOT EXISTS intents (
-  id                       TEXT PRIMARY KEY,
-  type                     TEXT NOT NULL,
-  description              TEXT NOT NULL,
-  target_files             TEXT NOT NULL DEFAULT '[]',
-  evidence                 TEXT NOT NULL DEFAULT '[]',
-  risk_level               TEXT NOT NULL,
-  requires_human_approval  INTEGER NOT NULL DEFAULT 0,
-  status                   TEXT NOT NULL DEFAULT 'pending',
-  why_now                  TEXT NOT NULL DEFAULT '',
-  discovered_context       TEXT NOT NULL DEFAULT '',
-  snoozed_until            INTEGER,
-  snooze_count             INTEGER NOT NULL DEFAULT 0,
-  created_at               INTEGER NOT NULL,
-  updated_at               INTEGER NOT NULL
+  id            TEXT PRIMARY KEY,
+  type          TEXT NOT NULL,
+  description   TEXT NOT NULL,
+  target_files  TEXT NOT NULL DEFAULT '[]',
+  evidence      TEXT NOT NULL DEFAULT '[]',
+  risk_level    TEXT NOT NULL,
+  status        TEXT NOT NULL DEFAULT 'pending',
+  created_at    INTEGER NOT NULL,
+  updated_at    INTEGER NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_intents_status ON intents(status);
@@ -304,6 +289,14 @@ CREATE TABLE IF NOT EXISTS upstream_checks (
   checked_at        INTEGER NOT NULL,
   intent_generated  INTEGER NOT NULL DEFAULT 0
 );
+
+CREATE TABLE IF NOT EXISTS tracked_files (
+  file_path          TEXT PRIMARY KEY,
+  file_type          TEXT NOT NULL,
+  added_at           INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_tracked_files_type ON tracked_files(file_type);
 
 CREATE TABLE IF NOT EXISTS pending_reviews (
   intent_id     TEXT PRIMARY KEY,
@@ -364,6 +357,27 @@ export class EvolutionDB {
   }
 
   // -------------------------------------------------------------------------
+  // File Tracking
+  // -------------------------------------------------------------------------
+
+  addTrackedFile(filePath: string, fileType: string): void {
+    this.db.prepare(`
+      INSERT OR IGNORE INTO tracked_files (file_path, file_type, added_at)
+      VALUES (?, ?, ?)
+    `).run(filePath, fileType, Date.now())
+  }
+
+  getTrackedFiles(fileType?: string): Array<{ filePath: string; fileType: string }> {
+    if (fileType) {
+      const rows = this.db.prepare(`SELECT file_path as filePath, file_type as fileType FROM tracked_files WHERE file_type = ?`).all(fileType)
+      return rows as Array<{ filePath: string; fileType: string }>
+    } else {
+      const rows = this.db.prepare(`SELECT file_path as filePath, file_type as fileType FROM tracked_files`).all()
+      return rows as Array<{ filePath: string; fileType: string }>
+    }
+  }
+
+  // -------------------------------------------------------------------------
   // Intents
   // -------------------------------------------------------------------------
 
@@ -371,13 +385,11 @@ export class EvolutionDB {
     this.db.prepare(`
       INSERT INTO intents (
         id, type, description, target_files, evidence,
-        risk_level, requires_human_approval, status,
-        why_now, discovered_context, snoozed_until, snooze_count,
+        risk_level, status,
         created_at, updated_at
       ) VALUES (
         @id, @type, @description, @targetFiles, @evidence,
-        @riskLevel, @requiresHumanApproval, @status,
-        @whyNow, @discoveredContext, @snoozedUntil, @snoozeCount,
+        @riskLevel, @status,
         @createdAt, @updatedAt
       )
     `).run({
@@ -387,12 +399,7 @@ export class EvolutionDB {
       targetFiles: encodeArr(intent.targetFiles),
       evidence: encodeArr(intent.evidence),
       riskLevel: intent.riskLevel,
-      requiresHumanApproval: intent.requiresHumanApproval ? 1 : 0,
       status: intent.status,
-      whyNow: intent.whyNow,
-      discoveredContext: intent.discoveredContext,
-      snoozedUntil: intent.snoozedUntil ?? null,
-      snoozeCount: intent.snoozeCount,
       createdAt: intent.createdAt,
       updatedAt: intent.updatedAt,
     })

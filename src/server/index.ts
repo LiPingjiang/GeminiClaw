@@ -53,6 +53,19 @@ export async function buildServer(
 ): Promise<FastifyInstance> {
   const fastify = Fastify({ logger: false })
 
+  // Request logging
+  fastify.addHook('onRequest', async (request) => {
+    console.log(`[${new Date().toISOString()}] ${request.method} ${request.url}`)
+  })
+
+  fastify.addHook('onResponse', async (request, reply) => {
+    console.log(`[${new Date().toISOString()}] ${request.method} ${request.url} → ${reply.statusCode} (${reply.elapsedTime.toFixed(0)}ms)`)
+  })
+
+  fastify.addHook('onError', async (request, reply, error) => {
+    console.error(`[${new Date().toISOString()}] ERROR ${request.method} ${request.url}:`, error.message)
+  })
+
   // CORS — allow all origins for local dev
   // Must use onRequest (not onSend) because SSE routes use reply.hijack()
   // which bypasses Fastify's reply pipeline entirely.
@@ -141,6 +154,7 @@ export async function buildServer(
     authToken: config.server.authToken,
     evolution,
     agentLoop,
+    config: { agent: { timeoutSeconds: (config as any).agent?.timeoutSeconds ?? 60 } },
   })
 
   if (evolution) {

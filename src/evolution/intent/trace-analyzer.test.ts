@@ -63,7 +63,7 @@ describe("TraceAnalyzer", () => {
     expect(intents[0].riskLevel).toBe("low")
     expect(intents[0].status).toBe("pending")
     expect(intents[0].evidence.length).toBeGreaterThan(0)
-    expect(intents[0].whyNow).toContain("60%")
+    expect(intents[0].evidence.join(" ")).toContain("60%")
   })
 
   it("respects custom failure rate threshold", () => {

@@ -61,11 +61,7 @@ export class TraceAnalyzer {
         ...(topTool ? [`Top failing tool: "${topTool[0]}" (${topTool[1]} occurrences)`] : []),
       ],
       riskLevel: "low",
-      requiresHumanApproval: false,
       status: "pending",
-      whyNow: `Failure rate hit ${pct}% in the last ${Math.round(this.config.windowMs / 3600000)}h window, exceeding the ${Math.round(this.config.failureRateThreshold * 100)}% threshold.`,
-      discoveredContext: "Automated trace analysis",
-      snoozeCount: 0,
       createdAt: now,
       updatedAt: now,
     }

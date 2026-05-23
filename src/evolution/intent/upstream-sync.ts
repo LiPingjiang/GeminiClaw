@@ -120,11 +120,7 @@ Only include clearly beneficial and applicable changes. Return [] if nothing is 
       targetFiles: item.targetFiles ?? [],
       evidence: item.evidence ?? [],
       riskLevel: item.riskLevel ?? "medium",
-      requiresHumanApproval: true,
       status: "pending" as const,
-      whyNow: `New commits in upstream "${repo.name}": ${newCommits.slice(0, 3).join(", ")}`,
-      discoveredContext: `Upstream sync check for ${repo.name}`,
-      snoozeCount: 0,
       createdAt: now,
       updatedAt: now,
     }))

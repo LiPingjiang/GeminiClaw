@@ -149,11 +149,7 @@ describe("Switcher", () => {
       targetFiles: ["new-feature.ts"],
       evidence: [],
       riskLevel: "low" as const,
-      requiresHumanApproval: false,
       status: "validating" as const,
-      whyNow: "test",
-      discoveredContext: "test",
-      snoozeCount: 0,
       createdAt: Date.now(),
       updatedAt: Date.now(),
     }

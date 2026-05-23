@@ -96,11 +96,7 @@ export class MemoryTopicsAnalyzer {
                 `doc_size: ${row.doc_size}`,
               ],
               riskLevel: "low",
-              requiresHumanApproval: false,
               status: "pending",
-              whyNow: `Topic summary content (${content.length} chars) exceeds the ${threshold}-char threshold, which may slow down memory retrieval and context injection.`,
-              discoveredContext: "Automated memory topics analysis",
-              snoozeCount: 0,
               createdAt: now,
               updatedAt: now,
             })

@@ -25,7 +25,18 @@ export type ChatFn = (
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type JSONSchema = Record<string, unknown>
-type ToolHandler = (args: Record<string, unknown>) => Promise<ToolResult>
+
+interface ToolContext {
+  sessionId: string
+  workdir: string
+  logger: {
+    info(msg: string, ...args: unknown[]): void
+    warn(msg: string, ...args: unknown[]): void
+    error(msg: string, ...args: unknown[]): void
+  }
+}
+
+type ToolHandler = (args: Record<string, unknown>, ctx: ToolContext) => Promise<ToolResult>
 
 export interface ToolRegistryLike {
   get(name: string): { handler: ToolHandler; schema: JSONSchema; executionMode?: string } | null
@@ -35,6 +46,8 @@ export interface ToolRegistryLike {
 interface Logger {
   debug(msg: string, ...args: unknown[]): void
   error(msg: string, ...args: unknown[]): void
+  info?(msg: string, ...args: unknown[]): void
+  warn?(msg: string, ...args: unknown[]): void
 }
 
 const SEQUENTIAL_TOOLS = new Set(['exec', 'write', 'edit'])
@@ -128,6 +141,47 @@ export class AgentLoop {
     let messages = [...params.messages]
     let turn = 0
     const maxTurns = this.config.maxTurns
+
+    // ── Command handling ────────────────────────────────────────────────────
+    // 检查最新消息是否为命令
+    const lastMessage = messages[messages.length - 1]
+    if (lastMessage && lastMessage.role === 'user') {
+      const { CommandParser } = await import('./command-parser.js')
+      
+      if (CommandParser.isCommand(lastMessage.content)) {
+        const commandArgs = CommandParser.toToolCallArgs(lastMessage.content)
+        if (commandArgs) {
+          // 调用 evolution_command 工具
+          const toolEntry = this.toolRegistry.get('evolution_command')
+          if (toolEntry) {
+            try {
+              const result = await toolEntry.handler(commandArgs, {
+                sessionId: params.sessionId,
+                workdir: process.cwd(),
+                logger: {
+                  info: this.logger.info?.bind(this.logger) || (() => undefined),
+                  warn: this.logger.warn?.bind(this.logger) || (() => undefined),
+                  error: this.logger.error.bind(this.logger),
+                },
+              })
+              
+              // 直接返回工具结果作为响应
+              const toolRes = result as unknown as { type?: string; text?: string; error?: string; content?: string }
+              const resultText = toolRes.type === 'text' ? (toolRes.text ?? '命令执行失败')
+                : toolRes.type === 'error' ? `❌ ${toolRes.error}`
+                : (toolRes.content ?? '命令执行失败')
+              yield { type: 'message_delta', delta: resultText }
+              yield { type: 'agent_end', totalTurns: 1, stopReason: 'no_tool_calls' }
+              return
+            } catch (err) {
+              yield { type: 'message_delta', delta: `❌ 命令执行失败: ${err}` }
+              yield { type: 'agent_end', totalTurns: 1, stopReason: 'aborted' }
+              return
+            }
+          }
+        }
+      }
+    }
 
     // Guardrails — only active when config.guardrails is set
     const guardrails = this.config.guardrails
@@ -511,7 +565,16 @@ export class AgentLoop {
     let isError = false
 
     try {
-      toolResult = await entry.handler(tc.args)
+      const toolContext: ToolContext = {
+        sessionId,
+        workdir: process.cwd(),
+        logger: {
+          info: this.logger.info?.bind(this.logger) || (() => undefined),
+          warn: this.logger.warn?.bind(this.logger) || (() => undefined),
+          error: this.logger.error.bind(this.logger),
+        },
+      }
+      toolResult = await entry.handler(tc.args, toolContext)
       isError = toolResult.isError ?? false
     } catch (err) {
       isError = true

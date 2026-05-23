@@ -9,7 +9,7 @@ import { Mutator } from "./mutator/mutator.js"
 import { Validator } from "./validator/validator.js"
 import { Switcher } from "./switcher/switcher.js"
 import { CircuitBreaker } from "./circuit-breaker/circuit-breaker.js"
-import { IntentEngine } from "./intent/engine.js"
+import { IntentEngine } from "./intent/engine-with-skills.js"
 import type { UpstreamRepo } from "./intent/upstream-sync.js"
 import {
   DEFAULT_EVOLUTION_CONFIG,
@@ -25,8 +25,6 @@ import {
 import type { ProviderRouter } from "../providers/router.js"
 import { ConversationStore } from "./conversation-store.js"
 import { PreviewService } from "./preview-service.js"
-import { IntentClassifier } from "./intent-classifier.js"
-import { RitualHandler } from "./ritual-handler.js"
 
 // ---------------------------------------------------------------------------
 // Logger interface (minimal, no external dependency)
@@ -77,8 +75,7 @@ export class EvolutionEngine {
   private tracesSinceLastRun = 0
   private conversationStore: ConversationStore
   private previewService: PreviewService
-  private intentClassifier: IntentClassifier
-  private ritualHandler: RitualHandler
+
 
   constructor(params: EvolutionEngineParams) {
     this.db = params.db
@@ -134,6 +131,7 @@ export class EvolutionEngine {
       providerRouter: this.providerRouter,
       repoRoot: this.repoRoot,
       memoryDbPath: params.memoryDbPath ?? "",
+      skillsDir: join(this.repoRoot, "skills"),
       upstreamRepos: params.upstreamRepos ?? [],
     })
     this.conversationStore = new ConversationStore(this.db)
@@ -142,8 +140,7 @@ export class EvolutionEngine {
       providerRouter: this.providerRouter,
       logger: this.logger,
     })
-    this.intentClassifier = new IntentClassifier(this.providerRouter)
-    this.ritualHandler = new RitualHandler(this.db)
+
   }
 
   // -------------------------------------------------------------------------
@@ -585,15 +582,7 @@ export class EvolutionEngine {
     return this.conversationStore
   }
 
-  getIntentClassifier(): IntentClassifier {
-    return this.intentClassifier
-  }
-
-  getRitualHandler(): RitualHandler {
-    return this.ritualHandler
-  }
-
-  /** @internal */
+/** @internal */
   getConfig(): EvolutionConfig {
     return this.config
   }
@@ -637,7 +626,6 @@ export class EvolutionEngine {
     return {
       ...intent,
       riskLevel: nextRisk[intent.riskLevel] ?? "high",
-      requiresHumanApproval: true,
     }
   }
 }

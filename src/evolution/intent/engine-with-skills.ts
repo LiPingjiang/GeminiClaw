@@ -1,3 +1,6 @@
+// src/evolution/intent/engine-with-skills.ts
+// 集成 Skill 支持的 IntentEngine
+
 import { randomUUID } from "crypto"
 import type { EvolutionDB } from "../db.js"
 import type { Intent, RiskLevel } from "../types.js"
@@ -6,12 +9,14 @@ import { TraceAnalyzer } from "./trace-analyzer.js"
 import { MemoryTopicsAnalyzer } from "./memory-topics-analyzer.js"
 import { UpstreamSyncSource } from "./upstream-sync.js"
 import type { UpstreamRepo } from "./upstream-sync.js"
+import { SkillAnalyzer } from "../../skills/analyzer.js"
 
 export interface IntentEngineConfig {
   db: EvolutionDB
   providerRouter: ProviderRouter
   repoRoot: string
   memoryDbPath: string
+  skillsDir: string  // 新增：技能目录
   upstreamRepos?: UpstreamRepo[]
 }
 
@@ -20,6 +25,7 @@ export class IntentEngine {
   private traceAnalyzer: TraceAnalyzer
   private memoryAnalyzer: MemoryTopicsAnalyzer
   private upstreamSource: UpstreamSyncSource
+  private skillAnalyzer: SkillAnalyzer
 
   constructor(config: IntentEngineConfig) {
     this.db = config.db
@@ -31,17 +37,18 @@ export class IntentEngine {
       repoRoot: config.repoRoot,
       upstreamRepos: config.upstreamRepos ?? [],
     })
+    this.skillAnalyzer = new SkillAnalyzer(config.skillsDir, config.db)
   }
 
   /**
-   * Run all three sources, deduplicate, sort by risk (low first), write to DB.
-   * Returns the number of new intents inserted.
+   * 运行所有分析源，包括技能分析
    */
   async generateIntents(): Promise<number> {
     const candidates: Intent[] = [
       ...this.traceAnalyzer.analyze(),
       ...this.memoryAnalyzer.analyze(),
       ...(await this.upstreamSource.check()),
+      ...this.skillAnalyzer.analyze(),  // 新增：技能分析
     ]
 
     const newIntents = candidates.filter(
@@ -59,8 +66,7 @@ export class IntentEngine {
   }
 
   /**
-   * Add a user-triggered intent. Always requires human approval.
-   * Returns the new intent id.
+   * 添加用户触发的意图
    */
   addUserIntent(params: {
     description: string
@@ -82,5 +88,12 @@ export class IntentEngine {
     }
     this.db.insertIntent(intent)
     return intent.id
+  }
+
+  /**
+   * 初始化技能系统
+   */
+  initializeSkills(): void {
+    this.skillAnalyzer.registerSkillFiles()
   }
 }

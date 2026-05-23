@@ -33,11 +33,7 @@ function makeIntent(overrides?: Partial<Intent>): Intent {
     targetFiles: ["src/server/routes/chat.ts"],
     evidence: [],
     riskLevel: "low",
-    requiresHumanApproval: false,
     status: "pending",
-    whyNow: "users complain",
-    discoveredContext: "trace analysis",
-    snoozeCount: 0,
     createdAt: Date.now(),
     updatedAt: Date.now(),
     ...overrides,
@@ -207,7 +203,7 @@ describe("EvolutionEngine.runOnce()", () => {
   // 5. Low confidence triggers risk escalation
   // -------------------------------------------------------------------------
   it("escalates riskLevel from low to medium when confidence is below threshold", async () => {
-    const intent = makeIntent({ riskLevel: "low", requiresHumanApproval: false })
+    const intent = makeIntent({ riskLevel: "low" })
     const db = makeMockDb([intent])
     const engine = makeEngine(db)
 
@@ -298,7 +294,7 @@ describe("EvolutionEngine.runOnce()", () => {
   // 7. Low-risk intent is now queued for approval (no auto-switch)
   // -------------------------------------------------------------------------
   it("queues low-risk intent for approval instead of auto-switching", async () => {
-    const intent = makeIntent({ riskLevel: "low", requiresHumanApproval: false })
+    const intent = makeIntent({ riskLevel: "low" })
     const db = makeMockDb([intent])
     const engine = makeEngine(db)
 
@@ -349,7 +345,7 @@ describe("EvolutionEngine.runOnce()", () => {
   // 8. Low-risk intent queued for approval (replaces old auto-switch-fails test)
   // -------------------------------------------------------------------------
   it("queues low-risk intent for approval and does not call switch", async () => {
-    const intent = makeIntent({ riskLevel: "low", requiresHumanApproval: false })
+    const intent = makeIntent({ riskLevel: "low" })
     const db = makeMockDb([intent])
     const engine = makeEngine(db)
 
@@ -395,7 +391,7 @@ describe("EvolutionEngine.runOnce()", () => {
   // 9. Medium/high risk requires approval
   // -------------------------------------------------------------------------
   it("inserts pending review and returns needsApproval for medium-risk intent", async () => {
-    const intent = makeIntent({ riskLevel: "medium", requiresHumanApproval: false })
+    const intent = makeIntent({ riskLevel: "medium" })
     const db = makeMockDb([intent])
     const engine = makeEngine(db)
 
@@ -445,7 +441,7 @@ describe("EvolutionEngine.runOnce()", () => {
   // 10. Level 2 validation is triggered when traces >= 3
   // -------------------------------------------------------------------------
   it("triggers Level 2 validation when trace count >= 3", async () => {
-    const intent = makeIntent({ riskLevel: "low", requiresHumanApproval: false })
+    const intent = makeIntent({ riskLevel: "low" })
     const db = makeMockDb([intent])
     const engine = makeEngine(db)
 
@@ -504,7 +500,7 @@ describe("EvolutionEngine.runOnce()", () => {
   // 11. Level 2 validation fails
   // -------------------------------------------------------------------------
   it("rejects intent when Level 2 validation fails (not skipped)", async () => {
-    const intent = makeIntent({ riskLevel: "low", requiresHumanApproval: false })
+    const intent = makeIntent({ riskLevel: "low" })
     const db = makeMockDb([intent])
     const engine = makeEngine(db)
 

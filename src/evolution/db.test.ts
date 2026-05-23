@@ -34,11 +34,7 @@ function makeIntent(overrides: Partial<Intent> = {}): Intent {
     targetFiles: ["src/providers/router.ts"],
     evidence: ["3 failures observed in last 24h"],
     riskLevel: "low",
-    requiresHumanApproval: false,
     status: "pending",
-    whyNow: "High failure rate detected",
-    discoveredContext: "User was debugging deployment",
-    snoozeCount: 0,
     createdAt: now,
     updatedAt: now,
     ...overrides,
@@ -88,7 +84,6 @@ describe("EvolutionDB", () => {
       expect(fetched!.description).toBe(intent.description)
       expect(fetched!.targetFiles).toEqual(["src/providers/router.ts"])
       expect(fetched!.evidence).toEqual(["3 failures observed in last 24h"])
-      expect(fetched!.requiresHumanApproval).toBe(false)
       expect(fetched!.status).toBe("pending")
     })
 
@@ -129,30 +124,7 @@ describe("EvolutionDB", () => {
       expect(updated!.status).toBe("in_progress")
     })
 
-    it("preserves snoozedUntil when set", () => {
-      const snoozedUntil = Date.now() + 86400000
-      const intent = makeIntent({ snoozedUntil, status: "snoozed" })
-      db.insertIntent(intent)
 
-      const fetched = db.getIntent(intent.id)
-      expect(fetched!.snoozedUntil).toBe(snoozedUntil)
-    })
-
-    it("preserves snoozedUntil as undefined when not set", () => {
-      const intent = makeIntent()
-      db.insertIntent(intent)
-
-      const fetched = db.getIntent(intent.id)
-      expect(fetched!.snoozedUntil).toBeUndefined()
-    })
-
-    it("handles requiresHumanApproval=true correctly", () => {
-      const intent = makeIntent({ requiresHumanApproval: true })
-      db.insertIntent(intent)
-
-      const fetched = db.getIntent(intent.id)
-      expect(fetched!.requiresHumanApproval).toBe(true)
-    })
   })
 
   // -------------------------------------------------------------------------

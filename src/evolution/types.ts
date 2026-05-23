@@ -5,13 +5,6 @@
 // Intent
 // ---------------------------------------------------------------------------
 
-export type IntentType =
-  | "behavior_fix"
-  | "new_feature"
-  | "upstream_sync"
-  | "performance"
-  | "bootstrap"
-
 export type IntentStatus =
   | "pending"
   | "in_progress"
@@ -26,17 +19,12 @@ export type RiskLevel = "low" | "medium" | "high"
 
 export interface Intent {
   id: string
-  type: IntentType
+  type: string
   description: string
   targetFiles: string[]  // JSON array in DB
   evidence: string[]     // JSON array in DB
   riskLevel: RiskLevel
-  requiresHumanApproval: boolean
   status: IntentStatus
-  whyNow: string
-  discoveredContext: string
-  snoozedUntil?: number   // Unix timestamp ms
-  snoozeCount: number
   createdAt: number       // Unix timestamp ms
   updatedAt: number       // Unix timestamp ms
 }
@@ -112,6 +100,21 @@ export interface PendingReview {
   comment?: string
   requestedAt: number     // Unix timestamp ms
   resolvedAt?: number     // Unix timestamp ms
+}
+
+// ---------------------------------------------------------------------------
+// Ritual Session State
+// ---------------------------------------------------------------------------
+
+export interface RitualSessionState {
+  candidates: Array<{
+    index: number
+    intentId: string
+    description: string
+    riskLevel: RiskLevel
+    targetFiles: string[]
+  }>
+  selectedIntentId?: string
 }
 
 // ---------------------------------------------------------------------------
@@ -302,29 +305,4 @@ export interface EvolutionPreview {
 // Ritual Session State
 // ---------------------------------------------------------------------------
 
-export interface RitualSessionState {
-  candidates: Array<{
-    index: number
-    intentId: string
-    description: string
-    riskLevel: RiskLevel
-    targetFiles: string[]
-  }>
-  selectedIntentId?: string
-}
 
-// ---------------------------------------------------------------------------
-// Intent Classification
-// ---------------------------------------------------------------------------
-
-export type ChatIntent =
-  | "evolve"
-  | "evolve_show"
-  | "evolve_confirm"
-  | "evolve_reject"
-  | "chat"
-
-export interface ClassifyResult {
-  intent: ChatIntent
-  index?: number   // for evolve_show: which candidate (1-based)
-}

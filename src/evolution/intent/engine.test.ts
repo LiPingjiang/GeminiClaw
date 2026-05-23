@@ -92,7 +92,7 @@ describe("IntentEngine", () => {
     expect(intents).toHaveLength(1)
   })
 
-  it("addUserIntent creates intent with requiresHumanApproval=true", () => {
+  it("addUserIntent creates intent with correct type and status", () => {
     const engine = new IntentEngine({
       db,
       providerRouter: mockRouter,
@@ -107,7 +107,6 @@ describe("IntentEngine", () => {
     expect(typeof id).toBe("string")
     const intent = db.getIntent(id)
     expect(intent).not.toBeNull()
-    expect(intent!.requiresHumanApproval).toBe(true)
     expect(intent!.type).toBe("new_feature")
     expect(intent!.status).toBe("pending")
   })
