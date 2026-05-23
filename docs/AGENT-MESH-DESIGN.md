@@ -307,3 +307,139 @@ agentMesh:
   idleTimeoutMs: 300000 # idle 超过 5 分钟则销毁（常驻 misc 除外）
   routeMaxHops: 10      # 单条消息最多转发次数（超出视为异常）
 ```
+
+---
+
+## 四、Named Agent（命名 Agent）
+
+### 4.1 名字分配策略
+
+**三层叠加：**
+1. **默认**：预设中文名字池按顺序分配
+   ```typescript
+   const NAME_POOL = ['小张', '小王', '小李', '小赵', '小陈', '小刘', '小孙', '小周']
+   ```
+2. **任务型 AI 命名**：创建 Task Agent 时，可选让 haiku 根据 taskTitle 生成有意义名字（如"财经"）
+3. **用户改名**：`/rename 小王 财经` 随时修改
+
+### 4.2 回复前缀
+
+所有 Agent 回复自动加前缀：
+```
+[财经] K线显示近期...
+[小张] 好的，已记录...
+```
+系统切换 Agent 时主动告知：`[系统] 已切换到 小张`
+
+### 4.3 Sticky Agent
+
+用户命令：
+- `我要跟小王对话` / `@小王` / `/talk 小王` → 设置 sticky
+- `切换到杂项` / `/talk misc` → 切换到任意可用 misc
+- `/talk off` → 取消 sticky
+
+**持久化到 SQLite**（`user_preferences` 表），重启后恢复：
+```sql
+CREATE TABLE IF NOT EXISTS user_preferences (
+  user_id   TEXT PRIMARY KEY,
+  sticky_agent_name TEXT,
+  updated_at INTEGER NOT NULL
+);
+```
+注意：sticky 记录名字而非 ID（Agent 重建后名字复用，ID 会变）。
+
+### 4.4 优先级规则
+
+```
+用户有 sticky → sticky idle → 直接路由
+用户有 sticky → sticky busy → 告知用户，fallback 普通路由
+无 sticky → 普通 Receptionist 路由逻辑
+```
+
+---
+
+## 五、Agent 专属工具
+
+```typescript
+agent_list_peers(): AgentState[]
+agent_get_history(agentId: string, limit?: number): Message[]
+agent_route(targetAgentName: string, message: string): void
+agent_spawn(type: 'misc' | 'task', taskId?: string, name?: string): AgentId
+agent_switch_task(newTaskId: string, reason: string): void
+```
+
+---
+
+## 六、Agent 任务切换逻辑
+
+**Misc Agent 遇到新任务：**
+优先 spawn 新 Task Agent，自己保持 idle 接听用户消息，始终保证 ≥1 misc idle。
+
+**Task Agent 遇到不相关消息：**
+- 无 Task → 自己承担
+- Task 进行中 → 转发给 misc 或 spawn 新 agent
+- Task 已完成 → `agent_switch_task()` 归档旧 Task，承担新 Task
+
+---
+
+## 七、Buffer 借用机制
+
+参考 Spark Fair Scheduler：
+```
+misc 配额 2，task 配额 6，总上限 8
+misc 满 + task 有空闲 → misc 借用 task 槽（borrowed=true）
+task 需要槽 → 等借用 Agent 当前工作完成后回收，不强制打断
+```
+
+---
+
+## 八、实现阶段
+
+```
+Phase M1：AgentRegistry + MessageBus    ✅ commit c4df2d5
+Phase M2：AgentPool + Receptionist      🔄 进行中
+  - 按需创建/销毁 Agent（含名字分配）
+  - 路由逻辑（FTS 匹配 + misc fallback）
+  - Buffer 借用机制 + 排队逻辑
+  - Sticky Agent + user_preferences 表
+  - /v1/mesh/status 端点
+
+Phase M3：Agent 专属工具
+Phase M4：与 Task Manager 集成
+```
+
+---
+
+## 九、配置
+
+```yaml
+agentMesh:
+  enabled: true
+  maxTotal: 8
+  miscQuota: 2
+  alwaysOnMisc: 1
+  idleTimeoutMs: 300000
+  routeMaxHops: 10
+  taskAgentAiNaming: true
+```
+
+---
+
+## 十、验证命令
+
+```bash
+# 基础连通性
+bash scripts/verify.sh
+
+# 直接调用
+ssh -p 6022 pingjiangli@49.232.173.252 \
+  "curl -s http://127.0.0.1:18888/v1/agent/chat \
+    -H 'Authorization: Bearer gemeniclaw-local-dev-token-2026' \
+    -H 'Content-Type: application/json' \
+    -d '{\"message\":\"你好\",\"session_id\":\"test-001\"}'"
+
+# 查看 Mesh 状态（M2 完成后可用）
+ssh -p 6022 pingjiangli@49.232.173.252 \
+  "curl -s http://127.0.0.1:18888/v1/mesh/status \
+    -H 'Authorization: Bearer gemeniclaw-local-dev-token-2026'"
+```
