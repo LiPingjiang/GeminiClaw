@@ -23,6 +23,9 @@ importers:
       js-yaml:
         specifier: ^4.1.0
         version: 4.1.1
+      ws:
+        specifier: ^8.21.0
+        version: 8.21.0
       zod:
         specifier: ^3.24.4
         version: 3.25.76
@@ -36,6 +39,9 @@ importers:
       '@types/node':
         specifier: ^22.15.3
         version: 22.19.17
+      '@types/ws':
+        specifier: ^8.18.1
+        version: 8.18.1
       tsx:
         specifier: ^4.19.4
         version: 4.21.0
@@ -392,6 +398,9 @@ packages:
 
   '@types/node@22.19.17':
     resolution: {integrity: sha1-Cccfs0uiUQ+KyGU2Gx/LlVK4pYE=, tarball: http://r.npm.sankuai.com/@types/node/download/@types/node-22.19.17.tgz}
+
+  '@types/ws@8.18.1':
+    resolution: {integrity: sha1-SEZOS/Ld/RfbE9hFRn9gcP/qSqk=, tarball: http://r.npm.sankuai.com/@types/ws/download/@types/ws-8.18.1.tgz}
 
   '@vitest/expect@3.2.4':
     resolution: {integrity: sha1-g2ISTNgRpe4RxXaCB7nfU9NPJDM=, tarball: http://r.npm.sankuai.com/@vitest/expect/download/@vitest/expect-3.2.4.tgz}
@@ -1064,6 +1073,18 @@ packages:
   wrappy@1.0.2:
     resolution: {integrity: sha1-tSQ9jz7BqjXxNkYFvA0QNuMKtp8=, tarball: http://r.npm.sankuai.com/wrappy/download/wrappy-1.0.2.tgz}
 
+  ws@8.21.0:
+    resolution: {integrity: sha1-AS5BP8B0KZRRIbDBUxWMQ0MIaVE=, tarball: http://r.npm.sankuai.com/ws/download/ws-8.21.0.tgz}
+    engines: {node: '>=10.0.0'}
+    peerDependencies:
+      bufferutil: ^4.0.1
+      utf-8-validate: '>=5.0.2'
+    peerDependenciesMeta:
+      bufferutil:
+        optional: true
+      utf-8-validate:
+        optional: true
+
   zod@3.25.76:
     resolution: {integrity: sha1-JoQcP2/SKmonYOfMtxkXl2hHHjQ=, tarball: http://r.npm.sankuai.com/zod/download/zod-3.25.76.tgz}
 
@@ -1288,6 +1309,10 @@ snapshots:
   '@types/node@22.19.17':
     dependencies:
       undici-types: 6.21.0
+
+  '@types/ws@8.18.1':
+    dependencies:
+      '@types/node': 22.19.17
 
   '@vitest/expect@3.2.4':
     dependencies:
@@ -1990,5 +2015,7 @@ snapshots:
       stackback: 0.0.2
 
   wrappy@1.0.2: {}
+
+  ws@8.21.0: {}
 
   zod@3.25.76: {}

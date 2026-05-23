@@ -12,7 +12,8 @@ import { chatRoute } from "./routes/chat.js"
 import { completionsRoute } from "./routes/completions.js"
 import { evolutionRoute } from "./routes/evolution.js"
 import { runsRoute } from "./routes/runs.js"
-import { qqbotRoute } from "../channels/qqbot/index.js"
+import { ChannelRegistry } from "../channels/registry.js"
+import { QQBotChannel } from "../channels/qqbot/index.js"
 import { RunStore } from "./routes/run-store.js"
 
 // Adapt ToolRegistry (2-arg handler, rich ToolResult) to ToolRegistryLike (1-arg handler, simple ToolResult)
@@ -169,16 +170,19 @@ export async function buildServer(
     authToken: config.server.authToken,
   })
 
+  // Channel framework
+  const registry = new ChannelRegistry()
+
   const qqbotConfig = config.channels?.qqbot
   if (qqbotConfig?.enabled) {
-    await fastify.register(qqbotRoute, {
-      router,
-      strategy,
-      webhookPath: qqbotConfig.webhookPath ?? "/webhook/qqbot",
-      appId: qqbotConfig.appId ?? "",
-      clientSecret: qqbotConfig.clientSecret ?? "",
-    })
+    registry.register(new QQBotChannel(qqbotConfig, fastify))
   }
+
+  await registry.startAll({ router, memory: strategy })
+
+  fastify.addHook("onClose", async () => {
+    await registry.stopAll()
+  })
 
   return fastify
 }

@@ -86,3 +86,13 @@ workspace:
 
 skills:
   dir: "skills"             # put skill .md files here
+
+# ── Channels（可选）────────────────────────────────────────────
+channels:
+  qqbot:
+    enabled: false
+    mode: websocket          # websocket（主动连 QQ 网关）或 webhook（接收 HTTP 推送）
+    appId: "your-qqbot-appid"
+    clientSecret: "your-qqbot-secret"
+    # webhookPath: "/webhook/qqbot"   # 仅 webhook 模式需要
+    # intents: 1073741824              # 仅 websocket 模式，C2C 消息
