@@ -34,6 +34,13 @@ export const memoryConfigSchema = z.object({
   compactThresholdBytes: z.number().int().positive().default(6144),
   recentMessageLimit: z.number().int().positive().default(20),
   triageAfterTurns: z.number().int().positive().default(3),
+  // Compaction decorator config
+  compaction: z.object({
+    enabled: z.boolean().default(false),
+  }).default({}),
+  compactionThreshold: z.number().default(0.75),
+  compactionKeepLast: z.number().default(20),
+  compactionContextWindow: z.number().default(200000),
 })
 
 export const qqbotChannelConfigSchema = z.object({

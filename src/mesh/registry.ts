@@ -19,6 +19,14 @@ class AgentRegistry {
     return Array.from(this.agents.values())
   }
 
+  // 按名字查找 agent（sticky 用）
+  getByName(name: string): AgentState | undefined {
+    for (const agent of this.agents.values()) {
+      if (agent.name === name) return agent
+    }
+    return undefined
+  }
+
   // 按 taskId 查找 task agent
   getByTaskId(taskId: string): AgentState | undefined {
     for (const agent of this.agents.values()) {
@@ -71,9 +79,9 @@ class AgentRegistry {
       if (agent.type === 'task') {
         const taskPart = agent.taskTitle ? `Task: ${agent.taskTitle}` : `Task: ${agent.taskId ?? 'unknown'}`
         const workPart = agent.currentWork ? ` | "${agent.currentWork}"` : ''
-        return `- [task] ${agent.id} ${statusPart} | ${taskPart}${workPart}`
+        return `- [task] ${agent.id} (${agent.name}) ${statusPart} | ${taskPart}${workPart}`
       }
-      return `- [misc] ${agent.id} ${statusPart}`
+      return `- [misc] ${agent.id} (${agent.name}) ${statusPart}`
     })
     return `Active agents (${all.length}):\n${lines.join('\n')}`
   }

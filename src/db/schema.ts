@@ -39,5 +39,11 @@ export function migrate(db: Db): void {
 
     CREATE INDEX IF NOT EXISTS idx_memory_topics_active
       ON memory_topics(active, last_accessed_at);
+
+    CREATE TABLE IF NOT EXISTS user_preferences (
+      user_id TEXT PRIMARY KEY,
+      sticky_agent_name TEXT,
+      updated_at INTEGER NOT NULL
+    );
   `)
 }

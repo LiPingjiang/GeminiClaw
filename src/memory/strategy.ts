@@ -25,6 +25,7 @@ import type { Provider } from "../providers/types.js"
 import { BufferStrategy } from "./strategies/buffer.js"
 import { LayeredStrategy } from "./strategies/layered.js"
 import { SqliteStrategy } from "./strategies/sqlite.js"
+import { CompactionStrategy } from "./strategies/compaction.js"
 
 function loadSystemPrompt(): string {
   // 优先加载项目根目录的 AGENT.md
@@ -59,11 +60,13 @@ export function buildStrategy(
   db: Db,
   routerProvider: Provider | null,
 ): MemoryStrategy {
+  // Build the inner (storage) strategy first
+  let innerStrategy: MemoryStrategy
+
   if (config.memory.strategy === "sqlite") {
-    return new SqliteStrategy(db, config.memory.recentMessageLimit)
-  }
-  if (config.memory.strategy === "layered" && routerProvider) {
-    return new LayeredStrategy({
+    innerStrategy = new SqliteStrategy(db, config.memory.recentMessageLimit)
+  } else if (config.memory.strategy === "layered" && routerProvider) {
+    innerStrategy = new LayeredStrategy({
       db,
       routerProvider,
       triageProvider: routerProvider,
@@ -73,6 +76,32 @@ export function buildStrategy(
       compactThresholdBytes: config.memory.compactThresholdBytes,
       maxActiveTopics: config.memory.maxActiveTopics,
     })
+  } else {
+    innerStrategy = new BufferStrategy({ recentMessageLimit: config.memory.recentMessageLimit })
   }
-  return new BufferStrategy({ recentMessageLimit: config.memory.recentMessageLimit })
+
+  // If compaction is enabled, wrap the inner strategy with CompactionStrategy
+  if (config.memory.compaction?.enabled) {
+    const threshold = config.memory.compactionThreshold ?? 0.75
+    const contextWindow = config.memory.compactionContextWindow ?? 200000
+    const keepLast = config.memory.compactionKeepLast ?? 20
+
+    return new CompactionStrategy(innerStrategy, {
+      threshold,
+      contextWindow,
+      keepLast,
+      summarizeFn: async (messages, existingSummary) => {
+        // Phase 2 placeholder — Phase 3 will call a real LLM
+        const msgText = messages
+          .map(m => `${m.role}: ${typeof m.content === 'string' ? m.content : JSON.stringify(m.content)}`)
+          .join('\n')
+        void msgText  // reserved for future LLM call
+        return existingSummary
+          ? `[之前摘要]\n${existingSummary}\n\n[新增内容摘要]\n对话历史（${messages.length}条）已压缩`
+          : `对话历史（${messages.length}条）已压缩`
+      },
+    })
+  }
+
+  return innerStrategy
 }

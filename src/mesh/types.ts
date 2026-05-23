@@ -3,6 +3,7 @@ export type AgentStatus = 'idle' | 'busy' | 'sleeping'
 
 export interface AgentState {
   id: string
+  name: string
   type: AgentType
   taskId?: string
   taskTitle?: string
