@@ -78,6 +78,7 @@ interface ChatRouteOpts {
   evolution?: EvolutionEngine
   agentLoop?: AgentLoop
   sessionStore?: SessionStore
+  config?: { agent?: { timeoutSeconds?: number } }
 }
 
 // ── Active paused loops (in-memory, per process) ──────────────────────────────

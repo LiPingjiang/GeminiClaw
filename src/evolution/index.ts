@@ -10,6 +10,7 @@ import { Validator } from "./validator/validator.js"
 import { Switcher } from "./switcher/switcher.js"
 import { CircuitBreaker } from "./circuit-breaker/circuit-breaker.js"
 import { IntentEngine } from "./intent/engine-with-skills.js"
+import { RitualHandler } from "./ritual-handler.js"
 import type { UpstreamRepo } from "./intent/upstream-sync.js"
 import {
   DEFAULT_EVOLUTION_CONFIG,
@@ -75,6 +76,7 @@ export class EvolutionEngine {
   private tracesSinceLastRun = 0
   private conversationStore: ConversationStore
   private previewService: PreviewService
+  private _ritualHandler: RitualHandler | null = null
 
 
   constructor(params: EvolutionEngineParams) {
@@ -615,6 +617,31 @@ export class EvolutionEngine {
   /** @internal */
   getCircuitBreaker(): CircuitBreaker {
     return this.circuitBreaker
+  }
+
+  /** Returns a simple intent classifier for slash commands. */
+  getIntentClassifier() {
+    return {
+      classify: async (message: string): Promise<{ intent: string; index?: number }> => {
+        const text = message.trim()
+        if (text === '/进化') return { intent: 'evolve' }
+        const show = text.match(/^\/进化\s+预览\s+(\d+)$/)
+        if (show) return { intent: 'evolve_show', index: parseInt(show[1], 10) }
+        const confirm = text.match(/^\/进化\s+确认\s+(\d+)$/)
+        if (confirm) return { intent: 'evolve_confirm', index: parseInt(confirm[1], 10) }
+        const reject = text.match(/^\/进化\s+拒绝\s+(\d+)$/)
+        if (reject) return { intent: 'evolve_reject', index: parseInt(reject[1], 10) }
+        return { intent: 'none' }
+      },
+    }
+  }
+
+  /** Returns the RitualHandler for managing evolution sessions. */
+  getRitualHandler(): RitualHandler {
+    if (!this._ritualHandler) {
+      this._ritualHandler = new RitualHandler(this.db)
+    }
+    return this._ritualHandler
   }
 
   private escalateRisk(intent: Intent): Intent {
