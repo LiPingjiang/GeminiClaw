@@ -11,6 +11,7 @@ import { mkdirSync, existsSync } from "fs"
 import os from "os"
 import { EvolutionEngine, EvolutionDB } from "./evolution/index.js"
 import { agentPool } from "./mesh/index.js"
+import { templateManager } from "./templates/manager.js"
 import type { Provider } from "./providers/types.js"
 import type { ProviderConfig } from "./config/schema.js"
 
@@ -64,6 +65,9 @@ async function main(): Promise<void> {
   // 设置全局 EvolutionEngine 引用
   const { setEvolutionEngine } = await import("./server/routes/evolution-deps.js")
   setEvolutionEngine(evolution)
+
+  // Template system: ensure base template exists
+  templateManager.ensureBase(config)
 
   const server = await buildServer(config, router, strategy, evolution, db)
 
