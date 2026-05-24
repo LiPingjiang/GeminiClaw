@@ -148,14 +148,38 @@ export function buildStrategy(
       contextWindow,
       keepLast,
       summarizeFn: async (messages, existingSummary) => {
-        // Phase 2 placeholder — Phase 3 will call a real LLM
+        if (!routerProvider) {
+          // fallback: no provider available
+          return existingSummary
+            ? `[之前摘要]\n${existingSummary}\n\n[新增内容摘要]\n对话历史（${messages.length}条）已压缩`
+            : `对话历史（${messages.length}条）已压缩`
+        }
+
         const msgText = messages
           .map(m => `${m.role}: ${typeof m.content === 'string' ? m.content : JSON.stringify(m.content)}`)
           .join('\n')
-        void msgText  // reserved for future LLM call
-        return existingSummary
-          ? `[之前摘要]\n${existingSummary}\n\n[新增内容摘要]\n对话历史（${messages.length}条）已压缩`
-          : `对话历史（${messages.length}条）已压缩`
+
+        const promptParts: string[] = [
+          '你是一个对话摘要助手。请将以下对话历史压缩成简洁的摘要（300字以内），保留关键决策、重要结论、用户提到的具体信息（路径、配置、名字等）。',
+        ]
+        if (existingSummary) {
+          promptParts.push(`\n[历史摘要]：\n${existingSummary}`)
+        }
+        promptParts.push(`\n[需要压缩的对话]：\n${msgText}`)
+        promptParts.push('\n输出格式：直接输出摘要文本，不要加前缀标题。')
+
+        try {
+          const resp = await routerProvider.chat(
+            [{ role: 'user', content: promptParts.join('\n') }],
+            { maxTokens: 500 },
+          )
+          return resp.content
+        } catch (err) {
+          console.warn('[compaction] summarizeFn LLM call failed, using fallback:', err)
+          return existingSummary
+            ? `[之前摘要]\n${existingSummary}\n\n[新增内容摘要]\n对话历史（${messages.length}条）已压缩`
+            : `对话历史（${messages.length}条）已压缩`
+        }
       },
     })
   }
