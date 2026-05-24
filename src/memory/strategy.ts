@@ -1,5 +1,5 @@
 import type { Message } from "../providers/types.js"
-import { readFileSync, existsSync, writeFileSync } from "fs"
+import { readFileSync, existsSync, writeFileSync, mkdirSync } from "fs"
 import { join, isAbsolute } from "path"
 import os from "os"
 
@@ -67,8 +67,8 @@ function generateAgentMd(config: Config): string {
 }
 
 function loadSystemPrompt(config?: Config): string {
-  const cwd = process.cwd()
-  const agentMdPath = join(cwd, 'AGENT.md')
+  const userDataDir = join(os.homedir(), '.gemeniclaw')
+  const agentMdPath = join(userDataDir, 'AGENT.md')
 
   // 已有 AGENT.md，直接用
   if (existsSync(agentMdPath)) {
@@ -80,6 +80,7 @@ function loadSystemPrompt(config?: Config): string {
   if (config) {
     const generated = generateAgentMd(config)
     if (generated !== DEFAULT_SYSTEM_PROMPT_FALLBACK) {
+      mkdirSync(userDataDir, { recursive: true })
       writeFileSync(agentMdPath, generated, 'utf-8')
       console.log(`[memory] Generated AGENT.md from template → ${agentMdPath}`)
       return generated
