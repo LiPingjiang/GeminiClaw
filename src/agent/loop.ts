@@ -34,6 +34,7 @@ interface ToolContext {
     warn(msg: string, ...args: unknown[]): void
     error(msg: string, ...args: unknown[]): void
   }
+  extra?: Record<string, unknown>
 }
 
 type ToolHandler = (args: Record<string, unknown>, ctx: ToolContext) => Promise<ToolResult>
@@ -76,6 +77,7 @@ export class AgentLoop {
   private pauseId: string | null = null
   private pauseResolve: ((input: unknown) => void) | null = null
   private uncertaintyCleared = false  // set after first clarify_uncertainty is answered
+  private _toolContextExtra: Record<string, unknown> = {}
 
   constructor(params: {
     chatFn: ChatFn
@@ -134,9 +136,12 @@ export class AgentLoop {
     signal?: AbortSignal
     beforeToolCall?: (ctx: BeforeToolCallContext) => Promise<{ block?: boolean; reason?: string }>
     afterToolCall?: (ctx: AfterToolCallContext) => Promise<Partial<ToolResult> | undefined>
+    /** Extra per-invocation context passed through to tool handlers (e.g. db, userId). */
+    toolContextExtra?: Record<string, unknown>
   }): AsyncIterable<AgentEvent> {
     // Reset per-run state
     this.uncertaintyCleared = false
+    this._toolContextExtra = params.toolContextExtra ?? {}
 
     let messages = [...params.messages]
     let turn = 0
@@ -573,6 +578,7 @@ export class AgentLoop {
           warn: this.logger.warn?.bind(this.logger) || (() => undefined),
           error: this.logger.error.bind(this.logger),
         },
+        extra: this._toolContextExtra,
       }
       toolResult = await entry.handler(tc.args, toolContext)
       isError = toolResult.isError ?? false

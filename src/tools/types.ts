@@ -20,6 +20,8 @@ export interface ToolContext {
     warn(msg: string, ...args: unknown[]): void
     error(msg: string, ...args: unknown[]): void
   }
+  /** Per-invocation extra context (e.g. db, userId) injected by the channel handler. */
+  extra?: Record<string, unknown>
 }
 
 export type ToolHandler = (

@@ -105,9 +105,13 @@ export class LayeredStrategy implements MemoryStrategy {
       }
     }
 
-    // 4. 组装 context
+    // 4. 构建永久区：Agent 自知 + 协作规则 + 其他 Agent 列表（每次从 DB 实时重建，永不压缩）
+    const pinnedMessages = this._buildAgentEcosystemBlock(sessionId)
+
+    // 5. 组装 context
     const messages = buildContext({
       systemPrompt: this.config.systemPrompt,
+      pinnedMessages,
       activeTopics,
       topicDocs,
       recentHistory,
@@ -165,5 +169,52 @@ export class LayeredStrategy implements MemoryStrategy {
       WHERE session_id = ?
       ORDER BY id DESC LIMIT ?
     `).all(sessionId, this.config.recentMessageLimit) as Message[]
+  }
+
+  /**
+   * 构建永久区：Agent 自知 + 协作规则 + 其他活跃 Agent 列表。
+   * 每次从 DB 实时展开，永不被压缩。
+   */
+  private _buildAgentEcosystemBlock(sessionId: string): Message[] {
+    type AgentRow = { agent_name: string; description: string | null; template_name: string; id: string }
+
+    // 当前 session 对应的 Agent
+    const self = this.db.prepare(
+      `SELECT id, agent_name, description, template_name FROM agents
+       WHERE session_id = ? AND depth = 0 AND status = 'active'
+       ORDER BY created_at ASC LIMIT 1`
+    ).get(sessionId) as AgentRow | undefined
+
+    if (!self) return []
+
+    // 其他活跃 Agent
+    const others = this.db.prepare(
+      `SELECT agent_name, description FROM agents
+       WHERE status = 'active' AND depth = 0 AND id != ?
+       ORDER BY created_at DESC`
+    ).all(self.id) as Pick<AgentRow, 'agent_name' | 'description'>[]
+
+    const othersList = others.length > 0
+      ? others.map(a => `- **${a.agent_name}**：${a.description ?? '无描述'}`).join('\n')
+      : '- （暂无其他 Agent）'
+
+    const content = [
+      `## 我是谁`,
+      `我是 **${self.agent_name}**（模板：${self.template_name}\uff09。${self.description ?? ''}`,
+      ``,
+      `## 协作规则`,
+      `处理每条消息前，先判断：`,
+      `1. 这个需求在我的职责范围内吗？`,
+      `2. 是否需要创建一个新的专要 Agent 来处理？`,
+      `3. 是否已有其他 Agent 更适合？`,
+      ``,
+      `如果需要创建新 Agent，调用 \`create_agent\` 工具。不要强行处理超出自己职责的任务。`,
+      ``,
+      `## 当前活跃 Agents`,
+      `- **${self.agent_name}**：${self.description ?? ''}  ← 这是我自己`,
+      othersList,
+    ].join('\n')
+
+    return [{ role: 'system', content }]
   }
 }

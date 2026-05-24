@@ -11,6 +11,8 @@ export interface TopicDoc {
 
 export interface BuildContextOptions {
   systemPrompt: string
+  /** 永久区：注入在 system prompt 之后、话题文档之前，每次重建，永不压缩 */
+  pinnedMessages?: Message[]
   activeTopics: TopicSummary[]
   topicDocs: TopicDoc[]
   recentHistory: Message[]
@@ -32,7 +34,12 @@ export function buildContext(opts: BuildContextOptions): Message[] {
   }
   result.push({ role: "system", content: systemContent })
 
-  // 2. 相关事项文档（按需，每个事项一条 system 消息）
+  // 2. 永久区：Agent 自知 + 协作规则 + 其他 Agent
+  if (opts.pinnedMessages && opts.pinnedMessages.length > 0) {
+    result.push(...opts.pinnedMessages)
+  }
+
+  // 3. 相关事项文档（按需，每个事项一条 system 消息）
   for (const doc of topicDocs) {
     result.push({
       role: "system",

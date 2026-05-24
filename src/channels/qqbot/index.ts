@@ -106,6 +106,7 @@ export class QQBotChannel implements IChannel {
         messages,
         sessionId,
         ...(modelOverride ? { model: modelOverride } : {}),
+        toolContextExtra: this.db ? { db: this.db, userId: openid } : {},
       })) {
         if (event.type === "message_delta") {
           finalReply += event.delta
