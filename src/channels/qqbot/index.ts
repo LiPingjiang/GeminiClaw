@@ -10,6 +10,7 @@ import { messageText } from "../../providers/types.js"
 import { registerWebhookRoute } from "./webhook.js"
 import { QQBotWSClient } from "./ws-client.js"
 import { sendC2CReply } from "./api.js"
+import { dispatch } from "../../commands/dispatcher.js"
 
 export interface QQBotChannelConfig {
   enabled: boolean
@@ -33,16 +34,31 @@ export class QQBotChannel implements IChannel {
   ) {}
 
   async start(ctx: ChannelContext): Promise<void> {
-    const { memory, agentLoop } = ctx
+    const { memory, agentLoop, config } = ctx
     const { appId, clientSecret, mode } = this.config
+
+    // Per-session model overrides: openid → "provider/model"
+    const modelOverrides = new Map<string, string>()
+    const startedAt = new Date()
 
     /** 共用的消息处理逻辑：通过 AgentLoop 执行，支持 tool calls */
     const handleMessage = async (openid: string, content: string, _msgId: string): Promise<string> => {
+      // ── 命令拦截（优先于 LLM）──────────────────────────────────────────────
+      const cmdResult = await dispatch(content, {
+        openid,
+        args: [],           // parsed inside dispatch
+        memory,
+        config,
+        modelOverrides,
+        startedAt,
+      })
+      if (cmdResult !== null) return cmdResult
+
+      // ── 正常 LLM 流程 ──────────────────────────────────────────────────────
       await memory.ensureSession(openid)
       const convCtx = await memory.getContext(openid, content)
 
       // 构建完整的 InternalMessage 历史 + 新消息
-      // 需要将 content: string | ContentPart[] 统一为 string，role 也需精确对应
       const messages: InternalMessage[] = [
         ...convCtx.messages.flatMap((m): InternalMessage[] => {
           const text = typeof m.content === "string" ? m.content : messageText(m.content)
@@ -52,15 +68,19 @@ export class QQBotChannel implements IChannel {
           if (m.role === "user" || m.role === "system") {
             return [{ role: m.role, content: text }]
           }
-          // tool messages: skip (not needed for QQBot history)
           return []
         }),
         { role: "user" as const, content },
       ]
 
       // 用 AgentLoop 执行，收集 message_delta 拼接最终回复
+      const modelOverride = modelOverrides.get(openid)
       let finalReply = ""
-      for await (const event of agentLoop.run({ messages, sessionId: openid })) {
+      for await (const event of agentLoop.run({
+        messages,
+        sessionId: openid,
+        ...(modelOverride ? { model: modelOverride } : {}),
+      })) {
         if (event.type === "message_delta") {
           finalReply += event.delta
         }

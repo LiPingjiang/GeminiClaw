@@ -190,7 +190,7 @@ export async function buildServer(
     registry.register(new QQBotChannel(qqbotConfig, fastify))
   }
 
-  await registry.startAll({ router, memory: strategy, agentLoop })
+  await registry.startAll({ router, memory: strategy, agentLoop, config })
 
   fastify.addHook("onClose", async () => {
     await registry.stopAll()

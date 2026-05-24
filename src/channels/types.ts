@@ -4,11 +4,13 @@
 import type { ProviderRouter } from "../providers/router.js"
 import type { MemoryStrategy } from "../memory/strategy.js"
 import type { AgentLoop } from "../agent/index.js"
+import type { Config } from "../config/schema.js"
 
 export interface ChannelContext {
   router: ProviderRouter       // 保留（部分场景仍需直接 chat）
   memory: MemoryStrategy
   agentLoop: AgentLoop         // 新增：支持 tool calls
+  config: Config               // 供命令系统读取模型列表等
 }
 
 export interface IChannel {
