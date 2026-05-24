@@ -6,7 +6,7 @@ export const templateMetaSchema = z.object({
   display_name: z.string().optional(),
   description: z.string().default(""),
   keywords: z.array(z.string()).default([]),
-  created_at: z.string().optional(),
+  created_at: z.union([z.string(), z.date().transform((d) => d.toISOString())]).optional(),
   copied_from: z.string().optional(),
 })
 
