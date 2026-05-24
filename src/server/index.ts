@@ -28,8 +28,13 @@ function makeRegistryAdapter(): ToolRegistryLike {
       const entry = registry.get(name)
       if (!entry) return null
       return {
-        handler: async (args: Record<string, unknown>): Promise<AgentToolResult> => {
-          const ctx = { sessionId: "", workdir: process.cwd(), logger: { info: () => undefined, warn: () => undefined, error: () => undefined } }
+        handler: async (args: Record<string, unknown>, outerCtx?: { sessionId?: string; workdir?: string; logger?: { info(...a: unknown[]): void; warn(...a: unknown[]): void; error(...a: unknown[]): void }; extra?: Record<string, unknown> }): Promise<AgentToolResult> => {
+          const ctx = {
+            sessionId: outerCtx?.sessionId ?? "",
+            workdir: outerCtx?.workdir ?? process.cwd(),
+            logger: outerCtx?.logger ?? { info: () => undefined, warn: () => undefined, error: () => undefined },
+            extra: outerCtx?.extra,
+          }
           const result = await entry.handler(args, ctx)
           if (result.type === "error") {
             return { content: result.error, isError: true }

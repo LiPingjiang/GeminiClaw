@@ -17,17 +17,29 @@ export interface RouteResult {
  * Detect if a message expresses intent to create/switch to a new named agent.
  * Returns the proposed agent name, or null if not a creation request.
  */
-function detectAgentCreation(msg: string): string | null {
-  const hasCreationVerb = /搞一个|新建|创建|建一个|弄一个|换一个|换个|专门搞/.test(msg)
-  const hasAgentNoun = /[Aa]gent|\u52a9\u624b|\u4e13\u5bb6/.test(msg)
-  if (!hasCreationVerb || !hasAgentNoun) return null
+/**
+ * Extract a proposed agent name from a creation-intent message.
+ * Returns null if no meaningful name found.
+ */
+function extractAgentName(msg: string): string | null {
+  // 1. After 叫/叫做/叫作: "叫龙股Agent" / "叫代码助手"
+  const afterJiao = msg.match(/叫(?:做|作)?([A-Za-z\u4e00-\u9fa5]{2,20}?)(?:[，。！吧\s]|$)/)
+  if (afterJiao?.[1]?.trim()) return afterJiao[1].trim()
 
-  // Try to extract name after 叫/叫做/叫作
-  const nameMatch =
-    msg.match(/\u53eb(?:\u505a|\u4f5c)?([A-Za-z\u4e00-\u9fa5\s]{2,30}?)(?:[\uff0c\u3002\uff01\u5427\s]|$)/) ??
-    msg.match(/([A-Z][a-zA-Z\s]+(?:Agent|\u52a9\u624b|\u4e13\u5bb6))/)
-  const name = nameMatch?.[1]?.trim()
-  return name && name.length >= 2 ? name : '\u65b0\u52a9\u624b'
+  // 2. Chinese chars before Agent: "龙股Agent" / "龙股agent"
+  const chineseAgent = msg.match(/([\u4e00-\u9fa5]{2,8})[Aa]gent/)
+  if (chineseAgent?.[1]) return chineseAgent[1] + 'Agent'
+
+  // 3. Chinese chars before 助手/专家: "代码助手" / "财经专家"
+  const chineseSuffix = msg.match(/([\u4e00-\u9fa5]{2,8})(助手|专家)/)
+  if (chineseSuffix?.[1]) return chineseSuffix[1] + chineseSuffix[2]
+
+  // 4. English uppercase: "Claw Agent" / "DragonStock"
+  const english = msg.match(/([A-Z][a-zA-Z]+(?:\s[A-Z][a-zA-Z]+)*\s*(?:Agent|助手|专家)?)/)
+  const englishName = english?.[1]?.trim()
+  if (englishName && englishName.length >= 3) return englishName
+
+  return null
 }
 
 /**
@@ -108,26 +120,6 @@ export class GuidanceLayer {
    * Strategy: sticky first → active agent match → template match → misc fallback.
    */
   async route(userMessage: string, userId: string): Promise<RouteResult> {
-    // ── 0. Agent creation intent: break sticky if user wants a new named agent ─
-    const newAgentName = detectAgentCreation(userMessage)
-    if (newAgentName) {
-      this.clearUserSession(userId)
-      const { sessionId, agentId } = await createSessionWithAgent('base', this.db)
-      this.agentRepo.update(agentId, {
-        agent_name: newAgentName,
-        description: `用户创建的专用助手：${newAgentName}`,
-      })
-      const result: RouteResult = {
-        sessionId,
-        agentId,
-        agentName: newAgentName,
-        isNew: true,
-        templateName: 'base',
-      }
-      this.setUserSession(userId, result)
-      return result
-    }
-
     // ── 1. Sticky session: reuse current conversation if active ──────────────
     const sticky = this.db
       .prepare(`SELECT * FROM user_sessions WHERE openid = ?`)
