@@ -9,6 +9,7 @@ import './evolution_command.js'
 import './create_agent.js'
 import './web_search.js'
 import './browser.js'
+import './repo_map.js'
 
 export { registry } from './registry.js'
 export type { ToolDefinition, ToolHandler, ToolResult, ToolContext, JSONSchema } from './types.js'
