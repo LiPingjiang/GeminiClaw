@@ -43,7 +43,8 @@ export async function dispatch(
     return null
   }
 
-  const { openid, args, memory, config, modelOverrides, startedAt } = ctx
+  const { openid, memory, config, modelOverrides, startedAt } = ctx
+  const args = parsed.args   // ← 用解析出来的参数，而不是 ctx.args
 
   switch (def.name) {
     // ── /new ────────────────────────────────────────────────────────────────
