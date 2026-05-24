@@ -7,7 +7,7 @@ import { buildServer } from "./server/index.js"
 import { openDb } from "./db/client.js"
 import { migrate } from "./db/schema.js"
 import { join, isAbsolute } from "path"
-import { mkdirSync } from "fs"
+import { mkdirSync, existsSync } from "fs"
 import os from "os"
 import { EvolutionEngine, EvolutionDB } from "./evolution/index.js"
 import { agentPool } from "./mesh/index.js"
@@ -56,7 +56,7 @@ async function main(): Promise<void> {
 
   // 初始化 SkillSystem
   const { SkillSystem } = await import("./skills/index.js")
-  const skillsDir = join(process.cwd(), "skills")
+  const skillsDir = join(os.homedir(), '.gemeniclaw', 'skills')
   mkdirSync(skillsDir, { recursive: true })
   const skillSystem = new SkillSystem(skillsDir)
   skillSystem.initialize(evolutionDb)

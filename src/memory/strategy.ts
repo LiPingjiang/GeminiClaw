@@ -50,10 +50,12 @@ function generateAgentMd(config: Config): string {
     CWD: cwd,
     PORT: String(config.server?.port ?? 18888),
     WORKSPACE_DIR: resolveDir(cwd, config.workspace?.dir ?? '.workspace'),
-    SKILLS_DIR: resolveDir(cwd, config.skills?.dir ?? 'skills'),
     MEMORY_DATA_DIR: isAbsolute(config.memory?.dataDir ?? '')
       ? config.memory.dataDir
       : join(os.homedir(), '.gemeniclaw', 'memory'),
+    SKILLS_DIR: join(os.homedir(), '.gemeniclaw', 'skills'),
+    CONFIG_PATH: join(os.homedir(), '.gemeniclaw', 'config.yaml'),
+    USER_DATA_DIR: join(os.homedir(), '.gemeniclaw'),
     MEMORY_STRATEGY: config.memory?.strategy ?? 'buffer',
     DEFAULT_MODEL: config.routing?.default ?? '（未配置）',
     MAX_TURNS: String(config.agent?.maxTurns ?? 20),

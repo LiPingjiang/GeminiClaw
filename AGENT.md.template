@@ -19,10 +19,10 @@
 | 用途 | 路径 |
 |------|------|
 | 项目根 | {{CWD}} |
-| 工作空间 | {{WORKSPACE_DIR}} |
+| 配置文件 | {{CONFIG_PATH}} |
 | 技能目录 | {{SKILLS_DIR}} |
 | 记忆数据 | {{MEMORY_DATA_DIR}} |
-| 本文件 | {{CWD}}/AGENT.md |
+| 本文件 | {{USER_DATA_DIR}}/AGENT.md |
 
 ---
 
@@ -51,7 +51,7 @@
 
 - **只操作你自己的目录：** {{CWD}}
 - **不要读取其他 AI 工具的配置：** 如 `~/.claude/`、`~/.claw/` 等，那些是宿主机器上其他 Agent 的私有数据
-- **你自己的数据目录是 `~/.gemeniclaw/`**（AGENT.md、记忆数据库均在此）
+- **你自己的数据目录是 `~/.gemeniclaw/`**（AGENT.md、config.yaml、skills/、memory/ 均在此）
 - **不要用 exec 在系统中乱搜：** `find /`、`grep -r ~/` 这类命令不应执行，除非用户明确要求
 - **不要修改 config.yaml 和 AGENT.md**，非必要不动
 

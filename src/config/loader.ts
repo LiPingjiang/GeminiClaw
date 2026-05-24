@@ -1,13 +1,17 @@
-import { readFileSync } from "fs"
-import { resolve } from "path"
+import { readFileSync, existsSync } from "fs"
+import { resolve, join } from "path"
+import os from "os"
 import yaml from "js-yaml"
 import { configSchema, type Config } from "./schema.js"
 import { ZodError } from "zod"
 
 export function loadConfig(configPath?: string): Config {
-  const filePath = resolve(
-    configPath ?? process.env.GEMINICLAW_CONFIG ?? process.cwd() + "/config.yaml"
-  )
+  // 配置查找顺序：显式参数 → 环境变量 → ~/.gemeniclaw/config.yaml → 代码目录
+  const userConfigPath = join(os.homedir(), '.gemeniclaw', 'config.yaml')
+  const defaultPath = existsSync(userConfigPath)
+    ? userConfigPath
+    : process.cwd() + '/config.yaml'
+  const filePath = resolve(configPath ?? process.env.GEMINICLAW_CONFIG ?? defaultPath)
 
   let raw: string
   try {
