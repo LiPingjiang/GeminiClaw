@@ -6,6 +6,7 @@ import type { EvolutionEngine } from "../../evolution/index.js"
 import type { AgentLoop, InternalMessage } from "../../agent/index.js"
 import type { SessionStore } from "../../session/store.js"
 import type { AgentMode, AgentConfig } from "../../agent/types.js"
+import type { Db } from "../../db/client.js"
 
 // ── Mode helpers ──────────────────────────────────────────────────────────────
 
@@ -79,6 +80,7 @@ interface ChatRouteOpts {
   agentLoop?: AgentLoop
   sessionStore?: SessionStore
   config?: { agent?: { timeoutSeconds?: number } }
+  db?: Db
 }
 
 // ── Active paused loops (in-memory, per process) ──────────────────────────────
@@ -283,6 +285,7 @@ export async function chatRoute(
           sessionId: sid,
           model,
           beforeToolCall,
+          toolContextExtra: opts.db ? { db: opts.db } : {},
         })
 
         for await (const event of runIter) {
@@ -344,6 +347,7 @@ export async function chatRoute(
         sessionId: sid,
         model,
         beforeToolCall,
+        toolContextExtra: opts.db ? { db: opts.db } : {},
       })[Symbol.asyncIterator]()
 
       outer: while (true) {

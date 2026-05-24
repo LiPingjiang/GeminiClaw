@@ -166,6 +166,7 @@ export async function buildServer(
     authToken: config.server.authToken,
     evolution,
     agentLoop,
+    db,
     config: { agent: { timeoutSeconds: (config as any).agent?.timeoutSeconds ?? 60 } },
   })
 
