@@ -65,7 +65,7 @@ async function main(): Promise<void> {
   const { setEvolutionEngine } = await import("./server/routes/evolution-deps.js")
   setEvolutionEngine(evolution)
 
-  const server = await buildServer(config, router, strategy, evolution)
+  const server = await buildServer(config, router, strategy, evolution, db)
 
   await server.listen({ port: config.server.port, host: config.server.host })
   console.log(`GeminiClaw listening on ${config.server.host}:${config.server.port}`)

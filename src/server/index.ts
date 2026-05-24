@@ -12,6 +12,8 @@ import { chatRoute } from "./routes/chat.js"
 import { completionsRoute } from "./routes/completions.js"
 import { evolutionRoute } from "./routes/evolution.js"
 import { runsRoute } from "./routes/runs.js"
+import { sessionsRoute } from "./routes/sessions.js"
+import type { Db } from "../db/client.js"
 import { ChannelRegistry } from "../channels/registry.js"
 import { QQBotChannel } from "../channels/qqbot/index.js"
 import { RunStore } from "./routes/run-store.js"
@@ -52,6 +54,7 @@ export async function buildServer(
   router: ProviderRouter,
   strategy: MemoryStrategy,
   evolution?: EvolutionEngine,
+  db?: Db,
 ): Promise<FastifyInstance> {
   const fastify = Fastify({ logger: false })
 
@@ -164,6 +167,10 @@ export async function buildServer(
   }
 
   const runStore = new RunStore()
+  if (db) {
+    await fastify.register(sessionsRoute, { db, authToken: config.server.authToken })
+  }
+
   await fastify.register(runsRoute, {
     runStore,
     agentLoop,

@@ -6,6 +6,7 @@ import { registerSkillCommand } from "./commands/skill.js"
 import { registerConfigCommand } from "./commands/config.js"
 import { registerStatusCommand } from "./commands/status.js"
 import { registerSyncCommand } from "./commands/sync.js"
+import { registerChatCommand } from "./commands/chat.js"
 
 const program = new Command()
 
@@ -48,5 +49,6 @@ registerSkillCommand(program)
 registerConfigCommand(program)
 registerStatusCommand(program)
 registerSyncCommand(program)
+registerChatCommand(program)
 
 program.parse()
