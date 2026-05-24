@@ -114,9 +114,9 @@ export class QQBotChannel implements IChannel {
 
       if (!finalReply) finalReply = "（无回复）"
 
-      // 注入 [AgentName] 前缀
+      // 注入 Agent 名称（markdown 加粗，单独一行）
       if (agentName) {
-        finalReply = `[${agentName}] ${finalReply}`
+        finalReply = `**${agentName}**\n\n${finalReply}`
       }
 
       await memory.appendTurn(
