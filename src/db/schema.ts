@@ -45,5 +45,43 @@ export function migrate(db: Db): void {
       sticky_agent_name TEXT,
       updated_at INTEGER NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS agents (
+      id              TEXT PRIMARY KEY,
+      session_id      TEXT NOT NULL REFERENCES chat_sessions(id),
+      parent_agent_id TEXT REFERENCES agents(id),
+      template_name   TEXT NOT NULL,
+      agent_name      TEXT NOT NULL,
+      description     TEXT,
+      depth           INTEGER NOT NULL DEFAULT 0,
+      status          TEXT NOT NULL DEFAULT 'active',
+      created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS tasks (
+      id          TEXT PRIMARY KEY,
+      agent_id    TEXT NOT NULL REFERENCES agents(id),
+      session_id  TEXT NOT NULL REFERENCES chat_sessions(id),
+      parent_id   TEXT REFERENCES tasks(id),
+      title       TEXT NOT NULL,
+      description TEXT,
+      status      TEXT NOT NULL DEFAULT 'pending',
+      depth       INTEGER NOT NULL DEFAULT 0,
+      created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_agents_session ON agents(session_id);
+    CREATE INDEX IF NOT EXISTS idx_agents_parent  ON agents(parent_agent_id);
+    CREATE INDEX IF NOT EXISTS idx_tasks_agent    ON tasks(agent_id);
+    CREATE INDEX IF NOT EXISTS idx_tasks_parent   ON tasks(parent_id);
   `)
+
+  // ALTER TABLE statements that may fail if column already exists
+  try {
+    db.exec(`ALTER TABLE chat_sessions ADD COLUMN main_agent_id TEXT;`)
+  } catch {
+    // Column already exists — ignore
+  }
 }
