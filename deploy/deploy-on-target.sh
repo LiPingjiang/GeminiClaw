@@ -19,6 +19,8 @@ git pull origin "$BRANCH"
 echo "[deploy] Code updated"
 
 # 安装依赖（如果 package.json 有变化）
+# PUPPETEER_SKIP_DOWNLOAD=true: skip Chromium download, use system Chrome instead
+export PUPPETEER_SKIP_DOWNLOAD=true
 npm install --prefer-offline 2>/dev/null || npm install
 echo "[deploy] Dependencies ready"
 
