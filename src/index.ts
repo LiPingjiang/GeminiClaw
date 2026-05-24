@@ -6,8 +6,9 @@ import { buildStrategy } from "./memory/strategy.js"
 import { buildServer } from "./server/index.js"
 import { openDb } from "./db/client.js"
 import { migrate } from "./db/schema.js"
-import { join } from "path"
+import { join, isAbsolute } from "path"
 import { mkdirSync } from "fs"
+import os from "os"
 import { EvolutionEngine, EvolutionDB } from "./evolution/index.js"
 import { agentPool } from "./mesh/index.js"
 import type { Provider } from "./providers/types.js"
@@ -25,7 +26,12 @@ async function main(): Promise<void> {
   const router = new ProviderRouter(providers, config.routing)
 
   // DB 初始化（layered 策略需要）
-  const dbPath = join(config.memory.dataDir, "geminiclaw.db")
+  // 若 dataDir 是相对路径（默认 ".data"），统一解析到 ~/.gemeniclaw/memory/
+  const dataDir = isAbsolute(config.memory.dataDir)
+    ? config.memory.dataDir
+    : join(os.homedir(), '.gemeniclaw', 'memory')
+  mkdirSync(dataDir, { recursive: true })
+  const dbPath = join(dataDir, "geminiclaw.db")
   const db = openDb(dbPath)
   migrate(db)
 
@@ -37,7 +43,7 @@ async function main(): Promise<void> {
   const strategy = buildStrategy(config, db, routerProvider)
 
   // Evolution Engine 初始化
-  const evolutionDataDir = join(config.memory.dataDir, "evolution")
+  const evolutionDataDir = join(dataDir, "evolution")
   mkdirSync(evolutionDataDir, { recursive: true })
   const evolutionDb = new EvolutionDB(join(evolutionDataDir, "gemini-evolution.db"))
   const evolution = new EvolutionEngine({
