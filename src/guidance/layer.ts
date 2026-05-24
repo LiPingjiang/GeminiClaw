@@ -25,13 +25,28 @@ function tokenize(text: string): string[] {
 
 /**
  * Score how well a candidate text matches the query tokens.
- * Returns the number of unique tokens found in candidate.
+ * Checks if each token appears in the candidate (forward match).
  */
 function matchScore(queryTokens: string[], candidate: string): number {
   const lower = candidate.toLowerCase()
   let score = 0
   for (const token of queryTokens) {
     if (token.length >= 2 && lower.includes(token)) {
+      score++
+    }
+  }
+  return score
+}
+
+/**
+ * Reverse match: split candidate into tokens, check if message contains each token.
+ * Used for Chinese where keywords are short and messages are long unsplit strings.
+ */
+function matchScoreReverse(msgLower: string, candidate: string): number {
+  const tokens = tokenize(candidate)
+  let score = 0
+  for (const token of tokens) {
+    if (token.length >= 2 && msgLower.includes(token)) {
       score++
     }
   }
@@ -57,6 +72,7 @@ export class GuidanceLayer {
    */
   async route(userMessage: string, _userId: string): Promise<RouteResult> {
     const queryTokens = tokenize(userMessage)
+    const msgLower = userMessage.toLowerCase()
     const activeAgents = this.agentRepo.listActiveMainAgents()
 
     let bestAgent = null
@@ -66,11 +82,14 @@ export class GuidanceLayer {
       // Score against agent description
       let score = matchScore(queryTokens, agent.description ?? "")
       score += matchScore(queryTokens, agent.agent_name)
+      // Also check if message contains description keywords (Chinese bidirectional)
+      score += matchScoreReverse(msgLower, agent.description ?? "")
 
       // Score against active task titles
       const activeTasks = this.taskRepo.getActive(agent.id)
       for (const task of activeTasks) {
         score += matchScore(queryTokens, task.title)
+        score += matchScoreReverse(msgLower, task.title)
       }
 
       if (score > bestScore) {
@@ -90,7 +109,7 @@ export class GuidanceLayer {
     }
 
     // No active agent matched — try template matching
-    const templateMatch = await this._matchTemplate(queryTokens)
+    const templateMatch = await this._matchTemplate(msgLower)
     if (templateMatch) {
       return templateMatch
     }
@@ -103,17 +122,20 @@ export class GuidanceLayer {
    * Try to match a non-base template by keywords/description.
    * If matched, create a new agent from that template.
    */
-  private async _matchTemplate(queryTokens: string[]): Promise<RouteResult | null> {
+  private async _matchTemplate(msgLower: string): Promise<RouteResult | null> {
     const templates = this.templateManager.list()
     let bestTemplate = null
     let bestScore = 0
 
     for (const tpl of templates) {
       if (tpl.name === "base") continue // base is misc fallback
-      let score = matchScore(queryTokens, tpl.description ?? "")
-      score += matchScore(queryTokens, tpl.display_name ?? "")
+      // Check if message contains any of the template keywords
+      let score = matchScoreReverse(msgLower, tpl.description ?? "")
+      score += matchScoreReverse(msgLower, tpl.display_name ?? "")
       for (const kw of tpl.keywords ?? []) {
-        score += matchScore(queryTokens, kw)
+        if (kw.length >= 2 && msgLower.includes(kw.toLowerCase())) {
+          score += 2 // keywords carry more weight
+        }
       }
       if (score > bestScore) {
         bestScore = score
