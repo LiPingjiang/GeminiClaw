@@ -1,6 +1,7 @@
 import type { Message } from "../providers/types.js"
-import { readFileSync, existsSync } from "fs"
-import { join } from "path"
+import { readFileSync, existsSync, writeFileSync } from "fs"
+import { join, isAbsolute } from "path"
+import os from "os"
 
 export interface ConversationContext {
   /** 注入给主模型的消息列表（含 system、历史、当前消息前的所有内容） */
@@ -27,14 +28,65 @@ import { LayeredStrategy } from "./strategies/layered.js"
 import { SqliteStrategy } from "./strategies/sqlite.js"
 import { CompactionStrategy } from "./strategies/compaction.js"
 
-function loadSystemPrompt(): string {
-  // 优先加载项目根目录的 AGENT.md
-  const agentMdPath = join(process.cwd(), 'AGENT.md')
+function resolveDir(base: string, dir: string): string {
+  return isAbsolute(dir) ? dir : join(base, dir)
+}
+
+function generateAgentMd(config: Config): string {
+  const cwd = process.cwd()
+  const templatePath = join(cwd, 'AGENT.md.template')
+  if (!existsSync(templatePath)) {
+    return DEFAULT_SYSTEM_PROMPT_FALLBACK
+  }
+
+  const qqbotCfg = config.channels?.qqbot
+  const channelsDesc = qqbotCfg?.enabled
+    ? `- **QQ Bot（C2C 私聊）：** WebSocket 长连接模式，AppID \`${qqbotCfg.appId}\``
+    : '- 暂无已启用的渠道'
+
+  const vars: Record<string, string> = {
+    HOSTNAME: os.hostname(),
+    USER: os.userInfo().username,
+    CWD: cwd,
+    PORT: String(config.server?.port ?? 18888),
+    WORKSPACE_DIR: resolveDir(cwd, config.workspace?.dir ?? '.workspace'),
+    SKILLS_DIR: resolveDir(cwd, config.skills?.dir ?? 'skills'),
+    MEMORY_DATA_DIR: resolveDir(cwd, config.memory?.dataDir ?? '.data'),
+    MEMORY_STRATEGY: config.memory?.strategy ?? 'buffer',
+    DEFAULT_MODEL: config.routing?.default ?? '（未配置）',
+    MAX_TURNS: String(config.agent?.maxTurns ?? 20),
+    TIMEOUT: String(config.agent?.timeoutSeconds ?? 60),
+    CHANNELS_DESC: channelsDesc,
+  }
+
+  let content = readFileSync(templatePath, 'utf-8')
+  for (const [key, val] of Object.entries(vars)) {
+    content = content.replaceAll(`{{${key}}}`, val)
+  }
+  return content.trim()
+}
+
+function loadSystemPrompt(config?: Config): string {
+  const cwd = process.cwd()
+  const agentMdPath = join(cwd, 'AGENT.md')
+
+  // 已有 AGENT.md，直接用
   if (existsSync(agentMdPath)) {
     console.log(`[memory] Loaded system prompt from ${agentMdPath}`)
     return readFileSync(agentMdPath, 'utf-8').trim()
   }
-  console.warn('[memory] AGENT.md not found, using default system prompt')
+
+  // 没有 AGENT.md：尝试从模板生成并写入
+  if (config) {
+    const generated = generateAgentMd(config)
+    if (generated !== DEFAULT_SYSTEM_PROMPT_FALLBACK) {
+      writeFileSync(agentMdPath, generated, 'utf-8')
+      console.log(`[memory] Generated AGENT.md from template → ${agentMdPath}`)
+      return generated
+    }
+  }
+
+  console.warn('[memory] AGENT.md not found and no template, using default system prompt')
   return DEFAULT_SYSTEM_PROMPT_FALLBACK
 }
 
@@ -70,7 +122,7 @@ export function buildStrategy(
       db,
       routerProvider,
       triageProvider: routerProvider,
-      systemPrompt: loadSystemPrompt(),
+      systemPrompt: loadSystemPrompt(config),
       recentMessageLimit: config.memory.recentMessageLimit,
       triageAfterTurns: config.memory.triageAfterTurns,
       compactThresholdBytes: config.memory.compactThresholdBytes,
