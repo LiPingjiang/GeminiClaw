@@ -7,6 +7,7 @@ import type { ProviderRouter } from "../../providers/router.js"
 import type { MemoryStrategy } from "../../memory/strategy.js"
 import type { AgentLoop, InternalMessage } from "../../agent/index.js"
 import { messageText } from "../../providers/types.js"
+import type { Message as ProviderMessage, ToolCall as ProviderToolCall } from "../../providers/types.js"
 import { registerWebhookRoute } from "./webhook.js"
 import { QQBotWSClient } from "./ws-client.js"
 import { sendC2CReply } from "./api.js"
@@ -85,11 +86,27 @@ export class QQBotChannel implements IChannel {
       const convCtx = await memory.getContext(sessionId, content)
 
       // 构建完整的 InternalMessage 历史 + 新消息
+      // Bug 2 fix: preserve tool/assistant-with-tool_calls messages
       const messages: InternalMessage[] = [
         ...convCtx.messages.flatMap((m): InternalMessage[] => {
           const text = typeof m.content === "string" ? m.content : messageText(m.content)
           if (m.role === "assistant") {
-            return [{ role: "assistant", content: text }]
+            // Convert provider (OpenAI) format tool_calls → agent internal format
+            const toolCalls = m.tool_calls && m.tool_calls.length > 0
+              ? m.tool_calls.map((tc) => ({
+                  id: tc.id,
+                  name: tc.function.name,
+                  args: (() => { try { return JSON.parse(tc.function.arguments) } catch { return {} } })()
+                }))
+              : undefined
+            const msg = toolCalls
+              ? { role: "assistant" as const, content: text, tool_calls: toolCalls }
+              : { role: "assistant" as const, content: text }
+            return [msg as InternalMessage]
+          }
+          if (m.role === "tool") {
+            const toolMsg: InternalMessage = { role: "tool", tool_call_id: m.tool_call_id ?? "", content: typeof m.content === "string" ? m.content : "" }
+            return [toolMsg]
           }
           if (m.role === "user" || m.role === "system") {
             return [{ role: m.role, content: text }]
@@ -99,9 +116,30 @@ export class QQBotChannel implements IChannel {
         { role: "user" as const, content },
       ]
 
-      // 用 AgentLoop 执行，收集 message_delta 拼接最终回复
+      // 用 AgentLoop 执行，收集所有事件以便完整持久化
       const modelOverride = modelOverrides.get(openid)
       let finalReply = ""
+
+      // 收集完整的消息序列（含 tool calls / results）
+      // 事件顺序：turn_end → tool_start×N → tool_end×N → turn_start → ...
+      // 因此在 turn_end 时暂存 pendingAssistant，等收完 tool_start 后再 push
+      const turnMessages: ProviderMessage[] = []
+      let pendingAssistant: ProviderMessage | null = null
+      const pendingToolCalls: ProviderToolCall[] = []
+      const pendingToolResults: ProviderMessage[] = []
+
+      const flushPendingTurn = () => {
+        if (pendingAssistant) {
+          const assistantMsg: ProviderMessage = pendingToolCalls.length > 0
+            ? { ...pendingAssistant, tool_calls: [...pendingToolCalls] }
+            : pendingAssistant
+          turnMessages.push(assistantMsg)
+          pendingToolCalls.splice(0)
+          pendingAssistant = null
+        }
+        turnMessages.push(...pendingToolResults.splice(0))
+      }
+
       for await (const event of agentLoop.run({
         messages,
         sessionId,
@@ -110,8 +148,30 @@ export class QQBotChannel implements IChannel {
       })) {
         if (event.type === "message_delta") {
           finalReply += event.delta
+        } else if (event.type === "turn_start") {
+          // 新 turn 开始前，把上一 turn 的 pending 数据 flush
+          flushPendingTurn()
+        } else if (event.type === "turn_end") {
+          // 暂存 assistant 消息；tool_start 事件会在此之后到来以补充 tool_calls
+          pendingAssistant = { ...event.message }
+        } else if (event.type === "tool_start") {
+          // 收集 tool call（从 agent 内部格式转换为 provider OpenAI 格式）
+          pendingToolCalls.push({
+            id: event.toolCallId,
+            type: "function",
+            function: { name: event.toolName, arguments: JSON.stringify(event.args) },
+          })
+        } else if (event.type === "tool_end") {
+          // 收集工具执行结果
+          pendingToolResults.push({
+            role: "tool",
+            content: event.result.content,
+            tool_call_id: event.toolCallId,
+          })
         }
       }
+      // 循环结束后 flush 最后一轮
+      flushPendingTurn()
 
       if (!finalReply) finalReply = "（无回复）"
 
@@ -120,11 +180,25 @@ export class QQBotChannel implements IChannel {
         finalReply = `**${agentName}**\n\n${finalReply}`
       }
 
-      await memory.appendTurn(
-        sessionId,
-        { role: "user", content },
-        { role: "assistant", content: finalReply }
-      )
+      // 持久化完整消息序列（user + 所有 turn 的 assistant/tool 消息）
+      // turnMessages 里最后一条 assistant 消息就是最终回复，确保 content 正确
+      const userMsg: ProviderMessage = { role: "user", content }
+      const messagesToPersist: ProviderMessage[] = [userMsg]
+
+      if (turnMessages.length > 0) {
+        // 将最后一条 assistant 消息的 content 更新为含 agentName 前缀的 finalReply
+        const lastIdx = turnMessages.length - 1
+        const last = turnMessages[lastIdx]
+        if (last.role === "assistant") {
+          turnMessages[lastIdx] = { ...last, content: finalReply }
+        }
+        messagesToPersist.push(...turnMessages)
+      } else {
+        // AgentLoop 没有产出任何 turn_end（极少数情况），退化为兼容路径
+        messagesToPersist.push({ role: "assistant", content: finalReply })
+      }
+
+      await memory.appendMessages(sessionId, messagesToPersist)
       return finalReply
     }
 

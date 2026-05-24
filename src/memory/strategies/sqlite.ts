@@ -8,6 +8,8 @@ interface ChatMessageRow {
   session_id: string
   role: string
   content: string
+  tool_calls: string | null
+  tool_call_id: string | null
   created_at: string
 }
 
@@ -36,7 +38,7 @@ export class SqliteStrategy implements MemoryStrategy {
     // Fetch recent messages ordered by id ASC (chronological), limited to last `limit` rows
     const rows = this.db
       .prepare(
-        `SELECT id, session_id, role, content, created_at
+        `SELECT id, session_id, role, content, tool_calls, tool_call_id, created_at
            FROM chat_messages
           WHERE session_id = ?
           ORDER BY id DESC
@@ -45,10 +47,19 @@ export class SqliteStrategy implements MemoryStrategy {
       .all(sessionId, this.limit) as ChatMessageRow[]
 
     // Reverse to restore chronological order
-    const messages: Message[] = rows.reverse().map((row) => ({
-      role: row.role as Message["role"],
-      content: row.content,
-    }))
+    const messages: Message[] = rows.reverse().map((row) => {
+      const msg: Message = {
+        role: row.role as Message["role"],
+        content: row.content,
+      }
+      if (row.tool_calls) {
+        try { msg.tool_calls = JSON.parse(row.tool_calls) } catch { /* ignore */ }
+      }
+      if (row.tool_call_id) {
+        msg.tool_call_id = row.tool_call_id
+      }
+      return msg
+    })
 
     return { messages, strategyName: this.name }
   }
@@ -79,5 +90,33 @@ export class SqliteStrategy implements MemoryStrategy {
     })
 
     insertBoth()
+  }
+
+  async appendMessages(sessionId: string, messages: Message[]): Promise<void> {
+    await this.ensureSession(sessionId)
+
+    const insertMsg = this.db.prepare(
+      `INSERT INTO chat_messages (session_id, role, content, tool_calls, tool_call_id, created_at)
+       VALUES (?, ?, ?, ?, ?, datetime('now'))`,
+    )
+
+    const updateSession = this.db.prepare(
+      `UPDATE chat_sessions
+          SET updated_at    = datetime('now'),
+              message_count = message_count + ?
+        WHERE id = ?`,
+    )
+
+    const insertAll = this.db.transaction(() => {
+      for (const msg of messages) {
+        const content = typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content)
+        const toolCalls = msg.tool_calls ? JSON.stringify(msg.tool_calls) : null
+        const toolCallId = msg.tool_call_id ?? null
+        insertMsg.run(sessionId, msg.role, content, toolCalls, toolCallId)
+      }
+      updateSession.run(messages.length, sessionId)
+    })
+
+    insertAll()
   }
 }

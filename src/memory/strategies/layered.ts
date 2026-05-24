@@ -122,23 +122,55 @@ export class LayeredStrategy implements MemoryStrategy {
     return { messages, strategyName: this.name }
   }
 
+  async appendMessages(sessionId: string, messages: Message[]): Promise<void> {
+    await this.ensureSession(sessionId)
+
+    const insertMsg = this.db.prepare(`
+      INSERT INTO chat_messages (session_id, role, content, tool_calls, tool_call_id) VALUES (?, ?, ?, ?, ?)
+    `)
+    const insertAll = this.db.transaction(() => {
+      for (const msg of messages) {
+        const content = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content)
+        const toolCalls = msg.tool_calls ? JSON.stringify(msg.tool_calls) : null
+        const toolCallId = msg.tool_call_id ?? null
+        insertMsg.run(sessionId, msg.role, content, toolCalls, toolCallId)
+      }
+    })
+    insertAll()
+
+    this.db.prepare(`
+      UPDATE chat_sessions SET message_count = message_count + ?, updated_at = datetime('now') WHERE id = ?
+    `).run(messages.length, sessionId)
+
+    // For triage: synthesize userMsg / assistantMsg from the batch
+    const userMsg = messages.find(m => m.role === 'user')
+    const assistantMsg = messages.filter(m => m.role === 'assistant').at(-1)
+    if (userMsg && assistantMsg) {
+      await this._runTriage(sessionId, userMsg, assistantMsg)
+    }
+  }
+
   async appendTurn(sessionId: string, userMsg: Message, assistantMsg: Message): Promise<void> {
     await this.ensureSession(sessionId)
 
     // 持久化消息
     this.db.prepare(`
-      INSERT INTO chat_messages (session_id, role, content) VALUES (?, ?, ?)
-    `).run(sessionId, userMsg.role, userMsg.content)
+      INSERT INTO chat_messages (session_id, role, content, tool_calls, tool_call_id) VALUES (?, ?, ?, ?, ?)
+    `).run(sessionId, userMsg.role, typeof userMsg.content === 'string' ? userMsg.content : JSON.stringify(userMsg.content), null, null)
     this.db.prepare(`
-      INSERT INTO chat_messages (session_id, role, content) VALUES (?, ?, ?)
-    `).run(sessionId, assistantMsg.role, assistantMsg.content)
+      INSERT INTO chat_messages (session_id, role, content, tool_calls, tool_call_id) VALUES (?, ?, ?, ?, ?)
+    `).run(sessionId, assistantMsg.role, typeof assistantMsg.content === 'string' ? assistantMsg.content : JSON.stringify(assistantMsg.content), assistantMsg.tool_calls ? JSON.stringify(assistantMsg.tool_calls) : null, null)
 
     // 更新 session 计数
     this.db.prepare(`
       UPDATE chat_sessions SET message_count = message_count + 2, updated_at = datetime('now') WHERE id = ?
     `).run(sessionId)
 
-    // 立项判断
+    await this._runTriage(sessionId, userMsg, assistantMsg)
+  }
+
+  /** 立项判断 + 后台处理（公共逻辑） */
+  private async _runTriage(sessionId: string, userMsg: Message, assistantMsg: Message): Promise<void> {
     const allMessages = this.db.prepare(`
       SELECT role, content FROM chat_messages WHERE session_id = ? ORDER BY id
     `).all(sessionId) as Message[]
@@ -164,11 +196,20 @@ export class LayeredStrategy implements MemoryStrategy {
   }
 
   private getRecentHistory(sessionId: string): Message[] {
-    return this.db.prepare(`
-      SELECT role, content FROM chat_messages
+    type Row = { role: string; content: string; tool_calls: string | null; tool_call_id: string | null }
+    const rows = this.db.prepare(`
+      SELECT role, content, tool_calls, tool_call_id FROM chat_messages
       WHERE session_id = ?
       ORDER BY id DESC LIMIT ?
-    `).all(sessionId, this.config.recentMessageLimit) as Message[]
+    `).all(sessionId, this.config.recentMessageLimit) as Row[]
+    return rows.map(row => {
+      const msg: Message = { role: row.role as Message['role'], content: row.content }
+      if (row.tool_calls) {
+        try { msg.tool_calls = JSON.parse(row.tool_calls) } catch { /* ignore */ }
+      }
+      if (row.tool_call_id) msg.tool_call_id = row.tool_call_id
+      return msg
+    })
   }
 
   /**

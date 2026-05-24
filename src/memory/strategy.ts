@@ -18,6 +18,11 @@ export interface MemoryStrategy {
   getContext(sessionId: string, userMessage: string): Promise<ConversationContext>
   /** 主模型回复后，追加本轮对话并触发后台异步处理 */
   appendTurn(sessionId: string, userMsg: Message, assistantMsg: Message): Promise<void>
+  /**
+   * 追加多条消息（含 tool call / result）到持久化存储。
+   * messages 的第一条必须是 user，其余可以是 assistant/tool 交替序列。
+   */
+  appendMessages(sessionId: string, messages: Message[]): Promise<void>
 }
 
 import type { Config } from "../config/schema.js"

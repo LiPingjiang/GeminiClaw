@@ -13,11 +13,13 @@ export function migrate(db: Db): void {
     );
 
     CREATE TABLE IF NOT EXISTS chat_messages (
-      id         INTEGER PRIMARY KEY AUTOINCREMENT,
-      session_id TEXT NOT NULL REFERENCES chat_sessions(id) ON DELETE CASCADE,
-      role       TEXT NOT NULL CHECK(role IN ('user', 'assistant', 'system')),
-      content    TEXT NOT NULL,
-      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      id            INTEGER PRIMARY KEY AUTOINCREMENT,
+      session_id    TEXT NOT NULL REFERENCES chat_sessions(id) ON DELETE CASCADE,
+      role          TEXT NOT NULL CHECK(role IN ('user', 'assistant', 'system', 'tool')),
+      content       TEXT NOT NULL,
+      tool_calls    TEXT,
+      tool_call_id  TEXT,
+      created_at    TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
     CREATE INDEX IF NOT EXISTS idx_chat_messages_session
@@ -91,5 +93,57 @@ export function migrate(db: Db): void {
     db.exec(`ALTER TABLE chat_sessions ADD COLUMN main_agent_id TEXT;`)
   } catch {
     // Column already exists — ignore
+  }
+
+  // Add tool_calls and tool_call_id columns if they don't exist yet
+  try {
+    db.exec(`ALTER TABLE chat_messages ADD COLUMN tool_calls TEXT;`)
+  } catch {
+    // Column already exists — ignore
+  }
+  try {
+    db.exec(`ALTER TABLE chat_messages ADD COLUMN tool_call_id TEXT;`)
+  } catch {
+    // Column already exists — ignore
+  }
+
+  // Widen role CHECK to include 'tool'.
+  // SQLite doesn't support ALTER COLUMN, so we use the recreate pattern.
+  // First, try a dry-run INSERT; if the existing CHECK rejects 'tool', recreate.
+  let needsRoleWiden = false
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS __role_check_tmp (role TEXT CHECK(role IN ('user','assistant','system','tool')));
+      DROP TABLE __role_check_tmp;
+    `)
+    // Check if current table accepts 'tool' by inspecting its SQL
+    const tblInfo = db.prepare(`SELECT sql FROM sqlite_master WHERE type='table' AND name='chat_messages'`).get() as { sql: string } | undefined
+    if (tblInfo && !tblInfo.sql.includes("'tool'")) {
+      needsRoleWiden = true
+    }
+  } catch {
+    // ignore
+  }
+
+  if (needsRoleWiden) {
+    db.pragma('foreign_keys = OFF')
+    db.exec(`
+      CREATE TABLE chat_messages_new (
+        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id    TEXT NOT NULL REFERENCES chat_sessions(id) ON DELETE CASCADE,
+        role          TEXT NOT NULL CHECK(role IN ('user', 'assistant', 'system', 'tool')),
+        content       TEXT NOT NULL,
+        tool_calls    TEXT,
+        tool_call_id  TEXT,
+        created_at    TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      INSERT INTO chat_messages_new (id, session_id, role, content, tool_calls, tool_call_id, created_at)
+        SELECT id, session_id, role, content, tool_calls, tool_call_id, created_at FROM chat_messages;
+      DROP TABLE chat_messages;
+      ALTER TABLE chat_messages_new RENAME TO chat_messages;
+      CREATE INDEX IF NOT EXISTS idx_chat_messages_session ON chat_messages(session_id, id);
+    `)
+    db.pragma('foreign_keys = ON')
+    console.log('[schema] Migrated chat_messages: widened role CHECK to include tool')
   }
 }

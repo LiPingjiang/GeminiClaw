@@ -92,7 +92,11 @@ export class CompactionStrategy implements MemoryStrategy {
     assistantMsg: Message,
   ): Promise<void> {
     await this.inner.appendTurn(sessionId, userMsg, assistantMsg)
-    // 追加后检查是否需要触发压缩
+    await this.maybeCompact(sessionId)
+  }
+
+  async appendMessages(sessionId: string, messages: Message[]): Promise<void> {
+    await this.inner.appendMessages(sessionId, messages)
     await this.maybeCompact(sessionId)
   }
 

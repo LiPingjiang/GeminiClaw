@@ -31,4 +31,10 @@ export class BufferStrategy implements MemoryStrategy {
     const existing = this.sessions.get(sessionId)!
     existing.push(userMsg, assistantMsg)
   }
+
+  async appendMessages(sessionId: string, messages: Message[]): Promise<void> {
+    await this.ensureSession(sessionId)
+    const existing = this.sessions.get(sessionId)!
+    existing.push(...messages)
+  }
 }
