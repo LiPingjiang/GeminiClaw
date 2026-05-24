@@ -62,7 +62,13 @@ export class QQBotChannel implements IChannel {
         modelOverrides,
         startedAt,
       })
-      if (cmdResult !== null) return cmdResult
+      if (cmdResult !== null) {
+        // /new resets the session — clear sticky so next message starts fresh
+        if (content.trimStart().startsWith("/new") && guidanceLayer) {
+          guidanceLayer.clearUserSession(openid)
+        }
+        return cmdResult
+      }
 
       // ── 引导层路由 ──────────────────────────────────────────────────────────
       let sessionId = openid

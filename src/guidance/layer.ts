@@ -66,11 +66,52 @@ export class GuidanceLayer {
     this.taskRepo = new TaskRepository(db)
   }
 
+  /** Persist current session for a user (sticky). */
+  setUserSession(openid: string, result: RouteResult): void {
+    this.db
+      .prepare(
+        `INSERT INTO user_sessions (openid, session_id, agent_id, agent_name, updated_at)
+         VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(openid) DO UPDATE SET
+           session_id = excluded.session_id,
+           agent_id   = excluded.agent_id,
+           agent_name = excluded.agent_name,
+           updated_at = excluded.updated_at`
+      )
+      .run(openid, result.sessionId, result.agentId, result.agentName, Date.now())
+  }
+
+  /** Clear sticky session for a user (called on /new). */
+  clearUserSession(openid: string): void {
+    this.db.prepare(`DELETE FROM user_sessions WHERE openid = ?`).run(openid)
+  }
+
   /**
    * Route a user message to the best matching session.
-   * Returns the sessionId, agentId, agentName, and whether it was newly created.
+   * Strategy: sticky first → active agent match → template match → misc fallback.
    */
-  async route(userMessage: string, _userId: string): Promise<RouteResult> {
+  async route(userMessage: string, userId: string): Promise<RouteResult> {
+    // ── 1. Sticky session: reuse current conversation if active ──────────────
+    const sticky = this.db
+      .prepare(`SELECT * FROM user_sessions WHERE openid = ?`)
+      .get(userId) as { session_id: string; agent_id: string; agent_name: string } | undefined
+
+    if (sticky) {
+      const agent = this.agentRepo.getById(sticky.agent_id)
+      if (agent && agent.status === "active") {
+        return {
+          sessionId: sticky.session_id,
+          agentId:   sticky.agent_id,
+          agentName: sticky.agent_name,
+          isNew:     false,
+          templateName: agent.template_name,
+        }
+      }
+      // Stale sticky — clean it up
+      this.clearUserSession(userId)
+    }
+
+    // ── 2. Fresh routing ──────────────────────────────────────────────────────
     const queryTokens = tokenize(userMessage)
     const msgLower = userMessage.toLowerCase()
     const activeAgents = this.agentRepo.listActiveMainAgents()
@@ -99,23 +140,28 @@ export class GuidanceLayer {
     }
 
     if (bestAgent && bestScore > 0) {
-      return {
+      const result: RouteResult = {
         sessionId: bestAgent.session_id,
         agentId: bestAgent.id,
         agentName: bestAgent.agent_name,
         isNew: false,
         templateName: bestAgent.template_name,
       }
+      this.setUserSession(userId, result)
+      return result
     }
 
     // No active agent matched — try template matching
     const templateMatch = await this._matchTemplate(msgLower)
     if (templateMatch) {
+      this.setUserSession(userId, templateMatch)
       return templateMatch
     }
 
     // No match — find or create a misc agent
-    return this._getOrCreateMiscAgent()
+    const miscResult = await this._getOrCreateMiscAgent()
+    this.setUserSession(userId, miscResult)
+    return miscResult
   }
 
   /**
