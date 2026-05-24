@@ -1,152 +1,220 @@
-# Agent Template System Design
+# Agent Template System — Complete Design
+
+> 最后更新：2026-05-24
+
+---
 
 ## 核心概念
 
-- **模板（Template）**：持久的、会进化的。包含 AGENT.md（人格）、skills/（技能）、memory DB（记忆）
-- **实例（Instance）**：短暂的、按需的。Session 粒度，用完即释放
-- **用户视角**：模板 = Agent，不感知底层实现（"股票助手"、"代码助手"）
+| 概念 | 定义 |
+|------|------|
+| **模板** | 持久的、会进化的。包含 AGENT.md、skills、template.yaml。通用性资产。 |
+| **Agent 实例** | 短暂的、按需的。绑定一个模板，有自己的名字、描述、任务列表。 |
+| **Session** | 用户侧的会话容器。挂一个主 Agent，冗余存 main_agent_id。 |
+| **Task** | Agent 管理的工作单元，树形结构，最深 4 层。 |
+| **Sub-Agent** | 主 Agent spawn 的并行执行节点，共享父 Session，继承父模板。 |
+
+用户只感知 Agent（有名字的机器人），不感知 Session / 模板等技术概念。
 
 ---
 
-## 架构流程
+## 实体层级
+
+```
+Session
+  └── Main Agent（主 Agent，parent_agent_id = NULL）
+        ├── Sub-Agent 1（并行子任务，继承模板）
+        │     └── Sub-Sub-Agent（depth=2，最深不限）
+        └── Tasks（树形，最深 4 层）
+              ├── Task（depth=0）
+              │     ├── Subtask（depth=1）
+              │     │     └── Subtask（depth=2）
+              │     └── Subtask（depth=1）
+              └── Task（depth=0）
+```
+
+**Sub-Agent vs Sub-Task 的选择依据：**
+- 能并行 → spawn Sub-Agent
+- 顺序/自己能处理 → Sub-Task
+- 两者是独立概念，Task 的层级是 Task 自己的事
+
+---
+
+## 数据库 Schema
+
+```sql
+-- 已有，新增 main_agent_id 字段
+ALTER TABLE chat_sessions ADD COLUMN main_agent_id TEXT;
+
+-- 新增 agents 表
+CREATE TABLE IF NOT EXISTS agents (
+  id              TEXT PRIMARY KEY,
+  session_id      TEXT NOT NULL REFERENCES chat_sessions(id),
+  parent_agent_id TEXT REFERENCES agents(id),   -- NULL = 主 Agent
+  template_name   TEXT NOT NULL,
+  agent_name      TEXT NOT NULL,                -- 默认 agent-{id前8位}，LLM 异步更新
+  description     TEXT,                         -- 主 Agent 与 Session 共用此描述
+  depth           INTEGER NOT NULL DEFAULT 0,   -- 0 = 主 Agent
+  status          TEXT NOT NULL DEFAULT 'active',  -- active/idle/completed/error
+  created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- 新增 tasks 表（邻接表，支持多级子任务）
+CREATE TABLE IF NOT EXISTS tasks (
+  id          TEXT PRIMARY KEY,
+  agent_id    TEXT NOT NULL REFERENCES agents(id),
+  session_id  TEXT NOT NULL REFERENCES chat_sessions(id),  -- 冗余，方便查询
+  parent_id   TEXT REFERENCES tasks(id),  -- NULL = 根任务
+  title       TEXT NOT NULL,
+  description TEXT,
+  status      TEXT NOT NULL DEFAULT 'pending',  -- pending/in_progress/done/cancelled
+  depth       INTEGER NOT NULL DEFAULT 0,       -- 最大 4
+  created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_agents_session ON agents(session_id);
+CREATE INDEX IF NOT EXISTS idx_agents_parent  ON agents(parent_agent_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_agent    ON tasks(agent_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_parent   ON tasks(parent_id);
+```
+
+---
+
+## 完整架构流程
 
 ```
 用户消息
-  → 引导层（每条消息都过，轻量关键词匹配 + LLM 语义兜底）
-  → Agent Pool（根据模板名返回/创建实例）
-  → 实例处理
-      ├── AGENT.md：读模板原件（只读）
-      ├── skills/：读模板原件（只读）
-      └── memory DB：按 session_id 隔离查询（共享同一 DB，天然隔离）
-  → 回复用户
-  → /new 命令 → closeSession() → 后台异步 append memory 到模板 DB
-```
-
----
-
-## 目录结构
-
-```
-~/.gemeniclaw/templates/
-├── base/                    ← 默认通用模板（系统首次启动时自动创建）
-│   ├── template.yaml        ← 模板元信息（name/description/keywords）
-│   ├── AGENT.md             ← 从 AGENT.md.template 渲染生成
-│   └── skills/              ← 技能目录
-└── stock-agent/             ← 复制自 base 的专精模板
-    ├── template.yaml
-    ├── AGENT.md
-    └── skills/
-```
-
-**Memory DB 位置：** `~/.gemeniclaw/memory/geminiclaw.db`（所有模板实例共享，按 session_id 隔离）
-
----
-
-## template.yaml 格式
-
-```yaml
-name: stock-agent
-display_name: 股票助手
-description: 专精股票分析、行情解读、量化策略的 Agent
-keywords:
-  - 股票
-  - 行情
-  - K线
-  - 量化
-  - 基金
-created_at: 2026-05-24T12:00:00Z
-copied_from: base         # 可选，复制自哪个模板
+  │
+  ▼
+引导层（Guidance Layer）
+  ├── 分词用户输入
+  ├── 匹配活跃主 Agent 的 description + 当前 Task 摘要
+  │     └── 多个匹配 → 选第一个（下层 Agent 可自我转移）
+  ├── 未匹配 → misc Agent（base 模板，专处理临时任务）
+  └── 新话题 → 创建新 Session + 新主 Agent
+  │
+  ▼
+Agent Pool（资源管理器）
+  ├── 按 agent_id 管理实例
+  ├── 排队机制（参考 Claw Queue）
+  └── 实例状态：active/idle/completed
+  │
+  ▼
+Main Agent 处理
+  ├── 读 AGENT.md（模板原件，只读）
+  ├── 读 skills（模板原件，只读）
+  ├── 读 memory（共享 DB，按 session_id 隔离）
+  ├── [可能] spawn Sub-Agent（并行任务）
+  └── [可能] 创建/更新 Task 树
+  │
+  ▼
+回复用户
+  └── QQ Bot 层加 [Agent名] 前缀
+        例：[茅台分析] 今日茅台下跌 2.3%...
 ```
 
 ---
 
 ## 引导层（Guidance Layer）
 
-- **插入位置：** QQ Bot 收到消息后，AgentLoop 之前
-- **路由分级：**
-  1. 关键词匹配（零成本，扫描 `template.yaml` 的 keywords）
-  2. LLM 语义判断（第一层不确定时兜底）
-  3. 匹配失败 → 默认 base 模板
-- **Session 内切换：** 每条消息都过路由，话题偏移时自动切换（股票相关代码继续用股票 Agent，跨项目切换到对应 Agent）
-- **路由纠错：** 用户纠正时，LLM 动态增加 keywords 到 template.yaml，逐步优化
+**插入位置：** QQ Bot 收到消息后，AgentLoop 之前
+
+**路由分级（每条消息都过）：**
+1. 分词用户输入
+2. 文字匹配：活跃主 Agent 的 `description` + 当前 `tasks.title`
+3. 未匹配 → misc Agent
+4. 路由纠错：Agent 自我转移（发给引导层，带目标 Agent 指定）
+5. 成环检测：LLM 语义判断，成环 → 抛给用户决断
+
+**Agent 自我转移：**
+- Agent 发一条消息给引导层，格式和用户消息一样，但显式指定目标 Agent
+- 引导层收到后知道来源是 Agent（非用户），转发给目标
+- 目标 Agent 若也认为不适合自己 → 成环 → 返回用户
 
 ---
 
-## Agent Pool
+## Agent 命名规范
 
-- **单进程 async 并发**（Node.js I/O 密集场景足够）
-- **职责：** 资源管理器，按模板名返回/创建实例
-- **实例生命周期：** Session 开始创建，`/new` 命令时销毁
-- **并发实例：** 同一模板可有多个实例（不同 session），共享只读的 AGENT.md/skills，memory 按 session_id 隔离
-
----
-
-## Session 结束 & 记忆回写
-
-**触发时机：** 用户发 `/new` 命令（参考 Claw 的 session-memory hook + Hermes 的 closeSession()）
-
-**实现方式：**
-1. `/new` handler 调用 `closeSession(currentSessionId)`
-2. 后台异步执行，不阻塞 `/new` 的即时响应
-3. 读取本次 session 的对话历史（最近 N 条）
-4. 直接 append 到模板的 memory_topics 表（简单累加，不做 LLM 筛选）
-5. 记录格式：`{title: 'Session YYYY-MM-DD HH:mm', summary: '对话摘要文本', ...}`
+| 阶段 | 名字 |
+|------|------|
+| 创建时 | `agent-{id前8位}`（占位） |
+| 第一条消息处理后 | LLM 生成有意义名字，异步更新 |
+| 最终格式 | `{template}-{task-name}`，如 `stock-agent-茅台分析` |
+| 回复前缀 | `[茅台分析] 正文...` |
+| 用户视角 | 只看到名字，不感知模板/Session |
 
 ---
 
-## 模板操作（gc 命令）
+## Session 生命周期
 
-```bash
-gc template list                    # 列出所有模板
-gc template show <name>             # 查看模板详情
-gc template create <name>           # 从 base 复制创建新模板
-gc template copy <src> <dst>        # 复制模板
-gc template edit <name>             # 编辑 template.yaml
+| 事件 | 动作 |
+|------|------|
+| 用户无匹配 Session 时发消息 | 引导层创建新 Session + 主 Agent |
+| `/new` 命令 | closeSession → 后台异步 append memory → 归档 |
+| Idle 超时（1小时） | 同上，自动触发 |
+| Agent 自我转移 | 消息重路由，Session 不关闭 |
+
+**记忆回写（append）：**
+- 读取本次 Session 最近 N 条消息
+- 直接追加到模板 memory DB 的 `memory_topics` 表
+- 不做 LLM 筛选，累加式增长
+- 后台异步，不阻塞 `/new` 响应
+
+---
+
+## 模板目录结构
+
+```
+~/.gemeniclaw/templates/
+├── base/                    ← 通用模板（首次启动自动创建）✓ Phase 1 已实现
+│   ├── template.yaml
+│   ├── AGENT.md
+│   └── skills/
+└── stock-agent/             ← 复制自 base 的专精模板
+    ├── template.yaml
+    ├── AGENT.md
+    └── skills/
 ```
 
----
-
-## 模板的创建与进化
-
-- **第一个模板：** base，系统首次启动时自动创建，包含机器路径、配置位置等基础信息
-- **新模板：** 复制（不是 fork），完全独立，不维护父子关系
-- **进化：** 通过 Session 结束时的 memory append 逐渐积累经验
-- **文件修改保护：** 修改模板文件前先备份（`template.yaml.bak.timestamp`），定期清理老备份
-
----
-
-## 关键设计决策
-
-| 决策点 | 方案 | 理由 |
-|--------|------|------|
-| Memory 隔离 | 共享 DB + session_id 隔离 | DB 已有 session_id 字段，天然隔离，无需复制 |
-| AGENT.md/skills | 只读共享模板原件 | 实例运行时不修改，无需副本 |
-| 并发模型 | 单进程 async | LLM API 是 I/O 密集，Node.js async 足够 |
-| 回写触发 | /new 命令 | 参考 Claw + Hermes，语义明确 |
-| 回写内容 | 直接 append memory | 简单可靠，避免 LLM 筛选引入的不确定性 |
-| 模板关系 | 复制（无父子关系）| 避免父子语义漂移，简单清晰 |
-| 锁机制 | 写入时加锁 + 超时释放 | 防止并发回写冲突 |
+**template.yaml 格式：**
+```yaml
+name: stock-agent
+display_name: 股票助手
+description: 专精股票分析、行情解读、量化策略
+keywords: [股票, 行情, K线, 量化, 基金]
+created_at: 2026-05-24T12:00:00Z
+copied_from: base
+```
 
 ---
 
 ## 实现阶段
 
-### Phase 1：模板基础设施
+### ✅ Phase 1（已完成）
 - 模板目录结构 + base 模板自动初始化
-- `template.yaml` Zod schema
-- `gc template` 命令集（list/show/create/copy）
-- 模板加载到 `loadSystemPrompt()`
+- `template.yaml` Zod schema + TemplateManager
+- `gc template list/show/create/copy`
+- `GET|POST /v1/templates`
 
-### Phase 2：引导层 + 路由
-- GuidanceLayer 类，插入 AgentLoop 之前
-- 关键词匹配 + LLM 语义兜底
-- Session → 模板绑定（内存中）
+### 🔲 Phase 2：DB 迁移 + Agent/Task 实体
+- `agents` 表、`tasks` 表新增
+- `chat_sessions` 加 `main_agent_id`
+- Agent / Task CRUD API
 
-### Phase 3：Agent Pool 接入模板
-- Pool 按模板名管理实例
-- 实例持有 templateName，读 AGENT.md/skills 时走模板路径
+### 🔲 Phase 3：引导层 + 多 Session 路由
+- GuidanceLayer 类（分词匹配 + LLM 兜底）
+- 新 Session 创建逻辑
+- Agent 自我转移 + 成环检测
+- `[Agent名]` 前缀注入（QQ Bot 层）
 
-### Phase 4：Session 结束回写
-- `/new` handler 调用 `closeSession()`
-- 后台 append memory_topics 记录到 DB
-- 写入锁 + 超时机制
+### 🔲 Phase 4：Agent Pool 接入模板
+- Pool 按 template 初始化实例
+- Sub-Agent spawn（并行，继承模板）
+- 排队机制
+
+### 🔲 Phase 5：Session 结束 + 记忆回写
+- `/new` → closeSession → append memory
+- Idle 1h 超时自动归档
+- 写入锁 + 超时释放
