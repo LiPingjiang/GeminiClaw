@@ -14,6 +14,7 @@ import { evolutionRoute } from "./routes/evolution.js"
 import { runsRoute } from "./routes/runs.js"
 import { sessionsRoute } from "./routes/sessions.js"
 import { templatesRoute } from "./routes/templates.js"
+import { agentsRoute } from "./routes/agents.js"
 import type { Db } from "../db/client.js"
 import { ChannelRegistry } from "../channels/registry.js"
 import { QQBotChannel } from "../channels/qqbot/index.js"
@@ -170,6 +171,7 @@ export async function buildServer(
   const runStore = new RunStore()
   if (db) {
     await fastify.register(sessionsRoute, { db, authToken: config.server.authToken })
+    await fastify.register(agentsRoute, { db, authToken: config.server.authToken })
   }
 
   // Templates API
@@ -198,7 +200,7 @@ export async function buildServer(
 
   const qqbotConfig = config.channels?.qqbot
   if (qqbotConfig?.enabled) {
-    registry.register(new QQBotChannel(qqbotConfig, fastify))
+    registry.register(new QQBotChannel(qqbotConfig, fastify, db))
   }
 
   await registry.startAll({ router, memory: strategy, agentLoop, config })

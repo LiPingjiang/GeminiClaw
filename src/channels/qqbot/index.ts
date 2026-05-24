@@ -11,6 +11,10 @@ import { registerWebhookRoute } from "./webhook.js"
 import { QQBotWSClient } from "./ws-client.js"
 import { sendC2CReply } from "./api.js"
 import { dispatch } from "../../commands/dispatcher.js"
+import type { Db } from "../../db/client.js"
+import { AgentRepository } from "../../agents/repository.js"
+import { GuidanceLayer } from "../../guidance/layer.js"
+import { templateManager } from "../../templates/manager.js"
 
 export interface QQBotChannelConfig {
   enabled: boolean
@@ -30,7 +34,8 @@ export class QQBotChannel implements IChannel {
 
   constructor(
     private config: QQBotChannelConfig,
-    private fastify?: FastifyInstance
+    private fastify?: FastifyInstance,
+    private db?: Db
   ) {}
 
   async start(ctx: ChannelContext): Promise<void> {
@@ -40,6 +45,11 @@ export class QQBotChannel implements IChannel {
     // Per-session model overrides: openid → "provider/model"
     const modelOverrides = new Map<string, string>()
     const startedAt = new Date()
+
+    // Build GuidanceLayer if db is available
+    const guidanceLayer: GuidanceLayer | null = this.db
+      ? new GuidanceLayer(new AgentRepository(this.db), templateManager, this.db)
+      : null
 
     /** 共用的消息处理逻辑：通过 AgentLoop 执行，支持 tool calls */
     const handleMessage = async (openid: string, content: string, _msgId: string): Promise<string> => {
@@ -54,9 +64,19 @@ export class QQBotChannel implements IChannel {
       })
       if (cmdResult !== null) return cmdResult
 
+      // ── 引导层路由 ──────────────────────────────────────────────────────────
+      let sessionId = openid
+      let agentName: string | null = null
+
+      if (guidanceLayer) {
+        const routeResult = await guidanceLayer.route(content, openid)
+        sessionId = routeResult.sessionId
+        agentName = routeResult.agentName
+      }
+
       // ── 正常 LLM 流程 ──────────────────────────────────────────────────────
-      await memory.ensureSession(openid)
-      const convCtx = await memory.getContext(openid, content)
+      await memory.ensureSession(sessionId)
+      const convCtx = await memory.getContext(sessionId, content)
 
       // 构建完整的 InternalMessage 历史 + 新消息
       const messages: InternalMessage[] = [
@@ -78,7 +98,7 @@ export class QQBotChannel implements IChannel {
       let finalReply = ""
       for await (const event of agentLoop.run({
         messages,
-        sessionId: openid,
+        sessionId,
         ...(modelOverride ? { model: modelOverride } : {}),
       })) {
         if (event.type === "message_delta") {
@@ -88,8 +108,13 @@ export class QQBotChannel implements IChannel {
 
       if (!finalReply) finalReply = "（无回复）"
 
+      // 注入 [AgentName] 前缀
+      if (agentName) {
+        finalReply = `[${agentName}] ${finalReply}`
+      }
+
       await memory.appendTurn(
-        openid,
+        sessionId,
         { role: "user", content },
         { role: "assistant", content: finalReply }
       )
