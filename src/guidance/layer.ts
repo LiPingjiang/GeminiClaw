@@ -89,8 +89,55 @@ export class GuidanceLayer {
       }
     }
 
+    // No active agent matched — try template matching
+    const templateMatch = await this._matchTemplate(queryTokens)
+    if (templateMatch) {
+      return templateMatch
+    }
+
     // No match — find or create a misc agent
     return this._getOrCreateMiscAgent()
+  }
+
+  /**
+   * Try to match a non-base template by keywords/description.
+   * If matched, create a new agent from that template.
+   */
+  private async _matchTemplate(queryTokens: string[]): Promise<RouteResult | null> {
+    const templates = this.templateManager.list()
+    let bestTemplate = null
+    let bestScore = 0
+
+    for (const tpl of templates) {
+      if (tpl.name === "base") continue // base is misc fallback
+      let score = matchScore(queryTokens, tpl.description ?? "")
+      score += matchScore(queryTokens, tpl.display_name ?? "")
+      for (const kw of tpl.keywords ?? []) {
+        score += matchScore(queryTokens, kw)
+      }
+      if (score > bestScore) {
+        bestScore = score
+        bestTemplate = tpl
+      }
+    }
+
+    if (!bestTemplate || bestScore === 0) return null
+
+    // Create new agent from matched template
+    const { sessionId, agentId } = await createSessionWithAgent(bestTemplate.name, this.db)
+    const agentName = bestTemplate.display_name ?? bestTemplate.name
+    this.agentRepo.update(agentId, {
+      agent_name: agentName,
+      description: bestTemplate.description ?? "",
+    })
+
+    return {
+      sessionId,
+      agentId,
+      agentName,
+      isNew: true,
+      templateName: bestTemplate.name,
+    }
   }
 
   /**
