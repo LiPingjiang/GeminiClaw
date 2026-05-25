@@ -154,4 +154,17 @@ export class LayeredStrategy implements MemoryStrategy {
       ORDER BY id DESC LIMIT ?
     `).all(sessionId, this.config.recentMessageLimit) as Message[]
   }
+
+  async appendMessages(sessionId: string, messages: Message[]): Promise<void> {
+    await this.ensureSession(sessionId)
+    const insert = this.db.prepare(
+      `INSERT INTO chat_messages (session_id, role, content) VALUES (?, ?, ?)`
+    )
+    for (const msg of messages) {
+      insert.run(sessionId, msg.role, msg.content)
+    }
+    this.db.prepare(
+      `UPDATE chat_sessions SET message_count = message_count + ?, updated_at = datetime('now') WHERE id = ?`
+    ).run(messages.length, sessionId)
+  }
 }
