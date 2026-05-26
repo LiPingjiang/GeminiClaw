@@ -14,7 +14,8 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "postbuild": "node scripts/patch-server.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",

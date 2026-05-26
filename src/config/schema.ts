@@ -40,12 +40,26 @@ export const agentConfigSchema = z.object({
   timeoutSeconds: z.number().int().positive().default(60),
 })
 
+export const qqbotConfigSchema = z.object({
+  enabled: z.boolean().default(false),
+  mode: z.enum(["websocket", "webhook"]).default("websocket"),
+  appId: z.string(),
+  clientSecret: z.string(),
+  intents: z.number().int().optional(),
+  webhookPath: z.string().optional(),
+})
+
+export const channelsConfigSchema = z.object({
+  qqbot: qqbotConfigSchema.optional(),
+}).optional()
+
 export const configSchema = z.object({
   server: serverConfigSchema,
   providers: z.array(providerConfigSchema).min(1),
   routing: routingConfigSchema,
   memory: memoryConfigSchema,
   agent: agentConfigSchema,
+  channels: channelsConfigSchema,
 })
 
 export type ServerConfig = z.infer<typeof serverConfigSchema>
@@ -54,4 +68,6 @@ export type RoutingConfig = z.infer<typeof routingConfigSchema>
 export type MemoryConfig = z.infer<typeof memoryConfigSchema>
 export type MemoryStrategy = z.infer<typeof memoryStrategySchema>
 export type AgentConfig = z.infer<typeof agentConfigSchema>
+export type QQBotConfig = z.infer<typeof qqbotConfigSchema>
+export type ChannelsConfig = z.infer<typeof channelsConfigSchema>
 export type Config = z.infer<typeof configSchema>
