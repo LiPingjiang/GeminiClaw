@@ -480,6 +480,11 @@ export class AgentLoop {
         ];
       }
     }
+    // max_turns 达到上限时告知用户（防止"无回复"）
+    yield {
+      type: "message_delta",
+      delta: `（任务已执行 ${turn} 轮，达到上限。如需继续请回复「继续」。）`,
+    };
     yield { type: "agent_end", totalTurns: turn, stopReason: "max_turns" };
   }
 

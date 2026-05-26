@@ -156,6 +156,7 @@ export class QQBotChannel implements IChannel {
 
       const modelOverride = modelOverrides.get(openid);
       let finalReply = "";
+      let _lastNonEmptyReply = ""; // 兜底：turn_start 重置前保存上一轮非空内容
 
       const turnMessages: Array<Record<string, unknown>> = [];
       let pendingAssistant: Record<string, unknown> | null = null;
@@ -185,6 +186,7 @@ export class QQBotChannel implements IChannel {
           finalReply += event.delta;
         } else if (event.type === "turn_start") {
           flushPendingTurn();
+          if (finalReply) _lastNonEmptyReply = finalReply; // 重置前保存
           finalReply = "";
         } else if (event.type === "turn_end") {
           pendingAssistant = { ...event.message };
@@ -207,6 +209,8 @@ export class QQBotChannel implements IChannel {
       }
       flushPendingTurn();
 
+      // 兜底：若最终轮为空，使用上一轮的有效回复
+      if (!finalReply && _lastNonEmptyReply) finalReply = _lastNonEmptyReply;
       if (!finalReply) finalReply = "（无回复）";
       finalReply = stripToolXml(finalReply);
 
