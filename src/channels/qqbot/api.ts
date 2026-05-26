@@ -49,7 +49,16 @@ export async function sendC2CReply(
 }
 
 // 主动消息（不依赖 msg_id，不受 5 分钟限制）
-const _msgSeqMap = new Map<string, number>();
+// msg_seq：以秒级时间戳为基础，防止服务重启后归零被 QQ 判定为重复消息
+// 每用户独立递增，同一秒内多条消息也能保证唯一
+const _msgSeqBase = Math.floor(Date.now() / 1000) % 1_000_000;
+const _msgSeqOffset = new Map<string, number>();
+
+function nextMsgSeq(openid: string): number {
+  const offset = (_msgSeqOffset.get(openid) ?? 0) + 1;
+  _msgSeqOffset.set(openid, offset);
+  return _msgSeqBase + offset;
+}
 
 export async function sendC2CActive(
   appId: string,
@@ -59,8 +68,7 @@ export async function sendC2CActive(
 ): Promise<void> {
   const token = await getAccessToken(appId, clientSecret);
   if (!token) throw new Error("Failed to get access token");
-  const seq = (_msgSeqMap.get(openid) ?? 0) + 1;
-  _msgSeqMap.set(openid, seq);
+  const seq = nextMsgSeq(openid);
   const res = await fetch(
     `https://api.sgroup.qq.com/v2/users/${openid}/messages`,
     {
@@ -69,7 +77,8 @@ export async function sendC2CActive(
         "Content-Type": "application/json",
         Authorization: `QQBot ${token}`,
       },
-      body: JSON.stringify({ content, msg_type: 0, msg_seq: seq }),
+      // msg_type: 2 = markdown，与被动回复格式一致
+      body: JSON.stringify({ markdown: { content }, msg_type: 2, msg_seq: seq }),
     },
   );
   if (!res.ok) {

@@ -187,9 +187,23 @@ export class QQBotWSClient {
     if (!openid || !content) return;
 
     let reply = "";
+
+    // 长任务保活：30s 后发一条"处理中"通知，避免用户误以为无响应
+    const PASSIVE_REPLY_WINDOW_MS = 4 * 60 * 1000; // QQ 被动回复窗口 5min，留 1min 余量
+    const taskStart = Date.now();
+    const keepAliveTimer = setTimeout(() => {
+      sendC2CActive(
+        this.opts.appId,
+        this.opts.clientSecret,
+        openid,
+        "⏳ 正在处理中，请稍候…",
+      ).catch((e) => console.error("[QQBotWSClient] keepAlive error:", e));
+    }, 30_000);
+
     try {
       reply = await this.opts.onMessage(openid, content, msgId);
     } catch (err) {
+      clearTimeout(keepAliveTimer);
       console.error("[QQBotWSClient] AgentLoop error:", err);
       await sendC2CActive(
         this.opts.appId,
@@ -198,6 +212,21 @@ export class QQBotWSClient {
         "❌ 处理出错：" + String(err),
       ).catch((e) =>
         console.error("[QQBotWSClient] sendC2CActive error:", e),
+      );
+      return;
+    }
+    clearTimeout(keepAliveTimer);
+
+    // 超过被动回复窗口，直接走主动消息，不再尝试被动回复
+    const elapsed = Date.now() - taskStart;
+    if (elapsed > PASSIVE_REPLY_WINDOW_MS) {
+      await sendC2CActive(
+        this.opts.appId,
+        this.opts.clientSecret,
+        openid,
+        reply,
+      ).catch((e) =>
+        console.error("[QQBotWSClient] sendC2CActive (long-task) error:", e),
       );
       return;
     }
