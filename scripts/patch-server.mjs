@@ -1,5 +1,4 @@
 // scripts/patch-server.mjs — patches dist/server/index.js after tsc build
-// to restore AgentLoop + QQBot channel startup that's missing from the minimal src/
 import { writeFileSync } from 'fs'
 import { fileURLToPath } from 'url'
 import { dirname, join } from 'path'
@@ -24,13 +23,13 @@ function makeRegistryAdapter() {
             return {
                 handler: async (args, outerCtx) => {
                     const ctx = {
-                        sessionId: outerCtx?.sessionId ?? \"\",
+                        sessionId: outerCtx?.sessionId ?? "",
                         workdir: outerCtx?.workdir ?? process.cwd(),
                         logger: outerCtx?.logger ?? { info: () => undefined, warn: () => undefined, error: () => undefined },
                         extra: outerCtx?.extra,
                     };
                     const result = await entry.handler(args, ctx);
-                    if (result.type === \"error\") return { content: result.error, isError: true };
+                    if (result.type === "error") return { content: result.error, isError: true };
                     return { content: result.text };
                 },
                 schema: entry.schema,
@@ -48,17 +47,17 @@ function makeRegistryAdapter() {
     };
 }
 
-export async function buildServer(config, router, strategy) {
+export async function buildServer(config, router, strategy, db) {
     const fastify = Fastify({ logger: false });
 
     const chatFn = async (messages, options) => {
         const providerMessages = messages.map(m => {
-            if (m.role === \"tool\") return { role: \"tool\", content: m.content, tool_call_id: m.tool_call_id };
-            if (m.role === \"assistant\" && m.tool_calls && m.tool_calls.length > 0) {
+            if (m.role === "tool") return { role: "tool", content: m.content, tool_call_id: m.tool_call_id };
+            if (m.role === "assistant" && m.tool_calls && m.tool_calls.length > 0) {
                 return {
-                    role: \"assistant\", content: m.content,
+                    role: "assistant", content: m.content,
                     tool_calls: m.tool_calls.map(tc => ({
-                        id: tc.id, type: \"function\",
+                        id: tc.id, type: "function",
                         function: { name: tc.name, arguments: JSON.stringify(tc.args) },
                     })),
                 };
@@ -66,13 +65,13 @@ export async function buildServer(config, router, strategy) {
             return { role: m.role, content: m.content };
         });
         const providerTools = options?.tools
-            ? options.tools.map(t => ({ type: \"function\", function: { name: t.name, description: t.description, parameters: t.input_schema } }))
+            ? options.tools.map(t => ({ type: "function", function: { name: t.name, description: t.description, parameters: t.input_schema } }))
             : undefined;
         const response = await router.chat(providerMessages, options ? { model: options.model, tools: providerTools } : undefined);
         const agentToolCalls = response.tool_calls
             ? response.tool_calls.map(tc => ({ id: tc.id, name: tc.function.name, args: (() => { try { return JSON.parse(tc.function.arguments); } catch { return {}; } })() }))
             : undefined;
-        return { content: response.content ?? \"\", tool_calls: agentToolCalls };
+        return { content: response.content ?? "", tool_calls: agentToolCalls };
     };
 
     const agentLoop = new AgentLoop({
@@ -85,19 +84,19 @@ export async function buildServer(config, router, strategy) {
     await fastify.register(healthRoute);
     await fastify.register(chatRoute, { router, strategy, authToken: config.server.authToken });
 
-    // Channel framework
+    // Channel framework — start QQBot if configured, pass db for GuidanceLayer/AgentName
     const chanRegistry = new ChannelRegistry();
     const qqbotConfig = config.channels?.qqbot;
     if (qqbotConfig?.enabled) {
-        chanRegistry.register(new QQBotChannel(qqbotConfig, fastify, null));
+        chanRegistry.register(new QQBotChannel(qqbotConfig, fastify, db ?? null));
     }
     await chanRegistry.startAll({ router, memory: strategy, agentLoop, config });
 
-    fastify.addHook(\"onClose\", async () => { await chanRegistry.stopAll(); });
+    fastify.addHook("onClose", async () => { await chanRegistry.stopAll(); });
 
     return fastify;
 }
 `
 
 writeFileSync(outFile, code, 'utf-8')
-console.log('✅ dist/server/index.js patched (AgentLoop + QQBot restored)')
+console.log('✅ dist/server/index.js patched (AgentLoop + QQBot + db restored)')

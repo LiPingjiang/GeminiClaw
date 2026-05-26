@@ -27,24 +27,16 @@ function buildProvider(config: ProviderConfig): Provider {
 
 async function main(): Promise<void> {
   const config = loadConfig()
-
-  // Provider 初始化
   const providers = config.providers.map(buildProvider)
   const router = new ProviderRouter(providers, config.routing)
-
-  // DB 初始化（layered 策略需要）
   const dbPath = join(config.memory.dataDir, "geminiclaw.db")
   const db = openDb(dbPath)
   migrate(db)
-
-  // 路由 provider（friday，用于 layered 策略的摘要/路由）
-  const routerProvider = providers.find(p => p.name === "friday") ?? null
-
-  // 记忆策略
+  // 用 routing.default 指定的 provider 做 triage/routing，不依赖固定名称
+  const defaultProviderName = config.routing.default.split("/")[0]
+  const routerProvider = providers.find(p => p.name === defaultProviderName) ?? providers[0] ?? null
   const strategy = buildStrategy(config, db, routerProvider)
-
-  const server = await buildServer(config, router, strategy)
-
+  const server = await buildServer(config, router, strategy, db)
   await server.listen({ port: config.server.port, host: config.server.host })
   console.log(`GeminiClaw listening on ${config.server.host}:${config.server.port}`)
   console.log(`Memory strategy: ${strategy.name}`)
