@@ -298,6 +298,25 @@ export class AgentLoop {
       };
 
       if (!response.tool_calls || response.tool_calls.length === 0) {
+        // ── 空转检测：第一轮"我来…/让我…"但无工具调用 ─────────────────────
+        // 模型承诺要做某事却没有行动，给一次补救机会
+        if (turn === 1 && toolSchemas.length > 0 && response.content) {
+          const idlePattern = /^(好的[，,\s]|我(来|将|会|要|先|正在|立即)|让我|开始|首先|稍等|马上)/;
+          const isPromise =
+            idlePattern.test(response.content.trim()) &&
+            response.content.length < 300;
+          if (isPromise) {
+            messages = [
+              ...messages,
+              assistantMsg,
+              {
+                role: "user" as const,
+                content: "请直接调用工具开始执行，不要只描述计划。",
+              },
+            ];
+            continue; // 重跑一轮，强制执行
+          }
+        }
         yield {
           type: "agent_end",
           totalTurns: turn,

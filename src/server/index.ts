@@ -155,6 +155,13 @@ export async function buildServer(
     config: {
       maxTurns: (config.agent as { maxTurns?: number } | undefined)?.maxTurns ?? 20,
       systemPrompt: (config.agent as { systemPrompt?: string } | undefined)?.systemPrompt,
+      // 工具调用守护：同一工具连续失败/无进展时 warn/halt
+      guardrails: {
+        sameToolFailureWarnAfter: 3,
+        sameToolFailureHaltAfter: 8,
+        noProgressWarnAfter: 2,
+        noProgressHaltAfter: 5,
+      },
     },
     logger: { debug: () => undefined, error: console.error },
   });

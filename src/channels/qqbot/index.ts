@@ -91,6 +91,21 @@ export class QQBotChannel implements IChannel {
 
       // ── 正常 LLM 流程 ──────────────────────────────────────────────────
       await memory.ensureSession(sessionId);
+
+      // Session 标题：首条消息时自动写入（截取前 24 字）
+      if (this.db) {
+        const row = this.db
+          .prepare("SELECT title FROM chat_sessions WHERE id = ?")
+          .get(sessionId) as { title: string | null } | undefined;
+        if (!row?.title) {
+          const title =
+            content.length > 24 ? content.slice(0, 24) + "…" : content;
+          this.db
+            .prepare("UPDATE chat_sessions SET title = ? WHERE id = ?")
+            .run(title, sessionId);
+        }
+      }
+
       const convCtx = await memory.getContext(sessionId, content);
 
       const messages = [
