@@ -14,6 +14,7 @@ interface ChatRouteOpts {
   router: ProviderRouter
   strategy: MemoryStrategy
   authToken?: string
+  agentLoop?: unknown
 }
 
 export async function chatRoute(

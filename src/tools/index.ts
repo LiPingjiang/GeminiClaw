@@ -1,0 +1,16 @@
+// @ts-nocheck
+// Import all tools to trigger self-registration
+import './exec.js';
+import './read.js';
+import './write.js';
+import './edit.js';
+import './web_fetch.js';
+import './clarify_uncertainty_register.js';
+import './evolution_command.js';
+import './create_agent.js';
+import './web_search.js';
+import './browser.js';
+import './repo_map.js';
+import './list_sessions.js';
+import './read_session.js';
+export { registry } from './registry.js';
