@@ -12,7 +12,7 @@ import { QQBotWSClient } from "./ws-client.js";
 import { sendC2CReply } from "./api.js";
 import { dispatch } from "../../commands/dispatcher.js";
 import { AgentRepository } from "../../agents/repository.js";
-import { GuidanceLayer } from "../../guidance/layer.js";
+import { DispatcherAgent } from "../../guidance/dispatcher.js";
 import { templateManager } from "../../templates/manager.js";
 import { stripToolXml } from "../../utils/strip-tool-xml.js";
 
@@ -51,12 +51,14 @@ export class QQBotChannel implements IChannel {
     const modelOverrides = new Map<string, string>();
     const startedAt = new Date();
 
-    const guidanceLayer = this.db
-      ? new GuidanceLayer(
-          new AgentRepository(this.db),
+    const dispatcher = this.db
+      ? new DispatcherAgent({
+          db: this.db,
+          router: ctx.router,
+          agentRepo: new AgentRepository(this.db),
           templateManager,
-          this.db,
-        )
+          model: config.agent.dispatcherModel,
+        })
       : null;
 
     const handleMessage = async (
@@ -74,19 +76,22 @@ export class QQBotChannel implements IChannel {
         startedAt,
       });
       if (cmdResult !== null) {
-        if (content.trimStart().startsWith("/new") && guidanceLayer) {
-          guidanceLayer.clearUserSession(openid);
+        if (content.trimStart().startsWith("/new") && dispatcher) {
+          dispatcher.clearUserSession(openid);
         }
         return cmdResult;
       }
 
-      // ── 引导层路由 ──────────────────────────────────────────────────────
+      // ── Dispatcher 路由 ─────────────────────────────────────────────────
       let sessionId = openid;
       let agentName: string | null = null;
-      if (guidanceLayer) {
-        const routeResult = await guidanceLayer.route(content, openid);
+      let currentAgentId: string | null = null;
+      if (dispatcher) {
+        const routeResult = await dispatcher.route(content, openid);
         sessionId = routeResult.sessionId;
         agentName = routeResult.agentName;
+        currentAgentId = routeResult.agentId;
+        dispatcher.markBusy(routeResult.agentId);
       }
 
       // ── 正常 LLM 流程 ──────────────────────────────────────────────────
@@ -208,6 +213,11 @@ export class QQBotChannel implements IChannel {
         }
       }
       flushPendingTurn();
+
+      // Mark agent as idle after processing
+      if (dispatcher && currentAgentId) {
+        dispatcher.markIdle(currentAgentId);
+      }
 
       // 兜底：若最终轮为空，使用上一轮的有效回复
       if (!finalReply && _lastNonEmptyReply) finalReply = _lastNonEmptyReply;
