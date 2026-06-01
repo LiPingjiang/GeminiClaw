@@ -12,6 +12,7 @@ import type {
   GuardrailConfig,
 } from "./types.js";
 import { GuardrailController } from "./guardrails.js";
+import { hookBus } from "../hooks/index.js";
 
 const SEQUENTIAL_TOOLS = new Set(["exec", "write", "edit"]);
 const MUTATING_TOOLS = new Set(["exec", "write", "edit", "file_write"]);
@@ -243,9 +244,24 @@ export class AgentLoop {
 
       let response: { content: string; tool_calls?: ToolCall[] };
       try {
+        // ── Hook: pre_llm_call ──
+        await hookBus.emit("pre_llm_call", {
+          messageCount: messages.length,
+          model: params.model,
+          sessionId: params.sessionId,
+        });
+        const llmStartMs = Date.now();
         response = await this.chatFn(messages, {
           model: params.model,
           tools: toolSchemas,
+        });
+        // ── Hook: post_llm_call ──
+        await hookBus.emit("post_llm_call", {
+          model: params.model,
+          contentLength: response.content?.length ?? 0,
+          toolCallCount: response.tool_calls?.length ?? 0,
+          durationMs: Date.now() - llmStartMs,
+          sessionId: params.sessionId,
         });
       } catch (err) {
         this.logger.error("chatFn threw", err);
@@ -592,6 +608,39 @@ export class AgentLoop {
       }
     }
 
+    // ── Hook: pre_tool_call (via HookBus) ──
+    const hookResults = await hookBus.emitCollect("pre_tool_call", {
+      toolCallId: tc.id,
+      toolName: tc.name,
+      args: tc.args,
+      sessionId,
+    });
+    const hookBlock = hookResults.find(
+      (r) => r && typeof r === "object" && (r as any).block,
+    ) as { block: boolean; reason?: string } | undefined;
+    if (hookBlock) {
+      const result = {
+        content: hookBlock.reason ?? `Tool ${tc.name} blocked by hook`,
+        isError: true,
+      };
+      events.push({
+        type: "tool_end",
+        toolCallId: tc.id,
+        toolName: tc.name,
+        result,
+        isError: true,
+        durationMs: 0,
+      });
+      return {
+        events,
+        result: {
+          toolCallId: tc.id,
+          content: result.content,
+          isError: true,
+        },
+      };
+    }
+
     if (beforeToolCall) {
       const ctx: BeforeToolCallContext = {
         toolCallId: tc.id,
@@ -686,6 +735,16 @@ export class AgentLoop {
         if (override.isError !== undefined) isError = override.isError;
       }
     }
+
+    // ── Hook: post_tool_call (via HookBus) ──
+    await hookBus.emit("post_tool_call", {
+      toolCallId: tc.id,
+      toolName: tc.name,
+      args: tc.args,
+      result: { content: toolResult.content, isError },
+      durationMs,
+      sessionId,
+    });
 
     events.push({
       type: "tool_end",
