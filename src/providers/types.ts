@@ -62,6 +62,10 @@ export interface ChatOptions {
 export interface TokenUsage {
   inputTokens: number
   outputTokens: number
+  /** Tokens written to cache this request (Anthropic prompt caching) */
+  cacheCreationInputTokens?: number
+  /** Tokens read from cache this request (Anthropic prompt caching) */
+  cacheReadInputTokens?: number
 }
 
 export interface ChatResponse {

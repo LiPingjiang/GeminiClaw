@@ -10,6 +10,7 @@ import type {
   StreamChunk,
   Provider,
 } from "./types.js"
+import { applyPromptCache } from "./prompt-cache.js"
 
 // ── Tool format converters ────────────────────────────────────────────────────────────
 
@@ -163,17 +164,18 @@ export class AnthropicProvider implements Provider {
     const tools = options?.tools?.map(toAnthropicTool)
     const toolChoice = this.supportsToolChoice ? toAnthropicToolChoice(options?.tool_choice) : undefined
 
+    // Apply prompt caching to system + messages
+    const systemText = systemMessages.length > 0 ? systemMessages.map(m => m.content).join("\n") : undefined
+    const cached = applyPromptCache({ system: systemText, messages: anthropicMessages })
+
     const response = await this.client.messages.create({
       model,
       max_tokens: options?.maxTokens ?? 4096,
       ...(options?.temperature !== undefined ? { temperature: options.temperature } : {}),
-      ...(systemMessages.length > 0
-        ? { system: systemMessages.map(m => m.content).join(
-) }
-        : {}),
+      ...(cached.system ? { system: cached.system } : {}),
       ...(tools && tools.length > 0 ? { tools } : {}),
       ...(toolChoice ? { tool_choice: toolChoice } : {}),
-      messages: anthropicMessages,
+      messages: cached.messages,
     })
 
     // mcli proxy returns stop_reason=error when it doesn't support a feature (e.g. tool_use)
@@ -195,6 +197,8 @@ export class AnthropicProvider implements Provider {
       usage: {
         inputTokens: response.usage.input_tokens,
         outputTokens: response.usage.output_tokens,
+        cacheCreationInputTokens: (response.usage as unknown as Record<string, unknown>).cache_creation_input_tokens as number | undefined,
+        cacheReadInputTokens: (response.usage as unknown as Record<string, unknown>).cache_read_input_tokens as number | undefined,
       },
     }
   }
@@ -206,6 +210,10 @@ export class AnthropicProvider implements Provider {
     const tools = options?.tools?.map(toAnthropicTool)
     const toolChoice = this.supportsToolChoice ? toAnthropicToolChoice(options?.tool_choice) : undefined
 
+    // Apply prompt caching to system + messages
+    const systemText = systemMessages.length > 0 ? systemMessages.map(m => m.content).join("\n") : undefined
+    const cached = applyPromptCache({ system: systemText, messages: anthropicMessages })
+
     // Accumulate tool_use input JSON across input_json_delta events
     const toolInputBuffers = new Map<number, { id: string; name: string; json: string }>()
 
@@ -213,13 +221,10 @@ export class AnthropicProvider implements Provider {
       model,
       max_tokens: options?.maxTokens ?? 4096,
       ...(options?.temperature !== undefined ? { temperature: options.temperature } : {}),
-      ...(systemMessages.length > 0
-        ? { system: systemMessages.map(m => m.content).join(
-) }
-        : {}),
+      ...(cached.system ? { system: cached.system } : {}),
       ...(tools && tools.length > 0 ? { tools } : {}),
       ...(toolChoice ? { tool_choice: toolChoice } : {}),
-      messages: anthropicMessages,
+      messages: cached.messages,
     })
 
     for await (const event of stream) {

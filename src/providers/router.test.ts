@@ -28,7 +28,7 @@ it("falls back to second provider when first fails", async () => {
   const p2 = makeProvider("p2")
   const router = new ProviderRouter([p1, p2], {
     default: "p1/m1",
-    fallback: ["p1/m1", "p2/m2"],
+    fallback: ["p2/m2"],
   })
   const res = await router.chat(msgs)
   expect(res.content).toBe("reply from p2")
