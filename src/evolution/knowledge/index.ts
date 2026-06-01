@@ -15,3 +15,5 @@ export { BackgroundReviewer, type ReviewerConfig, type TurnContext, type ChatFun
 export { Curator, type CuratorConfig, type CurationReport, type CurationAction } from "./curator.js"
 export { buildReviewSystemPrompt, buildReviewUserMessage, parseReviewResponse, ANTI_PATTERNS, LEARNING_PRIORITIES, type ReviewResult } from "./rubric.js"
 export { registerKnowledgeHooks, recordTurn, type KnowledgeHookOptions, type KnowledgeHookContext } from "./hook.js"
+export { KnowledgeIntentSource, type IntentCandidate, type KnowledgeIntentSourceConfig, DEFAULT_KNOWLEDGE_INTENT_CONFIG } from "./intent-source.js"
+export { EvolutionBridge, type EvolutionBridgeConfig, type BridgeStats, DEFAULT_BRIDGE_CONFIG } from "./evolution-bridge.js"

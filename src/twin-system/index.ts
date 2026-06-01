@@ -37,3 +37,14 @@ export type {
   PipelineEvent,
 } from "./types.js"
 export { DEFAULT_PIPELINE_CONFIG } from "./types.js"
+
+export { UpstreamTracker, DEFAULT_TRACKER_CONFIG } from "./upstream-tracker.js"
+export type {
+  UpstreamRepo,
+  UpstreamGitOps,
+  DiffAnalyzer,
+  DiffAnalysisResult,
+  UpstreamTrackerConfig,
+  TrackerCheckResult,
+  TrackerStats,
+} from "./upstream-tracker.js"
