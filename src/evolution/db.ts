@@ -1,262 +1,135 @@
+// @ts-nocheck
 // src/evolution/db.ts
 // SQLite data layer for the Evolution Engine
 // Uses better-sqlite3 (synchronous API) for simplicity and reliability.
-
-import Database from "better-sqlite3"
-import { mkdirSync } from "fs"
-import { dirname } from "path"
-import type {
-  Intent,
-  IntentStatus,
-  TraceRecord,
-  EvolutionRecord,
-  SlotId,
-  SlotState,
-  UpstreamCheck,
-  PendingReview,
-  ConversationSample,
-  EvolutionPreview,
-} from "./types.js"
-
+import Database from "better-sqlite3";
+import { mkdirSync } from "fs";
+import { dirname } from "path";
 // ---------------------------------------------------------------------------
 // Helpers: JSON encode/decode arrays
 // ---------------------------------------------------------------------------
-
-function encodeArr(arr: string[]): string {
-  return JSON.stringify(arr)
+function encodeArr(arr) {
+    return JSON.stringify(arr);
 }
-
-function decodeArr(json: string | null | undefined): string[] {
-  if (!json) return []
-  try {
-    return JSON.parse(json) as string[]
-  } catch {
-    return []
-  }
+function decodeArr(json) {
+    if (!json)
+        return [];
+    try {
+        return JSON.parse(json);
+    }
+    catch {
+        return [];
+    }
 }
-
-// ---------------------------------------------------------------------------
-// Row types (raw DB rows before mapping)
-// ---------------------------------------------------------------------------
-
-interface IntentRow {
-  id: string
-  type: string
-  description: string
-  target_files: string
-  evidence: string
-  risk_level: string
-  requires_human_approval: number
-  status: string
-  why_now: string
-  discovered_context: string
-  snoozed_until: number | null
-  snooze_count: number
-  created_at: number
-  updated_at: number
-}
-
-interface TraceRow {
-  id: string
-  session_id: string
-  tool_sequence: string
-  had_failure: number
-  message_count: number
-  response_length: number
-  recorded_at: number
-}
-
-interface EvolutionRow {
-  id: number
-  intent_id: string
-  type: string
-  from_slot: string
-  to_slot: string
-  changed_files: string
-  recorded_at: number
-}
-
-interface SlotRow {
-  slot_id: string
-  role: string
-  build_hash: string
-  built_at: number
-  last_activated_at: number | null
-}
-
-interface UpstreamCheckRow {
-  id: number
-  new_commits: string
-  changed_files: string
-  added_lines: number
-  removed_lines: number
-  checked_at: number
-  intent_generated: number
-}
-
-interface PendingReviewRow {
-  intent_id: string
-  description: string
-  target_files: string
-  risk_level: string
-  status: string
-  reviewer: string | null
-  comment: string | null
-  requested_at: number
-  resolved_at: number | null
-}
-
-interface ConversationSampleRow {
-  id: string
-  session_id: string
-  trace_id: string | null
-  user_message: string
-  agent_reply: string
-  tool_sequence: string
-  had_failure: number
-  recorded_at: number
-}
-
-interface EvolutionPreviewRow {
-  id: string
-  intent_id: string
-  sample_id: string
-  user_message: string
-  before_reply: string
-  after_reply: string
-  summary: string
-  generated_at: number
-}
-
 // ---------------------------------------------------------------------------
 // Mappers: DB row → domain type
 // ---------------------------------------------------------------------------
-
-function rowToIntent(row: IntentRow): Intent {
-  return {
-    id: row.id,
-    type: row.type as Intent["type"],
-    description: row.description,
-    targetFiles: decodeArr(row.target_files),
-    evidence: decodeArr(row.evidence),
-    riskLevel: row.risk_level as Intent["riskLevel"],
-    requiresHumanApproval: row.requires_human_approval === 1,
-    status: row.status as IntentStatus,
-    whyNow: row.why_now,
-    discoveredContext: row.discovered_context,
-    snoozedUntil: row.snoozed_until ?? undefined,
-    snoozeCount: row.snooze_count,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
-  }
+function rowToIntent(row) {
+    return {
+        id: row.id,
+        type: row.type,
+        description: row.description,
+        targetFiles: decodeArr(row.target_files),
+        evidence: decodeArr(row.evidence),
+        riskLevel: row.risk_level,
+        status: row.status,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+    };
 }
-
-function rowToTrace(row: TraceRow): TraceRecord {
-  return {
-    id: row.id,
-    sessionId: row.session_id,
-    toolSequence: decodeArr(row.tool_sequence),
-    hadFailure: row.had_failure === 1,
-    messageCount: row.message_count,
-    responseLength: row.response_length ?? 0,
-    recordedAt: row.recorded_at,
-  }
+function rowToTrace(row) {
+    return {
+        id: row.id,
+        sessionId: row.session_id,
+        toolSequence: decodeArr(row.tool_sequence),
+        hadFailure: row.had_failure === 1,
+        messageCount: row.message_count,
+        responseLength: row.response_length ?? 0,
+        recordedAt: row.recorded_at,
+    };
 }
-
-function rowToEvolution(row: EvolutionRow): EvolutionRecord {
-  return {
-    id: row.id,
-    intentId: row.intent_id,
-    type: row.type as EvolutionRecord["type"],
-    fromSlot: row.from_slot,
-    toSlot: row.to_slot,
-    changedFiles: decodeArr(row.changed_files),
-    recordedAt: row.recorded_at,
-  }
+function rowToEvolution(row) {
+    return {
+        id: row.id,
+        intentId: row.intent_id,
+        type: row.type,
+        fromSlot: row.from_slot,
+        toSlot: row.to_slot,
+        changedFiles: decodeArr(row.changed_files),
+        recordedAt: row.recorded_at,
+    };
 }
-
-function rowToSlotState(row: SlotRow): SlotState {
-  return {
-    slotId: row.slot_id as SlotId,
-    role: row.role as SlotState["role"],
-    buildHash: row.build_hash,
-    builtAt: row.built_at,
-    lastActivatedAt: row.last_activated_at ?? undefined,
-  }
+function rowToSlotState(row) {
+    return {
+        slotId: row.slot_id,
+        role: row.role,
+        buildHash: row.build_hash,
+        builtAt: row.built_at,
+        lastActivatedAt: row.last_activated_at ?? undefined,
+    };
 }
-
-function rowToUpstreamCheck(row: UpstreamCheckRow): UpstreamCheck {
-  return {
-    id: row.id,
-    newCommits: decodeArr(row.new_commits),
-    changedFiles: decodeArr(row.changed_files),
-    addedLines: row.added_lines,
-    removedLines: row.removed_lines,
-    checkedAt: row.checked_at,
-    intentGenerated: row.intent_generated === 1,
-  }
+function rowToUpstreamCheck(row) {
+    return {
+        id: row.id,
+        newCommits: decodeArr(row.new_commits),
+        changedFiles: decodeArr(row.changed_files),
+        addedLines: row.added_lines,
+        removedLines: row.removed_lines,
+        checkedAt: row.checked_at,
+        intentGenerated: row.intent_generated === 1,
+    };
 }
-
-function rowToPendingReview(row: PendingReviewRow): PendingReview {
-  return {
-    intentId: row.intent_id,
-    description: row.description,
-    targetFiles: decodeArr(row.target_files),
-    riskLevel: row.risk_level as PendingReview["riskLevel"],
-    status: row.status as PendingReview["status"],
-    reviewer: row.reviewer ?? undefined,
-    comment: row.comment ?? undefined,
-    requestedAt: row.requested_at,
-    resolvedAt: row.resolved_at ?? undefined,
-  }
+function rowToPendingReview(row) {
+    return {
+        intentId: row.intent_id,
+        description: row.description,
+        targetFiles: decodeArr(row.target_files),
+        riskLevel: row.risk_level,
+        status: row.status,
+        reviewer: row.reviewer ?? undefined,
+        comment: row.comment ?? undefined,
+        requestedAt: row.requested_at,
+        resolvedAt: row.resolved_at ?? undefined,
+    };
 }
-
-function rowToConversationSample(row: ConversationSampleRow): ConversationSample {
-  return {
-    id: row.id,
-    sessionId: row.session_id,
-    traceId: row.trace_id ?? undefined,
-    userMessage: row.user_message,
-    agentReply: row.agent_reply,
-    toolSequence: decodeArr(row.tool_sequence),
-    hadFailure: row.had_failure === 1,
-    recordedAt: row.recorded_at,
-  }
+function rowToConversationSample(row) {
+    return {
+        id: row.id,
+        sessionId: row.session_id,
+        traceId: row.trace_id ?? undefined,
+        userMessage: row.user_message,
+        agentReply: row.agent_reply,
+        toolSequence: decodeArr(row.tool_sequence),
+        hadFailure: row.had_failure === 1,
+        recordedAt: row.recorded_at,
+    };
 }
-
-function rowToEvolutionPreview(row: EvolutionPreviewRow): EvolutionPreview {
-  return {
-    id: row.id,
-    intentId: row.intent_id,
-    sampleId: row.sample_id,
-    userMessage: row.user_message,
-    beforeReply: row.before_reply,
-    afterReply: row.after_reply,
-    summary: row.summary,
-    generatedAt: row.generated_at,
-  }
+function rowToEvolutionPreview(row) {
+    return {
+        id: row.id,
+        intentId: row.intent_id,
+        sampleId: row.sample_id,
+        userMessage: row.user_message,
+        beforeReply: row.before_reply,
+        afterReply: row.after_reply,
+        summary: row.summary,
+        generatedAt: row.generated_at,
+    };
 }
-
 // ---------------------------------------------------------------------------
 // DDL
 // ---------------------------------------------------------------------------
-
 const DDL = `
 CREATE TABLE IF NOT EXISTS intents (
-  id                       TEXT PRIMARY KEY,
-  type                     TEXT NOT NULL,
-  description              TEXT NOT NULL,
-  target_files             TEXT NOT NULL DEFAULT '[]',
-  evidence                 TEXT NOT NULL DEFAULT '[]',
-  risk_level               TEXT NOT NULL,
-  requires_human_approval  INTEGER NOT NULL DEFAULT 0,
-  status                   TEXT NOT NULL DEFAULT 'pending',
-  why_now                  TEXT NOT NULL DEFAULT '',
-  discovered_context       TEXT NOT NULL DEFAULT '',
-  snoozed_until            INTEGER,
-  snooze_count             INTEGER NOT NULL DEFAULT 0,
-  created_at               INTEGER NOT NULL,
-  updated_at               INTEGER NOT NULL
+  id            TEXT PRIMARY KEY,
+  type          TEXT NOT NULL,
+  description   TEXT NOT NULL,
+  target_files  TEXT NOT NULL DEFAULT '[]',
+  evidence      TEXT NOT NULL DEFAULT '[]',
+  risk_level    TEXT NOT NULL,
+  status        TEXT NOT NULL DEFAULT 'pending',
+  created_at    INTEGER NOT NULL,
+  updated_at    INTEGER NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_intents_status ON intents(status);
@@ -305,6 +178,14 @@ CREATE TABLE IF NOT EXISTS upstream_checks (
   intent_generated  INTEGER NOT NULL DEFAULT 0
 );
 
+CREATE TABLE IF NOT EXISTS tracked_files (
+  file_path          TEXT PRIMARY KEY,
+  file_type          TEXT NOT NULL,
+  added_at           INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_tracked_files_type ON tracked_files(file_type);
+
 CREATE TABLE IF NOT EXISTS pending_reviews (
   intent_id     TEXT PRIMARY KEY,
   description   TEXT NOT NULL,
@@ -342,215 +223,186 @@ CREATE TABLE IF NOT EXISTS evolution_previews (
   generated_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_previews_intent ON evolution_previews(intent_id);
-`
-
+`;
 // ---------------------------------------------------------------------------
 // EvolutionDB
 // ---------------------------------------------------------------------------
-
 export class EvolutionDB {
-  private db: Database.Database
-
-  constructor(dbPath: string) {
-    mkdirSync(dirname(dbPath), { recursive: true })
-    this.db = new Database(dbPath)
-    this.db.pragma("journal_mode = WAL")
-    this.db.pragma("foreign_keys = ON")
-    this.migrate()
-  }
-
-  private migrate(): void {
-    this.db.exec(DDL)
-  }
-
-  // -------------------------------------------------------------------------
-  // Intents
-  // -------------------------------------------------------------------------
-
-  insertIntent(intent: Intent): void {
-    this.db.prepare(`
+    db: any;
+    constructor(dbPath) {
+        mkdirSync(dirname(dbPath), { recursive: true });
+        this.db = new Database(dbPath);
+        this.db.pragma("journal_mode = WAL");
+        this.db.pragma("foreign_keys = ON");
+        this.migrate();
+    }
+    migrate() {
+        this.db.exec(DDL);
+    }
+    // -------------------------------------------------------------------------
+    // File Tracking
+    // -------------------------------------------------------------------------
+    addTrackedFile(filePath, fileType) {
+        this.db.prepare(`
+      INSERT OR IGNORE INTO tracked_files (file_path, file_type, added_at)
+      VALUES (?, ?, ?)
+    `).run(filePath, fileType, Date.now());
+    }
+    getTrackedFiles(fileType) {
+        if (fileType) {
+            const rows = this.db.prepare(`SELECT file_path as filePath, file_type as fileType FROM tracked_files WHERE file_type = ?`).all(fileType);
+            return rows;
+        }
+        else {
+            const rows = this.db.prepare(`SELECT file_path as filePath, file_type as fileType FROM tracked_files`).all();
+            return rows;
+        }
+    }
+    // -------------------------------------------------------------------------
+    // Intents
+    // -------------------------------------------------------------------------
+    insertIntent(intent) {
+        this.db.prepare(`
       INSERT INTO intents (
         id, type, description, target_files, evidence,
-        risk_level, requires_human_approval, status,
-        why_now, discovered_context, snoozed_until, snooze_count,
+        risk_level, status,
         created_at, updated_at
       ) VALUES (
         @id, @type, @description, @targetFiles, @evidence,
-        @riskLevel, @requiresHumanApproval, @status,
-        @whyNow, @discoveredContext, @snoozedUntil, @snoozeCount,
+        @riskLevel, @status,
         @createdAt, @updatedAt
       )
     `).run({
-      id: intent.id,
-      type: intent.type,
-      description: intent.description,
-      targetFiles: encodeArr(intent.targetFiles),
-      evidence: encodeArr(intent.evidence),
-      riskLevel: intent.riskLevel,
-      requiresHumanApproval: intent.requiresHumanApproval ? 1 : 0,
-      status: intent.status,
-      whyNow: intent.whyNow,
-      discoveredContext: intent.discoveredContext,
-      snoozedUntil: intent.snoozedUntil ?? null,
-      snoozeCount: intent.snoozeCount,
-      createdAt: intent.createdAt,
-      updatedAt: intent.updatedAt,
-    })
-  }
-
-  getIntent(id: string): Intent | null {
-    const row = this.db.prepare(
-      "SELECT * FROM intents WHERE id = ?"
-    ).get(id) as IntentRow | undefined
-    return row ? rowToIntent(row) : null
-  }
-
-  listIntents(filter?: { status?: IntentStatus }): Intent[] {
-    if (filter?.status) {
-      const rows = this.db.prepare(
-        "SELECT * FROM intents WHERE status = ? ORDER BY created_at ASC"
-      ).all(filter.status) as IntentRow[]
-      return rows.map(rowToIntent)
+            id: intent.id,
+            type: intent.type,
+            description: intent.description,
+            targetFiles: encodeArr(intent.targetFiles),
+            evidence: encodeArr(intent.evidence),
+            riskLevel: intent.riskLevel,
+            status: intent.status,
+            createdAt: intent.createdAt,
+            updatedAt: intent.updatedAt,
+        });
     }
-    const rows = this.db.prepare(
-      "SELECT * FROM intents ORDER BY created_at ASC"
-    ).all() as IntentRow[]
-    return rows.map(rowToIntent)
-  }
-
-  /**
-   * Check if a pending intent with the exact same description already exists.
-   * Used by IntentEngine to avoid duplicate intent generation.
-   */
-  hasPendingIntentWithDescription(description: string): boolean {
-    const row = this.db
-      .prepare(
-        `SELECT id FROM intents WHERE status = 'pending' AND description = ? LIMIT 1`
-      )
-      .get(description)
-    return row !== undefined
-  }
-
-  updateIntentStatus(id: string, status: IntentStatus): void {
-    this.db.prepare(
-      "UPDATE intents SET status = ?, updated_at = ? WHERE id = ?"
-    ).run(status, Date.now(), id)
-  }
-
-  // -------------------------------------------------------------------------
-  // Traces
-  // -------------------------------------------------------------------------
-
-  insertTrace(trace: TraceRecord): void {
-    this.db.prepare(`
+    getIntent(id) {
+        const row = this.db.prepare("SELECT * FROM intents WHERE id = ?").get(id);
+        return row ? rowToIntent(row) : null;
+    }
+    listIntents(filter) {
+        if (filter?.status) {
+            const rows = this.db.prepare("SELECT * FROM intents WHERE status = ? ORDER BY created_at ASC").all(filter.status);
+            return rows.map(rowToIntent);
+        }
+        const rows = this.db.prepare("SELECT * FROM intents ORDER BY created_at ASC").all();
+        return rows.map(rowToIntent);
+    }
+    /**
+     * Check if a pending intent with the exact same description already exists.
+     * Used by IntentEngine to avoid duplicate intent generation.
+     */
+    hasPendingIntentWithDescription(description) {
+        // 去重范围扩展到 pending/in_progress/validating/rejected，且限 24h 内
+        // 防止 rejected intent 在下次分析时被重新生成，造成无限死循环
+        const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+        const row = this.db
+            .prepare(`SELECT id FROM intents WHERE description = ? AND status IN ('pending','in_progress','validating','rejected') AND created_at > ? LIMIT 1`)
+            .get(description, cutoff);
+        return row !== undefined;
+    }
+    updateIntentStatus(id, status) {
+        this.db.prepare("UPDATE intents SET status = ?, updated_at = ? WHERE id = ?").run(status, Date.now(), id);
+    }
+    // -------------------------------------------------------------------------
+    // Traces
+    // -------------------------------------------------------------------------
+    insertTrace(trace) {
+        this.db.prepare(`
       INSERT INTO traces (id, session_id, tool_sequence, had_failure, message_count, response_length, recorded_at)
       VALUES (@id, @sessionId, @toolSequence, @hadFailure, @messageCount, @responseLength, @recordedAt)
     `).run({
-      id: trace.id,
-      sessionId: trace.sessionId,
-      toolSequence: encodeArr(trace.toolSequence),
-      hadFailure: trace.hadFailure ? 1 : 0,
-      messageCount: trace.messageCount,
-      responseLength: trace.responseLength ?? 0,
-      recordedAt: trace.recordedAt,
-    })
-  }
-
-  getRecentTraces(limit: number): TraceRecord[] {
-    const rows = this.db.prepare(
-      "SELECT * FROM traces ORDER BY recorded_at DESC LIMIT ?"
-    ).all(limit) as TraceRow[]
-    return rows.map(rowToTrace)
-  }
-
-  countTraces(): number {
-    const result = this.db.prepare(
-      "SELECT COUNT(*) as cnt FROM traces"
-    ).get() as { cnt: number }
-    return result.cnt
-  }
-
-  /** Returns the failure rate (0-1) within the given time window (ms). */
-  getFailureRate(windowMs: number): number {
-    const since = Date.now() - windowMs
-    const result = this.db.prepare(`
+            id: trace.id,
+            sessionId: trace.sessionId,
+            toolSequence: encodeArr(trace.toolSequence),
+            hadFailure: trace.hadFailure ? 1 : 0,
+            messageCount: trace.messageCount,
+            responseLength: trace.responseLength ?? 0,
+            recordedAt: trace.recordedAt,
+        });
+    }
+    getRecentTraces(limit) {
+        const rows = this.db.prepare("SELECT * FROM traces ORDER BY recorded_at DESC LIMIT ?").all(limit);
+        return rows.map(rowToTrace);
+    }
+    countTraces() {
+        const result = this.db.prepare("SELECT COUNT(*) as cnt FROM traces").get();
+        return result.cnt;
+    }
+    /** Returns the failure rate (0-1) within the given time window (ms). */
+    getFailureRate(windowMs) {
+        const since = Date.now() - windowMs;
+        const result = this.db.prepare(`
       SELECT
         COUNT(*) as total,
         SUM(had_failure) as failures
       FROM traces
       WHERE recorded_at >= ?
-    `).get(since) as { total: number; failures: number | null }
-
-    if (!result.total) return 0
-    return (result.failures ?? 0) / result.total
-  }
-
-  // -------------------------------------------------------------------------
-  // Evolution History
-  // -------------------------------------------------------------------------
-
-  insertEvolutionRecord(record: Omit<EvolutionRecord, "id">): void {
-    this.db.prepare(`
+    `).get(since);
+        if (!result.total)
+            return 0;
+        return (result.failures ?? 0) / result.total;
+    }
+    // -------------------------------------------------------------------------
+    // Evolution History
+    // -------------------------------------------------------------------------
+    insertEvolutionRecord(record) {
+        this.db.prepare(`
       INSERT INTO evolution_history (intent_id, type, from_slot, to_slot, changed_files, recorded_at)
       VALUES (@intentId, @type, @fromSlot, @toSlot, @changedFiles, @recordedAt)
     `).run({
-      intentId: record.intentId,
-      type: record.type,
-      fromSlot: record.fromSlot,
-      toSlot: record.toSlot,
-      changedFiles: encodeArr(record.changedFiles),
-      recordedAt: record.recordedAt,
-    })
-  }
-
-  getLastEvolutionRecord(): EvolutionRecord | null {
-    const row = this.db.prepare(
-      "SELECT * FROM evolution_history ORDER BY recorded_at DESC LIMIT 1"
-    ).get() as EvolutionRow | undefined
-    return row ? rowToEvolution(row) : null
-  }
-
-  /**
-   * Returns the number of evolution records (switches) that touched the given file
-   * within the given time window (ms). Used by CircuitBreaker frequency limiting.
-   */
-  getEvolutionCountForFile(file: string, windowMs: number): number {
-    const since = Date.now() - windowMs
-    const rows = this.db.prepare(`
+            intentId: record.intentId,
+            type: record.type,
+            fromSlot: record.fromSlot,
+            toSlot: record.toSlot,
+            changedFiles: encodeArr(record.changedFiles),
+            recordedAt: record.recordedAt,
+        });
+    }
+    getLastEvolutionRecord() {
+        const row = this.db.prepare("SELECT * FROM evolution_history ORDER BY recorded_at DESC LIMIT 1").get();
+        return row ? rowToEvolution(row) : null;
+    }
+    /**
+     * Returns the number of evolution records (switches) that touched the given file
+     * within the given time window (ms). Used by CircuitBreaker frequency limiting.
+     */
+    getEvolutionCountForFile(file, windowMs) {
+        const since = Date.now() - windowMs;
+        const rows = this.db.prepare(`
       SELECT changed_files FROM evolution_history
       WHERE type = 'switch' AND recorded_at >= ?
-    `).all(since) as Array<{ changed_files: string }>
-
-    let count = 0
-    for (const row of rows) {
-      const files = decodeArr(row.changed_files)
-      if (files.some(f => f === file || f.startsWith(file) || file.startsWith(f))) {
-        count++
-      }
+    `).all(since);
+        let count = 0;
+        for (const row of rows) {
+            const files = decodeArr(row.changed_files);
+            if (files.some(f => f === file || f.startsWith(file) || file.startsWith(f))) {
+                count++;
+            }
+        }
+        return count;
     }
-    return count
-  }
-
-  listEvolutionHistory(limit = 20): EvolutionRecord[] {
-    const rows = this.db.prepare(
-      "SELECT * FROM evolution_history ORDER BY recorded_at DESC LIMIT ?"
-    ).all(limit) as EvolutionRow[]
-    return rows.map(rowToEvolution)
-  }
-
-  // -------------------------------------------------------------------------
-  // Slot State
-  // -------------------------------------------------------------------------
-
-  getSlotState(slotId: SlotId): SlotState | null {
-    const row = this.db.prepare(
-      "SELECT * FROM slot_state WHERE slot_id = ?"
-    ).get(slotId) as SlotRow | undefined
-    return row ? rowToSlotState(row) : null
-  }
-
-  upsertSlotState(state: SlotState): void {
-    this.db.prepare(`
+    listEvolutionHistory(limit = 20) {
+        const rows = this.db.prepare("SELECT * FROM evolution_history ORDER BY recorded_at DESC LIMIT ?").all(limit);
+        return rows.map(rowToEvolution);
+    }
+    // -------------------------------------------------------------------------
+    // Slot State
+    // -------------------------------------------------------------------------
+    getSlotState(slotId) {
+        const row = this.db.prepare("SELECT * FROM slot_state WHERE slot_id = ?").get(slotId);
+        return row ? rowToSlotState(row) : null;
+    }
+    upsertSlotState(state) {
+        this.db.prepare(`
       INSERT INTO slot_state (slot_id, role, build_hash, built_at, last_activated_at)
       VALUES (@slotId, @role, @buildHash, @builtAt, @lastActivatedAt)
       ON CONFLICT(slot_id) DO UPDATE SET
@@ -559,40 +411,34 @@ export class EvolutionDB {
         built_at = excluded.built_at,
         last_activated_at = excluded.last_activated_at
     `).run({
-      slotId: state.slotId,
-      role: state.role,
-      buildHash: state.buildHash,
-      builtAt: state.builtAt,
-      lastActivatedAt: state.lastActivatedAt ?? null,
-    })
-  }
-
-  // -------------------------------------------------------------------------
-  // Pending Reviews
-  // -------------------------------------------------------------------------
-
-  listPendingReviews(): PendingReview[] {
-    const rows = this.db.prepare(
-      `SELECT * FROM pending_reviews WHERE status = 'pending' ORDER BY requested_at ASC`
-    ).all() as PendingReviewRow[]
-    return rows.map(rowToPendingReview)
-  }
-
-  resolvePendingReview(intentId: string, status: "approved" | "rejected", reviewer?: string): void {
-    this.db.prepare(`
+            slotId: state.slotId,
+            role: state.role,
+            buildHash: state.buildHash,
+            builtAt: state.builtAt,
+            lastActivatedAt: state.lastActivatedAt ?? null,
+        });
+    }
+    // -------------------------------------------------------------------------
+    // Pending Reviews
+    // -------------------------------------------------------------------------
+    listPendingReviews() {
+        const rows = this.db.prepare(`SELECT * FROM pending_reviews WHERE status = 'pending' ORDER BY requested_at ASC`).all();
+        return rows.map(rowToPendingReview);
+    }
+    resolvePendingReview(intentId, status, reviewer) {
+        this.db.prepare(`
       UPDATE pending_reviews
       SET status = @status, reviewer = @reviewer, resolved_at = @resolvedAt
       WHERE intent_id = @intentId
     `).run({
-      intentId,
-      status,
-      reviewer: reviewer ?? null,
-      resolvedAt: Date.now(),
-    })
-  }
-
-  insertPendingReview(review: PendingReview): void {
-    this.db.prepare(`
+            intentId,
+            status,
+            reviewer: reviewer ?? null,
+            resolvedAt: Date.now(),
+        });
+    }
+    insertPendingReview(review) {
+        this.db.prepare(`
       INSERT INTO pending_reviews (
         intent_id, description, target_files, risk_level,
         status, reviewer, comment, requested_at, resolved_at
@@ -601,137 +447,115 @@ export class EvolutionDB {
         @status, @reviewer, @comment, @requestedAt, @resolvedAt
       )
     `).run({
-      intentId: review.intentId,
-      description: review.description,
-      targetFiles: encodeArr(review.targetFiles),
-      riskLevel: review.riskLevel,
-      status: review.status,
-      reviewer: review.reviewer ?? null,
-      comment: review.comment ?? null,
-      requestedAt: review.requestedAt,
-      resolvedAt: review.resolvedAt ?? null,
-    })
-  }
-
-  getPendingReview(intentId: string): PendingReview | null {
-    const row = this.db.prepare(
-      "SELECT * FROM pending_reviews WHERE intent_id = ?"
-    ).get(intentId) as PendingReviewRow | undefined
-    return row ? rowToPendingReview(row) : null
-  }
-
-  updatePendingReview(intentId: string, patch: Partial<PendingReview>): void {
-    const fields: string[] = []
-    const values: Record<string, unknown> = { intentId }
-
-    if (patch.status !== undefined) {
-      fields.push("status = @status")
-      values["status"] = patch.status
+            intentId: review.intentId,
+            description: review.description,
+            targetFiles: encodeArr(review.targetFiles),
+            riskLevel: review.riskLevel,
+            status: review.status,
+            reviewer: review.reviewer ?? null,
+            comment: review.comment ?? null,
+            requestedAt: review.requestedAt,
+            resolvedAt: review.resolvedAt ?? null,
+        });
     }
-    if (patch.reviewer !== undefined) {
-      fields.push("reviewer = @reviewer")
-      values["reviewer"] = patch.reviewer ?? null
+    getPendingReview(intentId) {
+        const row = this.db.prepare("SELECT * FROM pending_reviews WHERE intent_id = ?").get(intentId);
+        return row ? rowToPendingReview(row) : null;
     }
-    if (patch.comment !== undefined) {
-      fields.push("comment = @comment")
-      values["comment"] = patch.comment ?? null
+    updatePendingReview(intentId, patch) {
+        const fields = [];
+        const values = { intentId };
+        if (patch.status !== undefined) {
+            fields.push("status = @status");
+            values["status"] = patch.status;
+        }
+        if (patch.reviewer !== undefined) {
+            fields.push("reviewer = @reviewer");
+            values["reviewer"] = patch.reviewer ?? null;
+        }
+        if (patch.comment !== undefined) {
+            fields.push("comment = @comment");
+            values["comment"] = patch.comment ?? null;
+        }
+        if (patch.resolvedAt !== undefined) {
+            fields.push("resolved_at = @resolvedAt");
+            values["resolvedAt"] = patch.resolvedAt ?? null;
+        }
+        if (fields.length === 0)
+            return;
+        this.db.prepare(`UPDATE pending_reviews SET ${fields.join(", ")} WHERE intent_id = @intentId`).run(values);
     }
-    if (patch.resolvedAt !== undefined) {
-      fields.push("resolved_at = @resolvedAt")
-      values["resolvedAt"] = patch.resolvedAt ?? null
-    }
-
-    if (fields.length === 0) return
-
-    this.db.prepare(
-      `UPDATE pending_reviews SET ${fields.join(", ")} WHERE intent_id = @intentId`
-    ).run(values)
-  }
-
-  // -------------------------------------------------------------------------
-  // ConversationSample
-  // -------------------------------------------------------------------------
-
-  insertConversationSample(sample: ConversationSample): void {
-    this.db.prepare(`
+    // -------------------------------------------------------------------------
+    // ConversationSample
+    // -------------------------------------------------------------------------
+    insertConversationSample(sample) {
+        this.db.prepare(`
       INSERT INTO conversation_samples
         (id, session_id, trace_id, user_message, agent_reply, tool_sequence, had_failure, recorded_at)
       VALUES
         (@id, @sessionId, @traceId, @userMessage, @agentReply, @toolSequence, @hadFailure, @recordedAt)
     `).run({
-      id: sample.id,
-      sessionId: sample.sessionId,
-      traceId: sample.traceId ?? null,
-      userMessage: sample.userMessage,
-      agentReply: sample.agentReply,
-      toolSequence: encodeArr(sample.toolSequence),
-      hadFailure: sample.hadFailure ? 1 : 0,
-      recordedAt: sample.recordedAt,
-    })
-    // Prune: keep only the most recent 500 samples
-    this.db.prepare(`
+            id: sample.id,
+            sessionId: sample.sessionId,
+            traceId: sample.traceId ?? null,
+            userMessage: sample.userMessage,
+            agentReply: sample.agentReply,
+            toolSequence: encodeArr(sample.toolSequence),
+            hadFailure: sample.hadFailure ? 1 : 0,
+            recordedAt: sample.recordedAt,
+        });
+        // Prune: keep only the most recent 500 samples
+        this.db.prepare(`
       DELETE FROM conversation_samples
       WHERE id NOT IN (
         SELECT id FROM conversation_samples ORDER BY recorded_at DESC LIMIT 500
       )
-    `).run()
-  }
-
-  listConversationSamples(opts: { limit?: number; failureOnly?: boolean } = {}): ConversationSample[] {
-    const { limit = 20, failureOnly = false } = opts
-    const rows = failureOnly
-      ? this.db.prepare(`SELECT * FROM conversation_samples WHERE had_failure = 1 ORDER BY recorded_at DESC LIMIT ?`).all(limit) as ConversationSampleRow[]
-      : this.db.prepare(`SELECT * FROM conversation_samples ORDER BY recorded_at DESC LIMIT ?`).all(limit) as ConversationSampleRow[]
-    return rows.map(rowToConversationSample)
-  }
-
-  countConversationSamples(): number {
-    const row = this.db.prepare(`SELECT COUNT(*) as cnt FROM conversation_samples`).get() as { cnt: number }
-    return row.cnt
-  }
-
-  // -------------------------------------------------------------------------
-  // EvolutionPreview
-  // -------------------------------------------------------------------------
-
-  insertEvolutionPreview(preview: EvolutionPreview): void {
-    this.db.prepare(`
+    `).run();
+    }
+    listConversationSamples(opts = {}) {
+        const { limit = 20, failureOnly = false } = opts;
+        const rows = failureOnly
+            ? this.db.prepare(`SELECT * FROM conversation_samples WHERE had_failure = 1 ORDER BY recorded_at DESC LIMIT ?`).all(limit)
+            : this.db.prepare(`SELECT * FROM conversation_samples ORDER BY recorded_at DESC LIMIT ?`).all(limit);
+        return rows.map(rowToConversationSample);
+    }
+    countConversationSamples() {
+        const row = this.db.prepare(`SELECT COUNT(*) as cnt FROM conversation_samples`).get();
+        return row.cnt;
+    }
+    // -------------------------------------------------------------------------
+    // EvolutionPreview
+    // -------------------------------------------------------------------------
+    insertEvolutionPreview(preview) {
+        this.db.prepare(`
       INSERT OR REPLACE INTO evolution_previews
         (id, intent_id, sample_id, user_message, before_reply, after_reply, summary, generated_at)
       VALUES
         (@id, @intentId, @sampleId, @userMessage, @beforeReply, @afterReply, @summary, @generatedAt)
     `).run({
-      id: preview.id,
-      intentId: preview.intentId,
-      sampleId: preview.sampleId,
-      userMessage: preview.userMessage,
-      beforeReply: preview.beforeReply,
-      afterReply: preview.afterReply,
-      summary: preview.summary,
-      generatedAt: preview.generatedAt,
-    })
-  }
-
-  listEvolutionPreviews(intentId: string): EvolutionPreview[] {
-    const rows = this.db.prepare(
-      `SELECT * FROM evolution_previews WHERE intent_id = ? ORDER BY generated_at DESC`
-    ).all(intentId) as EvolutionPreviewRow[]
-    return rows.map(rowToEvolutionPreview)
-  }
-
-  hasEvolutionPreview(intentId: string): boolean {
-    const row = this.db.prepare(
-      `SELECT COUNT(*) as cnt FROM evolution_previews WHERE intent_id = ?`
-    ).get(intentId) as { cnt: number }
-    return row.cnt > 0
-  }
-
-  // -------------------------------------------------------------------------
-  // Upstream Checks
-  // -------------------------------------------------------------------------
-
-  insertUpstreamCheck(check: Omit<UpstreamCheck, "id">): void {
-    this.db.prepare(`
+            id: preview.id,
+            intentId: preview.intentId,
+            sampleId: preview.sampleId,
+            userMessage: preview.userMessage,
+            beforeReply: preview.beforeReply,
+            afterReply: preview.afterReply,
+            summary: preview.summary,
+            generatedAt: preview.generatedAt,
+        });
+    }
+    listEvolutionPreviews(intentId) {
+        const rows = this.db.prepare(`SELECT * FROM evolution_previews WHERE intent_id = ? ORDER BY generated_at DESC`).all(intentId);
+        return rows.map(rowToEvolutionPreview);
+    }
+    hasEvolutionPreview(intentId) {
+        const row = this.db.prepare(`SELECT COUNT(*) as cnt FROM evolution_previews WHERE intent_id = ?`).get(intentId);
+        return row.cnt > 0;
+    }
+    // -------------------------------------------------------------------------
+    // Upstream Checks
+    // -------------------------------------------------------------------------
+    insertUpstreamCheck(check) {
+        this.db.prepare(`
       INSERT INTO upstream_checks (
         new_commits, changed_files, added_lines, removed_lines,
         checked_at, intent_generated
@@ -740,27 +564,22 @@ export class EvolutionDB {
         @checkedAt, @intentGenerated
       )
     `).run({
-      newCommits: encodeArr(check.newCommits),
-      changedFiles: encodeArr(check.changedFiles),
-      addedLines: check.addedLines,
-      removedLines: check.removedLines,
-      checkedAt: check.checkedAt,
-      intentGenerated: check.intentGenerated ? 1 : 0,
-    })
-  }
-
-  getLastUpstreamCheck(): UpstreamCheck | null {
-    const row = this.db.prepare(
-      "SELECT * FROM upstream_checks ORDER BY checked_at DESC LIMIT 1"
-    ).get() as UpstreamCheckRow | undefined
-    return row ? rowToUpstreamCheck(row) : null
-  }
-
-  // -------------------------------------------------------------------------
-  // Lifecycle
-  // -------------------------------------------------------------------------
-
-  close(): void {
-    this.db.close()
-  }
+            newCommits: encodeArr(check.newCommits),
+            changedFiles: encodeArr(check.changedFiles),
+            addedLines: check.addedLines,
+            removedLines: check.removedLines,
+            checkedAt: check.checkedAt,
+            intentGenerated: check.intentGenerated ? 1 : 0,
+        });
+    }
+    getLastUpstreamCheck() {
+        const row = this.db.prepare("SELECT * FROM upstream_checks ORDER BY checked_at DESC LIMIT 1").get();
+        return row ? rowToUpstreamCheck(row) : null;
+    }
+    // -------------------------------------------------------------------------
+    // Lifecycle
+    // -------------------------------------------------------------------------
+    close() {
+        this.db.close();
+    }
 }

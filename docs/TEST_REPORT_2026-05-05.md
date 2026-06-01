@@ -38,7 +38,7 @@
 
 | # | 测试名称 | 测试内容 | 步骤 | 结果 |
 |---|---------|---------|------|------|
-| U-01 | loads a valid config file | 读取合法 YAML 文件，验证解析后字段值正确 | 写入临时 config.yaml → 调用 loadConfig() → 断言 server.port=3000、providers[0].name="anthropic" | ✅ PASS |
+| U-01 | loads a valid config file | 读取合法 YAML 文件，验证解析后字段值正确 | 写入临时 config.yaml → 调用 loadConfig() → 断言 server.port=3000、providers[0].name="anth" | ✅ PASS |
 | U-02 | throws on missing file | 传入不存在的路径，应抛出错误 | 调用 loadConfig("/nonexistent/config.yaml") → 断言抛出异常 | ✅ PASS |
 | U-03 | throws on invalid yaml structure | 传入格式错误的 YAML，应抛出错误 | 写入非法 YAML → 调用 loadConfig() → 断言抛出异常 | ✅ PASS |
 
@@ -57,14 +57,14 @@
 
 ---
 
-### 模块 3：McliProvider（美团内部 mcli 适配器）
+### 模块 3：McliProvider（美团内部 llm-gw 适配器）
 
 | # | 测试名称 | 测试内容 | 步骤 | 结果 |
 |---|---------|---------|------|------|
 | U-10 | passes defaultHeaders when headers configured | config.headers 应透传给 Anthropic SDK | 构造含 headers 的 config → new McliProvider() → 断言 Anthropic 构造函数收到 defaultHeaders={"X-Working-Dir":"/home/user"} | ✅ PASS |
 | U-11 | passes empty defaultHeaders when no headers | 未配置 headers 时传空对象 | 构造无 headers 的 config → 断言 defaultHeaders={} | ✅ PASS |
 | U-12 | uses apiKey from config | apiKey 正确传给 SDK | 断言 Anthropic 构造函数收到 apiKey="test-key" | ✅ PASS |
-| U-13 | falls back to 'mcli' when no apiKey | 未配置 apiKey 时默认使用 "mcli" | 构造 apiKey=undefined 的 config → 断言 apiKey="mcli" | ✅ PASS |
+| U-13 | falls back to 'llm-gw' when no apiKey | 未配置 apiKey 时默认使用 "llm-gw" | 构造 apiKey=undefined 的 config → 断言 apiKey="llm-gw" | ✅ PASS |
 
 ---
 
@@ -359,17 +359,17 @@
 
 ### T11：Provider Fallback
 
-**测试场景：** 启动一个临时 GeminiClaw 实例（:18890），配置 mcli 指向不存在的端口（:19999）模拟 mcli 故障，验证自动 fallback 到 friday。
+**测试场景：** 启动一个临时 GeminiClaw 实例（:18890），配置 llm-gw 指向不存在的端口（:19999）模拟 llm-gw 故障，验证自动 fallback 到 friday。
 
 **配置：**
 ```
-primary: bad-mcli → http://127.0.0.1:19999（必然失败）
+primary: bad-llm-gw → http://127.0.0.1:19999（必然失败）
 fallback: friday → https:///v1/openai/native
 ```
 
 | 项目 | 预期 | 实际响应 | 实际 model | 判定 |
 |------|------|---------|-----------|------|
-| T11-1 | mcli 失败后有响应 | `你好！很高兴为你服务。请问有什么我可以帮你的吗？` | — | ✅ PASS |
+| T11-1 | llm-gw 失败后有响应 | `你好！很高兴为你服务。请问有什么我可以帮你的吗？` | — | ✅ PASS |
 | T11-2 | 使用了 friday 模型 | model 含 "gemini" 或 "friday" | `google/gemini-3-flash-preview` | ✅ PASS |
 
 ---
@@ -509,8 +509,8 @@ data: [DONE]
 |------|------|---------|--------|
 | SSE 流式响应 body 为空 | Fastify 5 提前设置 Content-Length:0 | 改用 `reply.hijack()` 接管原始 socket | `dd79490` |
 | 空/空白 message → HTTP 500 | 未做输入校验，空字符串传给模型返回 404 | chat route 增加 message 非空校验，返回 400 | `dd79490` |
-| mcli 请求 404（/v1/v1/messages） | config baseUrl 含 /v1 后缀，SDK 再拼 /v1 | config.yaml baseUrl 去掉 /v1 后缀 | config |
-| mcli 请求 400 Request not allowed | mcli 需要 X-Working-Dir header | ProviderConfig 新增 headers 字段，McliProvider 透传 defaultHeaders | `dd79490` |
+| llm-gw 请求 404（/v1/v1/messages） | config baseUrl 含 /v1 后缀，SDK 再拼 /v1 | config.yaml baseUrl 去掉 /v1 后缀 | config |
+| llm-gw 请求 400 Request not allowed | llm-gw 需要 X-Working-Dir header | ProviderConfig 新增 headers 字段，McliProvider 透传 defaultHeaders | `dd79490` |
 
 ---
 

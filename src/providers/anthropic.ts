@@ -168,7 +168,8 @@ export class AnthropicProvider implements Provider {
       max_tokens: options?.maxTokens ?? 4096,
       ...(options?.temperature !== undefined ? { temperature: options.temperature } : {}),
       ...(systemMessages.length > 0
-        ? { system: systemMessages.map(m => typeof m.content === "string" ? m.content : m.content.map(p => p.type === "text" ? p.text : "").join("")).join("\n") }
+        ? { system: systemMessages.map(m => m.content).join(
+) }
         : {}),
       ...(tools && tools.length > 0 ? { tools } : {}),
       ...(toolChoice ? { tool_choice: toolChoice } : {}),
@@ -190,7 +191,6 @@ export class AnthropicProvider implements Provider {
     return {
       content,
       model: response.model,
-      finish_reason: response.stop_reason ?? undefined,
       tool_calls,
       usage: {
         inputTokens: response.usage.input_tokens,
@@ -214,7 +214,8 @@ export class AnthropicProvider implements Provider {
       max_tokens: options?.maxTokens ?? 4096,
       ...(options?.temperature !== undefined ? { temperature: options.temperature } : {}),
       ...(systemMessages.length > 0
-        ? { system: systemMessages.map(m => typeof m.content === "string" ? m.content : m.content.map(p => p.type === "text" ? p.text : "").join("")).join("\n") }
+        ? { system: systemMessages.map(m => m.content).join(
+) }
         : {}),
       ...(tools && tools.length > 0 ? { tools } : {}),
       ...(toolChoice ? { tool_choice: toolChoice } : {}),

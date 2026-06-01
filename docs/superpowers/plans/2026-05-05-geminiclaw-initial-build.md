@@ -2,11 +2,11 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build the complete GeminiClaw agent runtime from scratch: config loader, provider adapters (Anthropic + mcli), Fastify HTTP server with `/v1/agent/chat` and `/v1/health`, in-memory session store, and wire everything in `src/index.ts`.
+**Goal:** Build the complete GeminiClaw agent runtime from scratch: config loader, provider adapters (Anthropic + llm-gw), Fastify HTTP server with `/v1/agent/chat` and `/v1/health`, in-memory session store, and wire everything in `src/index.ts`.
 
-**Architecture:** TypeScript ESM project using Fastify for HTTP, js-yaml + zod for config validation, and @anthropic-ai/sdk for the Anthropic provider. Providers implement a common `Provider` interface; the server routes requests through the config-driven routing table with ordered fallback. Memory is in-memory with a simple session map (file persistence deferred).
+**Architecture:** TypeScript ESM project using Fastify for HTTP, js-yaml + zod for config validation, and @anth-ai/sdk for the Anthropic provider. Providers implement a common `Provider` interface; the server routes requests through the config-driven routing table with ordered fallback. Memory is in-memory with a simple session map (file persistence deferred).
 
-**Tech Stack:** TypeScript 5, Node.js 20 ESM, Fastify 5, Vitest, pnpm, @anthropic-ai/sdk, js-yaml, zod
+**Tech Stack:** TypeScript 5, Node.js 20 ESM, Fastify 5, Vitest, pnpm, @anth-ai/sdk, js-yaml, zod
 
 ---
 
@@ -21,8 +21,8 @@ src/
 │   └── types.ts                    ← exported Config type (re-exported from schema)
 ├── providers/
 │   ├── types.ts                    ← Provider interface, Message, ChatOptions, ChatResponse, StreamChunk
-│   ├── anthropic.ts                ← AnthropicProvider implements Provider
-│   ├── mcli.ts                     ← McliProvider implements Provider (OpenAI-compatible API)
+│   ├── anth.ts                ← AnthropicProvider implements Provider
+│   ├── llm-gw.ts                     ← McliProvider implements Provider (OpenAI-compatible API)
 │   └── registry.ts                 ← buildProviderRegistry(config) → Map<name, Provider>
 ├── memory/
 │   ├── types.ts                    ← Session, SessionStore interface
@@ -38,8 +38,8 @@ tests/
 ├── config/
 │   └── loader.test.ts
 ├── providers/
-│   ├── anthropic.test.ts
-│   └── mcli.test.ts
+│   ├── anth.test.ts
+│   └── llm-gw.test.ts
 ├── memory/
 │   └── store.test.ts
 └── server/
@@ -124,14 +124,14 @@ server:
   authToken: "test-token"
 
 providers:
-  - name: anthropic
-    type: anthropic
+  - name: anth
+    type: anth
     apiKey: "sk-ant-test"
     models:
       - claude-opus-4
 
 routing:
-  default: "anthropic/claude-opus-4"
+  default: "anth/claude-opus-4"
   fallback: []
 
 memory:
@@ -155,8 +155,8 @@ describe('loadConfig', () => {
     expect(config.server.port).toBe(18888)
     expect(config.server.authToken).toBe('test-token')
     expect(config.providers).toHaveLength(1)
-    expect(config.providers[0].name).toBe('anthropic')
-    expect(config.routing.default).toBe('anthropic/claude-opus-4')
+    expect(config.providers[0].name).toBe('anth')
+    expect(config.routing.default).toBe('anth/claude-opus-4')
     expect(config.memory.enabled).toBe(true)
     expect(config.agent.maxTurns).toBe(50)
   })
@@ -188,7 +188,7 @@ Create `src/config/types.ts`:
 ```typescript
 export interface ProviderConfig {
   name: string
-  type: 'anthropic' | 'openai' | 'mcli' | 'friday'
+  type: 'anth' | 'openai' | 'llm-gw' | 'friday'
   apiKey?: string
   baseUrl?: string
   models: string[]
@@ -226,7 +226,7 @@ import { z } from 'zod'
 
 export const ProviderConfigSchema = z.object({
   name: z.string(),
-  type: z.enum(['anthropic', 'openai', 'mcli', 'friday']),
+  type: z.enum(['anth', 'openai', 'llm-gw', 'friday']),
   apiKey: z.string().optional(),
   baseUrl: z.string().optional(),
   models: z.array(z.string()),
@@ -352,20 +352,20 @@ git commit -m "feat: provider interface and message types"
 ## Task 4: Anthropic Provider
 
 **Files:**
-- Create: `src/providers/anthropic.ts`
-- Create: `tests/providers/anthropic.test.ts`
+- Create: `src/providers/anth.ts`
+- Create: `tests/providers/anth.test.ts`
 
 - [ ] **Step 1: Write the failing test**
 
-Create `tests/providers/anthropic.test.ts`:
+Create `tests/providers/anth.test.ts`:
 
 ```typescript
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { AnthropicProvider } from '../../src/providers/anthropic.js'
+import { AnthropicProvider } from '../../src/providers/anth.js'
 import type { Message, ChatOptions } from '../../src/providers/types.js'
 
 // Mock the Anthropic SDK
-vi.mock('@anthropic-ai/sdk', () => {
+vi.mock('@anth-ai/sdk', () => {
   const mockCreate = vi.fn()
   const mockStream = vi.fn()
   return {
@@ -383,11 +383,11 @@ vi.mock('@anthropic-ai/sdk', () => {
 describe('AnthropicProvider', () => {
   it('has correct name', () => {
     const provider = new AnthropicProvider('sk-ant-test', ['claude-opus-4'])
-    expect(provider.name).toBe('anthropic')
+    expect(provider.name).toBe('anth')
   })
 
   it('chat() returns a ChatResponse', async () => {
-    const { __mockCreate } = await import('@anthropic-ai/sdk') as any
+    const { __mockCreate } = await import('@anth-ai/sdk') as any
     __mockCreate.mockResolvedValueOnce({
       content: [{ type: 'text', text: 'Hello!' }],
       model: 'claude-opus-4',
@@ -406,7 +406,7 @@ describe('AnthropicProvider', () => {
   })
 
   it('chat() extracts text from multi-block response', async () => {
-    const { __mockCreate } = await import('@anthropic-ai/sdk') as any
+    const { __mockCreate } = await import('@anth-ai/sdk') as any
     __mockCreate.mockResolvedValueOnce({
       content: [
         { type: 'text', text: 'Part 1 ' },
@@ -429,21 +429,21 @@ describe('AnthropicProvider', () => {
 - [ ] **Step 2: Run test to verify it fails**
 
 ```bash
-pnpm test tests/providers/anthropic.test.ts
+pnpm test tests/providers/anth.test.ts
 ```
 
-Expected: FAIL with "Cannot find module '../../src/providers/anthropic.js'"
+Expected: FAIL with "Cannot find module '../../src/providers/anth.js'"
 
 - [ ] **Step 3: Implement AnthropicProvider**
 
-Create `src/providers/anthropic.ts`:
+Create `src/providers/anth.ts`:
 
 ```typescript
-import Anthropic from '@anthropic-ai/sdk'
+import Anthropic from '@anth-ai/sdk'
 import type { Provider, Message, ChatOptions, ChatResponse, StreamChunk } from './types.js'
 
 export class AnthropicProvider implements Provider {
-  readonly name = 'anthropic'
+  readonly name = 'anth'
   private client: Anthropic
 
   constructor(
@@ -454,7 +454,7 @@ export class AnthropicProvider implements Provider {
   }
 
   async chat(messages: Message[], options: ChatOptions): Promise<ChatResponse> {
-    const anthropicMessages = messages
+    const anthMessages = messages
       .filter(m => m.role !== 'system')
       .map(m => ({ role: m.role as 'user' | 'assistant', content: m.content }))
 
@@ -465,7 +465,7 @@ export class AnthropicProvider implements Provider {
       model: options.model,
       max_tokens: options.maxTokens ?? 4096,
       ...(systemMessage ? { system: systemMessage } : {}),
-      messages: anthropicMessages,
+      messages: anthMessages,
     })
 
     const content = response.content
@@ -484,7 +484,7 @@ export class AnthropicProvider implements Provider {
   }
 
   async *stream(messages: Message[], options: ChatOptions): AsyncIterable<StreamChunk> {
-    const anthropicMessages = messages
+    const anthMessages = messages
       .filter(m => m.role !== 'system')
       .map(m => ({ role: m.role as 'user' | 'assistant', content: m.content }))
 
@@ -495,7 +495,7 @@ export class AnthropicProvider implements Provider {
       model: options.model,
       max_tokens: options.maxTokens ?? 4096,
       ...(systemMessage ? { system: systemMessage } : {}),
-      messages: anthropicMessages,
+      messages: anthMessages,
     })
 
     for await (const event of stream) {
@@ -514,7 +514,7 @@ export class AnthropicProvider implements Provider {
 - [ ] **Step 4: Run test to verify it passes**
 
 ```bash
-pnpm test tests/providers/anthropic.test.ts
+pnpm test tests/providers/anth.test.ts
 ```
 
 Expected: PASS (3 tests)
@@ -522,27 +522,27 @@ Expected: PASS (3 tests)
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/providers/anthropic.ts tests/providers/anthropic.test.ts
+git add src/providers/anth.ts tests/providers/anth.test.ts
 git commit -m "feat: AnthropicProvider with chat and stream"
 ```
 
 ---
 
-## Task 5: mcli Provider
+## Task 5: llm-gw Provider
 
 **Files:**
-- Create: `src/providers/mcli.ts`
-- Create: `tests/providers/mcli.test.ts`
+- Create: `src/providers/llm-gw.ts`
+- Create: `tests/providers/llm-gw.test.ts`
 
-The mcli provider uses an OpenAI-compatible HTTP API. We use `fetch` directly (no extra dependency).
+The llm-gw provider uses an OpenAI-compatible HTTP API. We use `fetch` directly (no extra dependency).
 
 - [ ] **Step 1: Write the failing test**
 
-Create `tests/providers/mcli.test.ts`:
+Create `tests/providers/llm-gw.test.ts`:
 
 ```typescript
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { McliProvider } from '../../src/providers/mcli.js'
+import { McliProvider } from '../../src/providers/llm-gw.js'
 import type { Message, ChatOptions } from '../../src/providers/types.js'
 
 const mockFetch = vi.fn()
@@ -552,8 +552,8 @@ afterEach(() => vi.resetAllMocks())
 
 describe('McliProvider', () => {
   it('has correct name', () => {
-    const p = new McliProvider('https://mcli.example.com', 'token', ['model-a'])
-    expect(p.name).toBe('mcli')
+    const p = new McliProvider('https://llm-gw.example.com', 'token', ['model-a'])
+    expect(p.name).toBe('llm-gw')
   })
 
   it('chat() calls the OpenAI-compatible endpoint and returns ChatResponse', async () => {
@@ -566,7 +566,7 @@ describe('McliProvider', () => {
       }),
     })
 
-    const provider = new McliProvider('https://mcli.example.com', 'token', ['claude-sonnet-4-6'])
+    const provider = new McliProvider('https://llm-gw.example.com', 'token', ['claude-sonnet-4-6'])
     const messages: Message[] = [{ role: 'user', content: 'Hello' }]
     const options: ChatOptions = { model: 'claude-sonnet-4-6' }
     const response = await provider.chat(messages, options)
@@ -577,7 +577,7 @@ describe('McliProvider', () => {
     expect(response.usage.outputTokens).toBe(4)
 
     const [url, init] = mockFetch.mock.calls[0]
-    expect(url).toBe('https://mcli.example.com/v1/chat/completions')
+    expect(url).toBe('https://llm-gw.example.com/v1/chat/completions')
     expect(JSON.parse(init.body).model).toBe('claude-sonnet-4-6')
   })
 
@@ -588,10 +588,10 @@ describe('McliProvider', () => {
       text: async () => 'Unauthorized',
     })
 
-    const provider = new McliProvider('https://mcli.example.com', 'bad-token', ['m'])
+    const provider = new McliProvider('https://llm-gw.example.com', 'bad-token', ['m'])
     await expect(
       provider.chat([{ role: 'user', content: 'x' }], { model: 'm' })
-    ).rejects.toThrow('mcli API error 401')
+    ).rejects.toThrow('llm-gw API error 401')
   })
 })
 ```
@@ -599,20 +599,20 @@ describe('McliProvider', () => {
 - [ ] **Step 2: Run test to verify it fails**
 
 ```bash
-pnpm test tests/providers/mcli.test.ts
+pnpm test tests/providers/llm-gw.test.ts
 ```
 
-Expected: FAIL with "Cannot find module '../../src/providers/mcli.js'"
+Expected: FAIL with "Cannot find module '../../src/providers/llm-gw.js'"
 
 - [ ] **Step 3: Implement McliProvider**
 
-Create `src/providers/mcli.ts`:
+Create `src/providers/llm-gw.ts`:
 
 ```typescript
 import type { Provider, Message, ChatOptions, ChatResponse, StreamChunk } from './types.js'
 
 export class McliProvider implements Provider {
-  readonly name = 'mcli'
+  readonly name = 'llm-gw'
 
   constructor(
     private readonly baseUrl: string,
@@ -640,7 +640,7 @@ export class McliProvider implements Provider {
 
     if (!res.ok) {
       const text = await res.text()
-      throw new Error(`mcli API error ${res.status}: ${text}`)
+      throw new Error(`llm-gw API error ${res.status}: ${text}`)
     }
 
     const data = await res.json() as {
@@ -679,7 +679,7 @@ export class McliProvider implements Provider {
 
     if (!res.ok) {
       const text = await res.text()
-      throw new Error(`mcli API error ${res.status}: ${text}`)
+      throw new Error(`llm-gw API error ${res.status}: ${text}`)
     }
 
     const reader = res.body!.getReader()
@@ -715,7 +715,7 @@ export class McliProvider implements Provider {
 - [ ] **Step 4: Run test to verify it passes**
 
 ```bash
-pnpm test tests/providers/mcli.test.ts
+pnpm test tests/providers/llm-gw.test.ts
 ```
 
 Expected: PASS (3 tests)
@@ -723,7 +723,7 @@ Expected: PASS (3 tests)
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/providers/mcli.ts tests/providers/mcli.test.ts
+git add src/providers/llm-gw.ts tests/providers/llm-gw.test.ts
 git commit -m "feat: McliProvider using OpenAI-compatible API"
 ```
 
@@ -739,16 +739,16 @@ git commit -m "feat: McliProvider using OpenAI-compatible API"
 Create `src/providers/registry.ts`:
 
 ```typescript
-import { AnthropicProvider } from './anthropic.js'
-import { McliProvider } from './mcli.js'
+import { AnthropicProvider } from './anth.js'
+import { McliProvider } from './llm-gw.js'
 import type { Provider } from './types.js'
 import type { Config, ProviderConfig } from '../config/types.js'
 
 function buildProvider(cfg: ProviderConfig): Provider {
   switch (cfg.type) {
-    case 'anthropic':
+    case 'anth':
       return new AnthropicProvider(cfg.apiKey!, cfg.models)
-    case 'mcli':
+    case 'llm-gw':
       return new McliProvider(cfg.baseUrl!, cfg.apiKey!, cfg.models)
     default:
       throw new Error(`Unsupported provider type: ${cfg.type}`)
@@ -1420,7 +1420,7 @@ git commit -m "chore: ensure all tests pass and build is clean"
 | CLAUDE.md requirement | Covered by |
 |---|---|
 | `src/config/` — load and validate config.yaml | Task 2 |
-| `src/providers/` — Anthropic + mcli adapters | Tasks 3-6 |
+| `src/providers/` — Anthropic + llm-gw adapters | Tasks 3-6 |
 | `src/server/` — Fastify, `/v1/agent/chat`, `/v1/health` | Tasks 8-9 |
 | `src/memory/` — in-memory session store | Task 7 |
 | Wire in `src/index.ts` | Task 10 |

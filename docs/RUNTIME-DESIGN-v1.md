@@ -566,9 +566,9 @@ export async function discoverPlugins(config: GeminiClawConfig): Promise<LoadedP
 
 ```yaml
 providers:
-  - name: mcli
-    type: mcli
-    baseUrl: "https://mcli.sankuai.com"
+  - name: llm-gw
+    type: llm-gw
+    baseUrl: "https://llm-gw.sankuai.com"
     apiKey: "${MCLI_API_KEY}"
     extraHeaders:
       X-Working-Dir: "/Users/lipingjiang"
@@ -603,9 +603,9 @@ providers:
       - longcat-flash-chat
 
 routing:
-  default: "mcli/claude-opus-4-6"
+  default: "llm-gw/claude-opus-4-6"
   fallback:
-    - "mcli/claude-sonnet-4-5"
+    - "llm-gw/claude-sonnet-4-5"
     - "friday/gemini-3-flash-preview"
 ```
 

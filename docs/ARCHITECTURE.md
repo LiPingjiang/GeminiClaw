@@ -23,14 +23,18 @@ GeminiClaw 是 OpenClaw 的 fork，采用 **Twin-System（双槽位）架构**�
 
 ```
 GeminiClaw/
-├── src/                     ← TypeScript 源码（运行态 = main branch）
-├── dist/                    ← 编译产物
+├── slot-a/                  ← 槽位 A（源码 + 构建产物）
+│   ├── src/                 ← TypeScript 源码
+│   ├── dist/                ← 编译产物
+│   └── package.json
 │
-│   ── 槽位机制（git branch 方案）──
-│   main branch              ← slot-A（运行态）
-│   evolution/<id> branch    ← slot-B（待机态，Mutator 在此改代码）
-│   切换 = git merge --squash → main + SIGUSR1 重启
-│   回滚 = git revert HEAD
+├── slot-b/                  ← 槽位 B（源码 + 构建产物）
+│   ├── src/
+│   ├── dist/
+│   └── package.json
+│
+├── active -> slot-a/        ← 软链接，指向当前运行态
+├── standby -> slot-b/       ← 软链接，指向当前待机态
 │
 ├── evolution/               ← 进化引擎（核心）
 │   ├── intent/              ← 意图层：从哪里发现"该改什么"
@@ -199,26 +203,14 @@ GeminiClaw 不做传统 merge，而是**主动筛选**：
 
 - [x] **Step 1**：理清 GeminiClaw 仓库结构，跑通构建流程
   - 已完成（2026-05-05）：TypeScript + Fastify 5 + Vitest，78 测试全绿
-  - providers: mcli（含 extraHeaders）、Friday（含 SSE stream）、Anthropic
+  - providers: llm-gw（含 extraHeaders）、Friday（含 SSE stream）、Anthropic
   - memory: buffer 策略 + layered 策略（SQLite 分层 topics）
   - 认证、输入校验、SSE hijack 全部就位
-- [x] **Step 2**：建立槽位机制（已用 git branch 方案替代物理 slot 目录，2026-05-06）
-  - **决策记录**：ARCHITECTURE.md 原设计是 `slot-a/` + `slot-b/` 双目录 + 软链接。经评估，git branch 方案在当前阶段更优：
-    - `main` = 运行态（slot-A），`evolution/<id>` branch = 待机态（slot-B）
-    - 切换 = `git merge --squash` → main + SIGUSR1 重启；回滚 = `git revert HEAD`
-    - **git branch 优势**：git log 天然就是进化历史，可审计；实现复杂度低 3 倍以上；`dist/` 已编译产物运行，src/ 改动无竞态
-    - **物理 slot 目录的优势**（并发安全、依赖隔离）在当前阶段用不到：Mutator 只改 src/，主进程跑 dist/；Mutator 不动 package.json，依赖隔离暂无价值
-    - **何时重新考虑物理 slot**：当进化引擎需要升级依赖、或需要真正零停机热切换时再做，现在做是过度设计
-- [x] **Step 3（部分）**：Evolution Engine 核心模块全部实现（2026-05-06）
-  - IntentEngine（TraceAnalyzer + MemoryTopicsAnalyzer + UpstreamSyncSource）
-  - Mutator（LLM 生成 unified diff，置信度评分）
-  - Validator Level 1（build + test）、Level 2（行为一致性）
-  - Switcher（git branch 槽位切换 + SIGUSR1 重启）
-  - CircuitBreaker（错误率监控 + 自动回滚）
-  - 完整 auto-switch 路径验证通过（249 tests 全绿）
-- [x] **Step 4**：上游跟踪（UpstreamSyncSource 已实现，通过 idle loop 自动触发，无需单独 cron）
-- [ ] **Step 5**：时机隔离 + Evolution session 隔离（用户活跃时静默，进化确认不污染主对话）
-- [ ] **Step 6**：部署替换生产 18888 端口
+- [ ] **Step 2**：建立 slot-a / slot-b 目录结构和软链接机制
+- [ ] **Step 3**：把 skill-self-optimizer 合并进来，作为内置能力
+- [ ] **Step 4**：实现手动切换（先不自动）：改 slot-B 代码 → 构建 → 测试 → 手动切换
+- [ ] **Step 5**：建立上游跟踪 cron job（AI 定期 diff OpenClaw 新版本）
+- [ ] **Step 6**：在 Step 4 跑稳之后，逐步自动化意图生成和切换决策
 
 ---
 

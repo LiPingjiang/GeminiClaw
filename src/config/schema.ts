@@ -6,7 +6,7 @@ export const serverConfigSchema = z.object({
   authToken: z.string().optional(),
 })
 
-export const providerTypeSchema = z.enum(["anthropic", "openai", "mcli", "friday"])
+export const providerTypeSchema = z.enum(["anthropic", "openai", "mcli", "friday", "llm-gw"])
 
 export const providerConfigSchema = z.object({
   name: z.string().min(1),
@@ -35,26 +35,24 @@ export const memoryConfigSchema = z.object({
   triageAfterTurns: z.number().int().positive().default(3),
 })
 
-export const qqBotChannelSchema = z.object({
-  enabled: z.boolean().default(false),
-  appId: z.string().default(""),
-  clientSecret: z.string().default(""),
-  webhookPath: z.string().default("/webhook/qqbot"),
-})
-
 export const agentConfigSchema = z.object({
   maxTurns: z.number().int().positive().default(20),
   timeoutSeconds: z.number().int().positive().default(60),
-  systemPrompt: z.string().optional(),
+  dispatcherModel: z.string().optional(),
 })
 
-export const workspaceConfigSchema = z.object({
-  dir: z.string().default(".workspace"),
+export const qqbotConfigSchema = z.object({
+  enabled: z.boolean().default(false),
+  mode: z.enum(["websocket", "webhook"]).default("websocket"),
+  appId: z.string(),
+  clientSecret: z.string(),
+  intents: z.number().int().optional(),
+  webhookPath: z.string().optional(),
 })
 
-export const skillsConfigSchema = z.object({
-  dir: z.string().default("skills"),
-})
+export const channelsConfigSchema = z.object({
+  qqbot: qqbotConfigSchema.optional(),
+}).optional()
 
 export const configSchema = z.object({
   server: serverConfigSchema,
@@ -62,11 +60,7 @@ export const configSchema = z.object({
   routing: routingConfigSchema,
   memory: memoryConfigSchema,
   agent: agentConfigSchema,
-  channels: z.object({
-    qqbot: qqBotChannelSchema.optional(),
-  }).optional(),
-  workspace: workspaceConfigSchema.default({}),
-  skills: skillsConfigSchema.default({}),
+  channels: channelsConfigSchema,
 })
 
 export type ServerConfig = z.infer<typeof serverConfigSchema>
@@ -75,7 +69,6 @@ export type RoutingConfig = z.infer<typeof routingConfigSchema>
 export type MemoryConfig = z.infer<typeof memoryConfigSchema>
 export type MemoryStrategy = z.infer<typeof memoryStrategySchema>
 export type AgentConfig = z.infer<typeof agentConfigSchema>
-export type QQBotChannelConfig = z.infer<typeof qqBotChannelSchema>
-export type WorkspaceConfig = z.infer<typeof workspaceConfigSchema>
-export type SkillsDirConfig = z.infer<typeof skillsConfigSchema>
+export type QQBotConfig = z.infer<typeof qqbotConfigSchema>
+export type ChannelsConfig = z.infer<typeof channelsConfigSchema>
 export type Config = z.infer<typeof configSchema>

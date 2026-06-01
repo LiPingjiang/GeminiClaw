@@ -6,7 +6,7 @@
 
 **Architecture:** Config-driven provider routing with a fallback chain; stateless Fastify routes delegate to ProviderRouter for LLM calls and SessionMemory for conversation history; AnthropicProvider and McliProvider share the same Anthropic SDK with different baseURLs.
 
-**Tech Stack:** TypeScript ESM, Node.js ≥20, Fastify 5, @anthropic-ai/sdk, js-yaml, zod, vitest.
+**Tech Stack:** TypeScript ESM, Node.js ≥20, Fastify 5, @anth-ai/sdk, js-yaml, zod, vitest.
 
 **Execution Config:**
 ```yaml
@@ -63,25 +63,25 @@ server:
   # authToken: "your-secret-token"
 
 providers:
-  - name: anthropic
-    type: anthropic
+  - name: anth
+    type: anth
     apiKey: "sk-ant-..."
     models:
       - claude-opus-4-6
       - claude-sonnet-4-6
 
-  - name: mcli
-    type: mcli
-    apiKey: "your-mcli-key"
-    baseUrl: "https://your-mcli-endpoint/v1"
+  - name: llm-gw
+    type: llm-gw
+    apiKey: "your-llm-gw-key"
+    baseUrl: "https://your-llm-gw-endpoint/v1"
     models:
-      - mcli-model-default
+      - llm-gw-model-default
 
 routing:
-  default: "anthropic/claude-sonnet-4-6"
+  default: "anth/claude-sonnet-4-6"
   fallback:
-    - "anthropic/claude-sonnet-4-6"
-    - "mcli/mcli-model-default"
+    - "anth/claude-sonnet-4-6"
+    - "llm-gw/llm-gw-model-default"
 
 memory:
   enabled: true
@@ -136,15 +136,15 @@ server:
   port: 3000
   host: "0.0.0.0"
 providers:
-  - name: anthropic
-    type: anthropic
+  - name: anth
+    type: anth
     apiKey: sk-test
     models:
       - claude-sonnet-4-6
 routing:
-  default: "anthropic/claude-sonnet-4-6"
+  default: "anth/claude-sonnet-4-6"
   fallback:
-    - "anthropic/claude-sonnet-4-6"
+    - "anth/claude-sonnet-4-6"
 memory:
   enabled: true
   dataDir: ".data"
@@ -158,8 +158,8 @@ it("loads a valid config file", () => {
   writeFileSync(join(TMP, "config.yaml"), VALID_YAML)
   const config = loadConfig(join(TMP, "config.yaml"))
   expect(config.server.port).toBe(3000)
-  expect(config.providers[0].name).toBe("anthropic")
-  expect(config.routing.default).toBe("anthropic/claude-sonnet-4-6")
+  expect(config.providers[0].name).toBe("anth")
+  expect(config.routing.default).toBe("anth/claude-sonnet-4-6")
 })
 
 it("throws on missing file", () => {
@@ -189,7 +189,7 @@ export const serverConfigSchema = z.object({
   authToken: z.string().optional(),
 })
 
-export const providerTypeSchema = z.enum(["anthropic", "openai", "mcli", "friday"])
+export const providerTypeSchema = z.enum(["anth", "openai", "llm-gw", "friday"])
 
 export const providerConfigSchema = z.object({
   name: z.string().min(1),
@@ -428,16 +428,16 @@ git commit -m "feat: add provider types interface and session memory"
 ### Task 4: AnthropicProvider + McliProvider
 
 **Files:**
-- Create: `src/providers/anthropic.ts`
-- Create: `src/providers/mcli.ts`
+- Create: `src/providers/anth.ts`
+- Create: `src/providers/llm-gw.ts`
 
 No test file for this task — providers make real network calls; they are tested via router mock tests in Task 5.
 
-**Step 1: Write src/providers/anthropic.ts**
+**Step 1: Write src/providers/anth.ts**
 
 ```typescript
-// src/providers/anthropic.ts
-import Anthropic from "@anthropic-ai/sdk"
+// src/providers/anth.ts
+import Anthropic from "@anth-ai/sdk"
 import type { ProviderConfig } from "../config/schema.js"
 import type {
   Message,
@@ -526,18 +526,18 @@ export class AnthropicProvider implements Provider {
 }
 ```
 
-**Step 2: Write src/providers/mcli.ts**
+**Step 2: Write src/providers/llm-gw.ts**
 
 ```typescript
-// src/providers/mcli.ts
-import Anthropic from "@anthropic-ai/sdk"
-import { AnthropicProvider } from "./anthropic.js"
+// src/providers/llm-gw.ts
+import Anthropic from "@anth-ai/sdk"
+import { AnthropicProvider } from "./anth.js"
 import type { ProviderConfig } from "../config/schema.js"
 
 export class McliProvider extends AnthropicProvider {
   constructor(config: ProviderConfig) {
     const client = new Anthropic({
-      apiKey: config.apiKey ?? "mcli",
+      apiKey: config.apiKey ?? "llm-gw",
       baseURL: config.baseUrl,
     })
     super(config, client)
@@ -553,7 +553,7 @@ Expected: errors only about missing files not yet written (server/, index.ts)
 **Step 4: Commit**
 
 ```bash
-git add src/providers/anthropic.ts src/providers/mcli.ts
+git add src/providers/anth.ts src/providers/llm-gw.ts
 git commit -m "feat: add AnthropicProvider and McliProvider"
 ```
 
@@ -775,7 +775,7 @@ import type { Config } from "../../config/schema.js"
 function makeConfig(authToken?: string): Config {
   return {
     server: { port: 3000, host: "0.0.0.0", authToken },
-    providers: [{ name: "p1", type: "anthropic", models: ["m1"] }],
+    providers: [{ name: "p1", type: "anth", models: ["m1"] }],
     routing: { default: "p1/m1", fallback: ["p1/m1"] },
     memory: { enabled: true, dataDir: ".data", maxSessionAge: 3600 },
     agent: { maxTurns: 10, timeoutSeconds: 30 },
@@ -942,8 +942,8 @@ git commit -m "feat: add chat route with bearer auth and session memory"
 ```typescript
 // src/index.ts
 import { loadConfig } from "./config/loader.js"
-import { AnthropicProvider } from "./providers/anthropic.js"
-import { McliProvider } from "./providers/mcli.js"
+import { AnthropicProvider } from "./providers/anth.js"
+import { McliProvider } from "./providers/llm-gw.js"
 import { ProviderRouter } from "./providers/router.js"
 import { SessionMemory } from "./memory/session.js"
 import { buildServer } from "./server/index.js"
@@ -952,9 +952,9 @@ import type { ProviderConfig } from "./config/schema.js"
 
 function buildProvider(config: ProviderConfig): Provider {
   switch (config.type) {
-    case "anthropic":
+    case "anth":
       return new AnthropicProvider(config)
-    case "mcli":
+    case "llm-gw":
       return new McliProvider(config)
     default:
       throw new Error(`Unsupported provider type: ${config.type}`)

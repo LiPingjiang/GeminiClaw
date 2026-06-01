@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 补全 GeminiClaw 现有测试的覆盖缺口，包括：friday stream、mcli headers、输入校验、layered 策略核心路径、provider fallback、以及 E2E 脚本扩展。
+**Goal:** 补全 GeminiClaw 现有测试的覆盖缺口，包括：friday stream、llm-gw headers、输入校验、layered 策略核心路径、provider fallback、以及 E2E 脚本扩展。
 
 **Architecture:** 纯测试补充，不改业务代码。vitest 单元测试 + bash E2E 脚本扩展。
 
@@ -125,27 +125,27 @@ git commit -m "test: add friday stream coverage (SSE chunks, errors, malformed)"
 
 ---
 
-## Task 2: mcli headers + router stream 测试
+## Task 2: llm-gw headers + router stream 测试
 
 **Files:**
 - Modify: `src/providers/router.test.ts`（追加 stream 测试）
-- Create: `src/providers/mcli.test.ts`（新建，补充 headers 测试）
+- Create: `src/providers/llm-gw.test.ts`（新建，补充 headers 测试）
 
-- [ ] **Step 1: 新建 src/providers/mcli.test.ts**
+- [ ] **Step 1: 新建 src/providers/llm-gw.test.ts**
 
 ```typescript
-// src/providers/mcli.test.ts
+// src/providers/llm-gw.test.ts
 import { it, expect, vi, beforeEach } from "vitest"
-import Anthropic from "@anthropic-ai/sdk"
+import Anthropic from "@anth-ai/sdk"
 
-vi.mock("@anthropic-ai/sdk")
+vi.mock("@anth-ai/sdk")
 
 function makeConfig(headers?: Record<string, string>) {
   return {
-    name: "mcli",
-    type: "mcli" as const,
+    name: "llm-gw",
+    type: "llm-gw" as const,
     apiKey: "test-key",
-    baseUrl: "https://mcli.example.com",
+    baseUrl: "https://llm-gw.example.com",
     models: ["claude-opus-4-6"],
     headers,
   }
@@ -156,7 +156,7 @@ beforeEach(() => {
 })
 
 it("passes defaultHeaders to Anthropic client when headers configured", async () => {
-  const { McliProvider } = await import("./mcli.js")
+  const { McliProvider } = await import("./llm-gw.js")
   new McliProvider(makeConfig({ "X-Working-Dir": "/home/user" }))
 
   expect(vi.mocked(Anthropic)).toHaveBeenCalledWith(
@@ -167,7 +167,7 @@ it("passes defaultHeaders to Anthropic client when headers configured", async ()
 })
 
 it("passes empty defaultHeaders when no headers configured", async () => {
-  const { McliProvider } = await import("./mcli.js")
+  const { McliProvider } = await import("./llm-gw.js")
   new McliProvider(makeConfig())
 
   expect(vi.mocked(Anthropic)).toHaveBeenCalledWith(
@@ -178,7 +178,7 @@ it("passes empty defaultHeaders when no headers configured", async () => {
 })
 
 it("uses apiKey from config", async () => {
-  const { McliProvider } = await import("./mcli.js")
+  const { McliProvider } = await import("./llm-gw.js")
   new McliProvider(makeConfig())
 
   expect(vi.mocked(Anthropic)).toHaveBeenCalledWith(
@@ -186,12 +186,12 @@ it("uses apiKey from config", async () => {
   )
 })
 
-it("falls back to 'mcli' when no apiKey", async () => {
-  const { McliProvider } = await import("./mcli.js")
+it("falls back to 'llm-gw' when no apiKey", async () => {
+  const { McliProvider } = await import("./llm-gw.js")
   new McliProvider({ ...makeConfig(), apiKey: undefined })
 
   expect(vi.mocked(Anthropic)).toHaveBeenCalledWith(
-    expect.objectContaining({ apiKey: "mcli" }),
+    expect.objectContaining({ apiKey: "llm-gw" }),
   )
 })
 ```
@@ -199,7 +199,7 @@ it("falls back to 'mcli' when no apiKey", async () => {
 - [ ] **Step 2: 运行测试确认通过**
 
 ```bash
-cd ~/Codes/GeminiClaw && pnpm test src/providers/mcli.test.ts 2>&1 | tail -10
+cd ~/Codes/GeminiClaw && pnpm test src/providers/llm-gw.test.ts 2>&1 | tail -10
 ```
 Expected: 4 tests PASS
 
@@ -279,8 +279,8 @@ Expected: all pass
 - [ ] **Step 6: commit**
 
 ```bash
-cd ~/Codes/GeminiClaw && git add src/providers/mcli.test.ts src/providers/router.test.ts
-git commit -m "test: add mcli headers coverage + router stream coverage"
+cd ~/Codes/GeminiClaw && git add src/providers/llm-gw.test.ts src/providers/router.test.ts
+git commit -m "test: add llm-gw headers coverage + router stream coverage"
 ```
 
 ---
@@ -822,10 +822,10 @@ call_new() {
 }
 
 # ═══════════════════════════════════════════════════════════════
-log "## T11: provider fallback（mcli 失败自动切 friday）"
+log "## T11: provider fallback（llm-gw 失败自动切 friday）"
 log ""
 
-# 临时把 mcli 路由改为不存在的端口来模拟失败
+# 临时把 llm-gw 路由改为不存在的端口来模拟失败
 # 用一个新实例测试 fallback：只配 friday
 FALLBACK_CONFIG="/tmp/geminiclaw-fallback-test.yaml"
 cat > $FALLBACK_CONFIG << 'YAMLEOF'
@@ -834,8 +834,8 @@ server:
   host: "127.0.0.1"
   authToken: "test-token"
 providers:
-  - name: bad-mcli
-    type: mcli
+  - name: bad-llm-gw
+    type: llm-gw
     apiKey: "bad-key"
     baseUrl: "http://127.0.0.1:19999"
     models:
@@ -847,9 +847,9 @@ providers:
     models:
       - gemini-3-flash-preview
 routing:
-  default: "bad-mcli/claude-opus-4-6"
+  default: "bad-llm-gw/claude-opus-4-6"
   fallback:
-    - "bad-mcli/claude-opus-4-6"
+    - "bad-llm-gw/claude-opus-4-6"
     - "friday/gemini-3-flash-preview"
 memory:
   enabled: true
@@ -884,9 +884,9 @@ log "**使用模型：** $FALLBACK_MODEL"
 log ""
 
 if [ -n "$FALLBACK_CONTENT" ] && [ ${#FALLBACK_CONTENT} -gt 5 ]; then
-  check "T11-1 mcli 失败自动 fallback 到 friday" "PASS" ""
+  check "T11-1 llm-gw 失败自动 fallback 到 friday" "PASS" ""
 else
-  check "T11-1 mcli 失败自动 fallback 到 friday" "FAIL" "无响应: $FALLBACK_RESP"
+  check "T11-1 llm-gw 失败自动 fallback 到 friday" "FAIL" "无响应: $FALLBACK_RESP"
 fi
 
 if echo "$FALLBACK_MODEL" | grep -qi "gemini\|friday"; then

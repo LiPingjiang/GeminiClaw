@@ -1,6 +1,8 @@
 // src/memory/strategies/layered.ts
 import { randomUUID } from "crypto"
-import { stderr } from "process"
+import { existsSync, readFileSync } from "fs"
+import { join } from "path"
+import os from "os"
 import type { Message } from "../../providers/types.js"
 import type { MemoryStrategy, ConversationContext } from "../strategy.js"
 import type { Db } from "../../db/client.js"
@@ -21,7 +23,6 @@ interface LayeredStrategyConfig {
   compactThresholdBytes: number
   maxActiveTopics: number
 }
-const SUMMARY_LARGE_THRESHOLD_CHARS = 3000
 
 export class LayeredStrategy implements MemoryStrategy {
   readonly name = "layered"
@@ -51,6 +52,29 @@ export class LayeredStrategy implements MemoryStrategy {
     }
   }
 
+  /** 动态读取 workspace memory，每轮注入最新内容 */
+  private loadWorkspaceMemory(): string {
+    const wsDir = join(os.homedir(), ".gemeniclaw", ".workspace")
+    const parts: string[] = []
+
+    // 长期记忆
+    const memoryPath = join(wsDir, "MEMORY.md")
+    if (existsSync(memoryPath)) {
+      const content = readFileSync(memoryPath, "utf-8").trim()
+      if (content) parts.push(`## 长期记忆（MEMORY.md）\n${content}`)
+    }
+
+    // 今日日记
+    const today = new Date().toISOString().slice(0, 10)
+    const dailyPath = join(wsDir, "memory", `${today}.md`)
+    if (existsSync(dailyPath)) {
+      const content = readFileSync(dailyPath, "utf-8").trim()
+      if (content) parts.push(`## 今日日记（${today}）\n${content}`)
+    }
+
+    return parts.length > 0 ? `\n\n---\n\n${parts.join("\n\n")}` : ""
+  }
+
   async getContext(sessionId: string, userMessage: string): Promise<ConversationContext> {
     await this.ensureSession(sessionId)
 
@@ -76,16 +100,6 @@ export class LayeredStrategy implements MemoryStrategy {
 
       if (!topic) continue
 
-      // Warn if summary content is unusually large
-      const summaryLen = (topic.summary ?? "").length
-      if (summaryLen > SUMMARY_LARGE_THRESHOLD_CHARS) {
-        stderr.write(
-          `[layered] Warning: Memory topic "${topic.title}" (${topic.id}) has large summary content ` +
-          `(${summaryLen} chars > threshold ${SUMMARY_LARGE_THRESHOLD_CHARS}). ` +
-          `Consider summarizing or archiving to reduce memory retrieval overhead.\n`
-        )
-      }
-
       // 更新访问记录
       this.db.prepare(`
         UPDATE memory_topics
@@ -105,9 +119,10 @@ export class LayeredStrategy implements MemoryStrategy {
       }
     }
 
-    // 4. 组装 context
+    // 4. 组装 context（动态注入 workspace memory）
+    const workspaceMem = this.loadWorkspaceMemory()
     const messages = buildContext({
-      systemPrompt: this.config.systemPrompt,
+      systemPrompt: this.config.systemPrompt + workspaceMem,
       activeTopics,
       topicDocs,
       recentHistory,
@@ -165,5 +180,18 @@ export class LayeredStrategy implements MemoryStrategy {
       WHERE session_id = ?
       ORDER BY id DESC LIMIT ?
     `).all(sessionId, this.config.recentMessageLimit) as Message[]
+  }
+
+  async appendMessages(sessionId: string, messages: Message[]): Promise<void> {
+    await this.ensureSession(sessionId)
+    const insert = this.db.prepare(
+      `INSERT INTO chat_messages (session_id, role, content) VALUES (?, ?, ?)`
+    )
+    for (const msg of messages) {
+      insert.run(sessionId, msg.role, msg.content)
+    }
+    this.db.prepare(
+      `UPDATE chat_sessions SET message_count = message_count + ?, updated_at = datetime('now') WHERE id = ?`
+    ).run(messages.length, sessionId)
   }
 }

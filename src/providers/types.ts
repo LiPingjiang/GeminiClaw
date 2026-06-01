@@ -1,14 +1,25 @@
-export interface ImageContentPart {
-  type: "image_url"
-  image_url: { url: string; detail?: string }
-}
+// providers/types.ts — merged: keeps Message.content as string (test-compatible)
+// + adds tool types needed by anthropic.ts
 
 export interface TextContentPart {
   type: "text"
   text: string
 }
 
+export interface ImageContentPart {
+  type: "image_url"
+  image_url: { url: string; detail?: string }
+}
+
 export type ContentPart = TextContentPart | ImageContentPart
+
+export function messageText(content: string | ContentPart[]): string {
+  if (typeof content === "string") return content
+  return (content as ContentPart[])
+    .filter((p): p is TextContentPart => p.type === "text")
+    .map(p => p.text)
+    .join("\n")
+}
 
 // ── Tool definitions (OpenAI-compatible format) ──────────────────────────────
 export interface ToolFunction {
@@ -28,22 +39,16 @@ export interface ToolCall {
   type: "function"
   function: {
     name: string
-    arguments: string  // JSON string
+    arguments: string
   }
 }
 
-// ── Message ──────────────────────────────────────────────────────────────────
+// ── Core message types ────────────────────────────────────────────────────────
 export interface Message {
   role: "user" | "assistant" | "system" | "tool"
-  content: string | ContentPart[]
-  tool_calls?: ToolCall[]       // assistant → model called tools
-  tool_call_id?: string         // tool → result for this call
-}
-
-/** Extract plain text from a message content (string or multimodal array). */
-export function messageText(content: string | ContentPart[]): string {
-  if (typeof content === "string") return content
-  return content.filter((p): p is TextContentPart => p.type === "text").map(p => p.text).join("\n")
+  content: string
+  tool_calls?: ToolCall[]
+  tool_call_id?: string
 }
 
 export interface ChatOptions {
@@ -64,18 +69,15 @@ export interface ChatResponse {
   model: string
   usage?: TokenUsage
   tool_calls?: ToolCall[]
-  finish_reason?: string
 }
 
 export interface StreamChunk {
   delta: string
   done: boolean
-  tool_calls?: ToolCall[]  // emitted when model calls tools (streaming)
 }
 
 export interface Provider {
   name: string
-  models?: string[]  // list of model ids this provider supports
   chat(messages: Message[], options?: ChatOptions): Promise<ChatResponse>
   stream(messages: Message[], options?: ChatOptions): AsyncIterable<StreamChunk>
 }

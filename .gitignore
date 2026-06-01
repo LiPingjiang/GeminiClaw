@@ -47,3 +47,5 @@ coverage/
 
 # Git worktrees
 .worktrees/
+.pid
+package-lock.json

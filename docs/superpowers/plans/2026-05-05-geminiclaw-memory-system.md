@@ -6,7 +6,7 @@
 
 **Architecture:** friday provider 复用 OpenAI-completions 格式（fetch 直调）；session 持久化用 better-sqlite3 写入本地 SQLite；记忆策略通过 `MemoryStrategy` 接口抽象，config.yaml 的 `memory.strategy` 字段选择 `buffer`（滑动窗口）或 `layered`（分层 topics）；layered 策略用 friday/gemini-3-flash-preview 做路由和摘要，claude-opus-4-6 做主对话；chat route 改造为先组装 context 再调用主模型，对话结束后异步触发摘要/立项/清理。
 
-**Tech Stack:** TypeScript ESM, Node.js ≥20, Fastify 5, better-sqlite3, zod, vitest, @anthropic-ai/sdk（已有）
+**Tech Stack:** TypeScript ESM, Node.js ≥20, Fastify 5, better-sqlite3, zod, vitest, @anth-ai/sdk（已有）
 
 ---
 
@@ -263,9 +263,9 @@ import { FridayProvider } from "./providers/friday.js"
 
 function buildProvider(config: ProviderConfig): Provider {
   switch (config.type) {
-    case "anthropic":
+    case "anth":
       return new AnthropicProvider(config)
-    case "mcli":
+    case "llm-gw":
       return new McliProvider(config)
     case "friday":
       return new FridayProvider(config)
@@ -1947,8 +1947,8 @@ export async function buildServer(
 ```typescript
 // src/index.ts
 import { loadConfig } from "./config/loader.js"
-import { AnthropicProvider } from "./providers/anthropic.js"
-import { McliProvider } from "./providers/mcli.js"
+import { AnthropicProvider } from "./providers/anth.js"
+import { McliProvider } from "./providers/llm-gw.js"
 import { FridayProvider } from "./providers/friday.js"
 import { ProviderRouter } from "./providers/router.js"
 import { buildStrategy } from "./memory/strategy.js"
@@ -1961,9 +1961,9 @@ import type { ProviderConfig } from "./config/schema.js"
 
 function buildProvider(config: ProviderConfig): Provider {
   switch (config.type) {
-    case "anthropic":
+    case "anth":
       return new AnthropicProvider(config)
-    case "mcli":
+    case "llm-gw":
       return new McliProvider(config)
     case "friday":
       return new FridayProvider(config)
@@ -2018,7 +2018,7 @@ import type { Config } from "../../config/schema.js"
 function makeConfig(authToken?: string): Config {
   return {
     server: { port: 3000, host: "0.0.0.0", authToken },
-    providers: [{ name: "p1", type: "anthropic", models: ["m1"] }],
+    providers: [{ name: "p1", type: "anth", models: ["m1"] }],
     routing: { default: "p1/m1", fallback: ["p1/m1"] },
     memory: {
       enabled: true,
@@ -2147,10 +2147,10 @@ server:
   # authToken: "your-secret-token"
 
 providers:
-  - name: mcli
-    type: mcli
-    apiKey: "your-mcli-api-key"
-    baseUrl: "https://mcli.sankuai.com/v1"
+  - name: llm-gw
+    type: llm-gw
+    apiKey: "your-llm-gw-api-key"
+    baseUrl: "https://llm-gw.sankuai.com/v1"
     models:
       - claude-opus-4-6
       - claude-sonnet-4-6
@@ -2163,9 +2163,9 @@ providers:
       - gemini-3-flash-preview
 
 routing:
-  default: "mcli/claude-opus-4-6"
+  default: "llm-gw/claude-opus-4-6"
   fallback:
-    - "mcli/claude-sonnet-4-6"
+    - "llm-gw/claude-sonnet-4-6"
     - "friday/gemini-3-flash-preview"
 
 memory:

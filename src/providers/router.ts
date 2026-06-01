@@ -17,7 +17,7 @@ export class ProviderRouter {
   }
 
   async chat(messages: Message[], options?: ChatOptions): Promise<ChatResponse> {
-    // default first, then fallback chain
+    // 路由链：default 优先，然后按 fallback 顺序
     const chain = [this.routing.default, ...this.routing.fallback]
 
     const errors: string[] = []
@@ -30,27 +30,17 @@ export class ProviderRouter {
         continue
       }
       try {
-        return await provider.chat(messages, { ...options, model })
+        const response = await provider.chat(messages, { ...options, model })
+        const sysMsg = messages.find(m => m.role === "system")
+        const sysLen = sysMsg ? (typeof sysMsg.content === "string" ? sysMsg.content.length : 0) : 0
+        console.log(`[ProviderRouter] ✓ ${providerName}/${model} | msgs=${messages.length} sysPrompt=${sysLen}chars`)
+        return response
       } catch (err) {
-        errors.push(`${providerName}: ${(err as Error).message}`)
+        errors.push(`${providerName}/${model}: ${(err as Error).message}`)
       }
     }
 
     throw new Error(`All providers failed:\n${errors.join("\n")}`)
-  }
-
-  listModels(): string[] {
-    const models: string[] = []
-    for (const [providerName, provider] of this.providers) {
-      for (const model of provider.models ?? []) {
-        models.push(`${providerName}/${model}`)
-      }
-    }
-    // also include routing defaults
-    if (models.length === 0) {
-      models.push(this.routing.default, ...this.routing.fallback)
-    }
-    return [...new Set(models)]
   }
 
   async *stream(messages: Message[], options?: ChatOptions): AsyncIterable<StreamChunk> {

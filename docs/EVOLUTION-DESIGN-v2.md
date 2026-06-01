@@ -1,6 +1,6 @@
 # GeminiClaw Evolution Engine — Design v2
 
-> **状态：** ⚠️ 已废弃 — 此文档描述的是 git worktree + 物理 slot 目录方案，实际实现采用了 git branch 方案（见 ARCHITECTURE.md Step 2 决策记录）。保留仅供参考。
+> **状态：** 设计稿，待实现
 > **作者：** 李平江 + 观澜
 > **日期：** 2026-05-05
 > **基于：** GeminiClaw v0.2.1（`~/Codes/GeminiClaw`）
@@ -406,7 +406,7 @@ export const BOOTSTRAP_INTENTS: Intent[] = [
   {
     type: 'performance',
     description: '在消息历史的最近 3 条上打 cache_control: ephemeral，提升 prompt cache 命中率',
-    targetFiles: ['src/providers/anthropic.ts', 'src/providers/mcli.ts'],
+    targetFiles: ['src/providers/anth.ts', 'src/providers/llm-gw.ts'],
     riskLevel: 'low',
     // 来源：INSIGHTS.md 二、Prompt Cache 命中率
   },
@@ -613,82 +613,6 @@ type MutationConfidence = {
   显式邀请（用户说「有什么要优化的吗」）→ 立即汇报
 ```
 
-#### 12.2.1 调度触发机制（idle-triggered，参考 Hermes Curator）
-
-**设计决策：不用定时器盲跑，不用对话结束立即触发，用空闲门控。**
-
-参考 Hermes `agent/curator.py` 的 `maybe_run_curator()` 模式：
-- Curator 挂在 gateway cron ticker（60s 轮询）上，但内部自己做门控
-- 只有 agent 真正空闲超过 N 小时，且距上次运行超过配置间隔，才实际执行
-- 对话驱动体现在：有新 trace 才有进化动力；没有新数据门控自然不通过
-
-**GeminiClaw 的三个门控（全部满足才触发 runOnce）：**
-
-```
-门控 1 — 空闲门控：
-  lastMessageAt 距今 > idleMinutes（默认 5 分钟）
-  → 用户不在活跃对话中
-
-门控 2 — 冷却门控：
-  距上次 runOnce 完成 > cooldownMinutes（默认 60 分钟）
-  → 防止频繁进化，每小时最多一次
-
-门控 3 — 有料门控：
-  新增 trace 数 > 0（自上次 runOnce 以来）
-  OR 有 pending intents 尚未处理
-  → 没有新数据就不跑，避免空转
-```
-
-**实现方式：**
-
-```typescript
-// EvolutionEngine 内部维护的状态
-private lastMessageAt: number = 0      // 最后一次对话时间戳
-private lastRunAt: number = 0          // 最后一次 runOnce 完成时间戳
-private tracesSinceLastRun: number = 0 // 上次 runOnce 后新增 trace 数
-
-// TraceCollector 记录 trace 后通知 EvolutionEngine
-onTraceRecorded(): void {
-  this.tracesSinceLastRun++
-  this.lastMessageAt = Date.now()
-}
-
-// start() 里启动 60s 轮询，只做门控检查
-private startIdleLoop(): void {
-  this.idleTimer = setInterval(async () => {
-    if (!this.shouldRunNow()) return   // 门控未通过，静默跳过
-    await this.runOnce()               // 异步，不阻塞
-    this.lastRunAt = Date.now()
-    this.tracesSinceLastRun = 0
-  }, 60_000)
-}
-
-private shouldRunNow(): boolean {
-  const now = Date.now()
-  const idleMs = this.config.idleMinutes * 60_000        // 默认 5 分钟
-  const cooldownMs = this.config.cooldownMinutes * 60_000 // 默认 60 分钟
-  const isIdle = (now - this.lastMessageAt) > idleMs
-  const cooledDown = (now - this.lastRunAt) > cooldownMs
-  const hasData = this.tracesSinceLastRun > 0 || this.db.listIntents({ status: 'pending' }).length > 0
-  return isIdle && cooledDown && hasData
-}
-```
-
-**与 TraceCollector 的集成点：**
-
-```typescript
-// src/server/routes/chat.ts — 对话完成后
-setImmediate(() => {
-  evolution.getTraceCollector().record(...)  // 记录 trace
-  evolution.onTraceRecorded()               // 通知 EvolutionEngine 有新数据
-})
-```
-
-**为什么不在 AgentLoop 内部触发：**
-- AgentLoop 是请求处理的热路径，不应该感知 Evolution Engine
-- server 层（chat route）是更合适的集成点，职责边界清晰
-- 与 Hermes 的 `setImmediate(() => ...)` 模式一致：响应先发出，异步记录不阻塞
-
 **Evolution Inbox 流程：**
 
 ```
@@ -727,7 +651,7 @@ type Intent = {
 示例：
 ```json
 {
-  "why_now": "过去 3 天里，有 7 次对话因为 mcli 超时而静默失败，用户没有收到任何错误提示",
+  "why_now": "过去 3 天里，有 7 次对话因为 llm-gw 超时而静默失败，用户没有收到任何错误提示",
   "discovered_context": "2026-05-05 用户正在调试 dragon-stock 部署时发现此问题",
   "snooze_count": 0
 }
@@ -739,7 +663,7 @@ type Intent = {
 
 ```
 系统：我理解你的意思是：
-  - 在 providers/anthropic.ts 里给最近 3 条消息加 cache_control
+  - 在 providers/anth.ts 里给最近 3 条消息加 cache_control
   - 预计改动 2 个文件，风险低，置信度 0.92
   是这个方向吗？[确认] [调整描述] [取消]
 
