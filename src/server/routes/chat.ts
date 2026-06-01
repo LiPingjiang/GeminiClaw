@@ -15,6 +15,10 @@ interface ChatRouteOpts {
   strategy: MemoryStrategy
   authToken?: string
   agentLoop?: unknown
+  evolution?: {
+    onTraceRecorded: () => void
+    getTraceCollector: () => { record: (params: { sessionId: string; toolSequence: string[]; hadFailure: boolean; messageCount: number; responseLength: number }) => void }
+  }
 }
 
 export async function chatRoute(
@@ -83,6 +87,19 @@ export async function chatRoute(
           { role: "user", content: message },
           { role: "assistant", content: fullContent },
         )
+        // Trace collection for evolution engine
+        if (opts.evolution) {
+          setImmediate(() => {
+            opts.evolution!.getTraceCollector().record({
+              sessionId: sid,
+              toolSequence: [],
+              hadFailure: false,
+              messageCount: 2,
+              responseLength: fullContent.length,
+            })
+            opts.evolution!.onTraceRecorded()
+          })
+        }
       }
 
       return
@@ -96,6 +113,20 @@ export async function chatRoute(
       { role: "user", content: message },
       { role: "assistant", content: chatResponse.content },
     )
+
+    // Trace collection for evolution engine
+    if (opts.evolution) {
+      setImmediate(() => {
+        opts.evolution!.getTraceCollector().record({
+          sessionId: sid,
+          toolSequence: [],
+          hadFailure: false,
+          messageCount: 2,
+          responseLength: chatResponse.content.length,
+        })
+        opts.evolution!.onTraceRecorded()
+      })
+    }
 
     return reply.send({
       response: chatResponse.content,

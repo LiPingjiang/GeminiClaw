@@ -248,7 +248,21 @@ export class QQBotChannel implements IChannel {
         sessionId,
         messagesToPersist as Parameters<typeof memory.appendMessages>[1],
       );
-      ctx.evolution?.onTraceRecorded();
+      // Trace collection: record full trace data into evolution DB + notify engine
+      if (ctx.evolution) {
+        const toolSeq = pendingToolCalls.map((tc: any) => tc.function?.name ?? "unknown");
+        const hadFail = turnMessages.some((m: any) => m.role === "tool" && m.content?.includes?.("Error"));
+        setImmediate(() => {
+          ctx.evolution!.getTraceCollector().record({
+            sessionId,
+            toolSequence: toolSeq,
+            hadFailure: hadFail,
+            messageCount: messagesToPersist.length,
+            responseLength: finalReply.length,
+          });
+          ctx.evolution!.onTraceRecorded();
+        });
+      }
       return finalReply;
     };
 

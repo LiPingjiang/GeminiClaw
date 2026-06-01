@@ -190,13 +190,14 @@ export class EvolutionEngine {
                 return;
             this.logger.info("[idle-loop] conditions met — triggering runOnce");
             void this.runOnce().then(result => {
-                this.lastRunAt = Date.now();
-                this.tracesSinceLastRun = 0;
-                if (result.skipped) {
-                    this.logger.info("[idle-loop] runOnce skipped: %s", result.skipReason);
+                // Only reset cooldown/traces if runOnce actually did work (not skipped)
+                if (!result.skipped) {
+                    this.lastRunAt = Date.now();
+                    this.tracesSinceLastRun = 0;
+                    this.logger.info("[idle-loop] runOnce completed for intent %s", result.intentId);
                 }
                 else {
-                    this.logger.info("[idle-loop] runOnce completed for intent %s", result.intentId);
+                    this.logger.info("[idle-loop] runOnce skipped: %s", result.skipReason);
                 }
             }).catch(err => {
                 this.logger.error("[idle-loop] runOnce error: %s", err.message);
@@ -350,7 +351,29 @@ export class EvolutionEngine {
         else {
             this.logger.info("Skipping Level 2 validation for intent %s: insufficient traces (%d < 3)", intent.id, traceCount);
         }
-        // All intents require user approval — no auto-switch regardless of risk level
+        // Auto-approve for low-risk intents; medium/high require human review
+        if (effectiveIntent.riskLevel === "low") {
+            this.logger.info("Intent %s auto-approved (riskLevel=low, validation passed) — switching", intent.id);
+            this.db.updateIntentStatus(intent.id, "approved");
+            const branchToSwitch = `evolution/${intent.id}`;
+            const switchResult = await this.switcher.switch(branchToSwitch, effectiveIntent);
+            if (switchResult.success) {
+                this.circuitBreaker.startMonitoring(intent.id);
+                this.db.updateIntentStatus(intent.id, "completed");
+                this.logger.info("Intent %s auto-switched successfully", intent.id);
+            } else {
+                this.logger.warn("Intent %s auto-switch failed: %s", intent.id, switchResult.error);
+                this.db.updateIntentStatus(intent.id, "rejected");
+            }
+            return {
+                intentId: intent.id,
+                mutationResult,
+                validationResults,
+                skipped: false,
+                autoSwitched: true,
+            };
+        }
+        // medium/high risk — queue for human review
         this.logger.info("Intent %s queued for user approval (riskLevel=%s)", intent.id, effectiveIntent.riskLevel);
         this.db.updateIntentStatus(intent.id, "approved"); // awaiting manual switch via ritual
         this.db.insertPendingReview({

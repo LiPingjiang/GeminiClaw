@@ -175,10 +175,12 @@ export async function buildServer(
   // Evolution Engine
   const evoDbPath = join(process.cwd(), ".data/evolution/gemini-evolution.db");
   const evoDB = new EvolutionDB(evoDbPath);
+  const memoryDbPath = join(config.memory.dataDir, "geminiclaw.db");
   const evolution = new EvolutionEngine({
     db: evoDB,
     providerRouter: router,
     repoRoot: process.cwd(),
+    memoryDbPath,
   });
   await evolution.start();
   await fastify.register(evolutionRoute, { evolution });
@@ -187,6 +189,7 @@ export async function buildServer(
     strategy,
     authToken: config.server.authToken,
     agentLoop,
+    evolution,
   });
 
   // Channel framework — start QQBot if configured, pass db for GuidanceLayer

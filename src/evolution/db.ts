@@ -301,12 +301,12 @@ export class EvolutionDB {
      * Used by IntentEngine to avoid duplicate intent generation.
      */
     hasPendingIntentWithDescription(description) {
-        // 去重范围扩展到 pending/in_progress/validating/rejected，且限 24h 内
-        // 防止 rejected intent 在下次分析时被重新生成，造成无限死循环
-        const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+        // 去重范围：所有非 completed 状态的 intent，无时间窗口限制
+        // 包含 pending/in_progress/validating/rejected/approved
+        // 防止同一 intent 被反复创建（之前 24h 窗口 + 缺少 approved 导致 skill-bootstrap 重复 13 次）
         const row = this.db
-            .prepare(`SELECT id FROM intents WHERE description = ? AND status IN ('pending','in_progress','validating','rejected') AND created_at > ? LIMIT 1`)
-            .get(description, cutoff);
+            .prepare(`SELECT id FROM intents WHERE description = ? AND status IN ('pending','in_progress','validating','rejected','approved') LIMIT 1`)
+            .get(description);
         return row !== undefined;
     }
     updateIntentStatus(id, status) {

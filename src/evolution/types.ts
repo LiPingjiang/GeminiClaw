@@ -24,7 +24,7 @@ export const DEFAULT_EVOLUTION_CONFIG = {
     },
     background: {
         idleThresholdMs: 5 * 60 * 1000, // 5 minutes idle before auto-run
-        cooldownMs: 60 * 60 * 1000, // 1 hour between runs
+        cooldownMs: 15 * 60 * 1000, // 15 minutes between runs (was 1h — too slow for multi-intent processing)
         tickIntervalMs: 60 * 1000, // check every 60s
     },
 };
