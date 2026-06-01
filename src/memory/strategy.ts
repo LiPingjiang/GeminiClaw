@@ -35,7 +35,7 @@ export function buildStrategy(
       db,
       routerProvider,
       triageProvider: routerProvider,
-      systemPrompt: DEFAULT_SYSTEM_PROMPT,
+      systemPrompt: config.agent.systemPrompt ?? DEFAULT_SYSTEM_PROMPT,
       recentMessageLimit: config.memory.recentMessageLimit,
       triageAfterTurns: config.memory.triageAfterTurns,
       compactThresholdBytes: config.memory.compactThresholdBytes,

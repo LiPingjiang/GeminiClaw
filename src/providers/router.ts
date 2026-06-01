@@ -17,9 +17,8 @@ export class ProviderRouter {
   }
 
   async chat(messages: Message[], options?: ChatOptions): Promise<ChatResponse> {
-    const chain = this.routing.fallback.length > 0
-      ? this.routing.fallback
-      : [this.routing.default]
+    // default first, then fallback chain
+    const chain = [this.routing.default, ...this.routing.fallback]
 
     const errors: string[] = []
 

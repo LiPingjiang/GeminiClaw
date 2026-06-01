@@ -63,7 +63,7 @@ export type AgentEvent =
   | { type: 'turn_end'; message: Message; toolCallCount: number }
   | { type: 'tool_start'; toolCallId: string; toolName: string; args: unknown }
   | { type: 'tool_end'; toolCallId: string; toolName: string; result: ToolResult; isError: boolean; durationMs: number }
-  | { type: 'agent_end'; totalTurns: number; stopReason: 'no_tool_calls' | 'max_turns' | 'aborted' }
+  | { type: 'agent_end'; totalTurns: number; stopReason: 'no_tool_calls' | 'max_turns' | 'aborted' | 'provider_error'; error?: string }
   | { type: 'paused'; pauseId: string; payload: PausePayload }
   | { type: 'guardrail_warn'; toolName: string; message: string }
   | { type: 'guardrail_halt'; toolName: string; message: string }

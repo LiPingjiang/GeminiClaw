@@ -157,7 +157,9 @@ export class AgentLoop {
         })
       } catch (err) {
         this.logger.error('chatFn threw', err)
-        yield { type: 'agent_end', totalTurns: turn, stopReason: 'aborted' }
+        const errorMsg = err instanceof Error ? err.message : String(err)
+        yield { type: 'message_delta', delta: `⚠️ Provider error: ${errorMsg}` }
+        yield { type: 'agent_end', totalTurns: turn, stopReason: 'provider_error', error: errorMsg }
         return
       }
 

@@ -312,6 +312,9 @@ export async function chatRoute(
               break
             case "agent_end":
               pausedLoops.delete(sid)
+              if (event.stopReason === 'provider_error') {
+                raw.write(`data: ${JSON.stringify({ type: "error", error: "provider_error", message: event.error || "All providers failed" })}\n\n`)
+              }
               raw.write(`data: ${JSON.stringify({ type: "done", mode: activeMode })}\n\n`)
               raw.write("data: [DONE]\n\n")
               break
@@ -336,6 +339,8 @@ export async function chatRoute(
       const toolSequence: string[] = []
       let hadFailure = false
       let totalTurns = 0
+      let stopReason = ''
+      let providerError = ''
       let pauseInfo: { pauseId: string; payload: unknown } | null = null
 
       const runIter = opts.agentLoop.run({
@@ -367,6 +372,8 @@ export async function chatRoute(
           case "agent_end":
             pausedLoops.delete(sid)
             totalTurns = event.totalTurns
+            stopReason = event.stopReason
+            if (event.error) providerError = event.error
             break outer
         }
       }
@@ -377,6 +384,15 @@ export async function chatRoute(
         { role: "assistant", content: finalContent },
       )
       recordTrace(opts.evolution, sid, hadFailure, allMessages.length + 1, toolSequence, finalContent.length, message, finalContent)
+
+      // If provider failed and no meaningful content was generated, return 502
+      if (stopReason === 'provider_error' && !finalContent.replace(/^\u26a0\ufe0f Provider error:.*$/, '').trim()) {
+        return reply.status(502).send({
+          error: 'provider_error',
+          message: providerError || 'All providers failed to generate a response',
+          sessionId: sid,
+        })
+      }
 
       return reply.send({
         response: finalContent,

@@ -401,4 +401,27 @@ describe('high-confidence mode — clarify_uncertainty intercept', () => {
     expect(types).not.toContain('paused')
     expect(types).toContain('agent_end')
   })
+
+  it('15. chatFn throws — emits message_delta with error + agent_end(provider_error)', async () => {
+    const chatFn: ChatFn = async () => {
+      throw new Error('All providers failed:\nmcli: connection refused')
+    }
+    const registry = makeMockRegistry({})
+    const loop = new AgentLoop({ chatFn, toolRegistry: registry })
+
+    const events = await collectEvents(loop.run({ messages: baseMessages, sessionId: 'err-sess' }))
+
+    // Should have: turn_start, message_delta (error), agent_end
+    expect(events).toHaveLength(3)
+    expect(events[0]).toMatchObject({ type: 'turn_start', turn: 0 })
+    expect(events[1]).toMatchObject({ type: 'message_delta' })
+    expect((events[1] as { delta: string }).delta).toContain('Provider error')
+    expect((events[1] as { delta: string }).delta).toContain('All providers failed')
+    expect(events[2]).toMatchObject({
+      type: 'agent_end',
+      stopReason: 'provider_error',
+      totalTurns: 1,
+    })
+    expect((events[2] as { error?: string }).error).toContain('All providers failed')
+  })
 })
