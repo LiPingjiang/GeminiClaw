@@ -1,12 +1,16 @@
 // @ts-nocheck
 // src/channels/qqbot/index.ts
 // QQBotChannel: implements IChannel, supports websocket and webhook modes.
+// Supports C2C, Group, and Interaction events.
 import type { FastifyInstance } from "fastify";
 import type { IChannel, ChannelContext } from "../types.js";
 import type { Db } from "../../db/client.js";
 import { messageText } from "../../providers/types.js";
 import { registerWebhookRoute } from "./webhook.js";
-import { QQBotWSClient } from "./ws-client.js";
+import { QQBotWSClient, DEFAULT_INTENTS } from "./ws-client.js";
+import type { MessageSource } from "./ws-client.js";
+import { QQBotApi, parseInteractionEvent } from "./api.js";
+import type { InteractionEvent, InlineKeyboard } from "./api.js";
 import { sendC2CReply } from "./api.js";
 import { dispatch } from "../../commands/dispatcher.js";
 import { AgentRepository } from "../../agents/repository.js";
@@ -21,8 +25,22 @@ export interface QQBotChannelConfig {
   clientSecret: string;
   /** webhook 模式：监听路径，默认 "/webhook/qqbot" */
   webhookPath?: string;
-  /** websocket 模式：订阅 intents，默认 1073741824 (C2C 消息) */
+  /** websocket 模式：订阅 intents，默认 C2C + INTERACTION */
   intents?: number;
+  /** 是否启用群聊，默认 true */
+  groupEnabled?: boolean;
+}
+
+// Interaction callback registry (for approval workflows etc.)
+type InteractionHandler = (event: InteractionEvent) => Promise<void>;
+const interactionHandlers = new Map<string, InteractionHandler>();
+
+/**
+ * Register a handler for button interactions matching a prefix.
+ * E.g. registerInteractionHandler("approve:", handler) matches button_data starting with "approve:"
+ */
+export function registerInteractionHandler(prefix: string, handler: InteractionHandler): void {
+  interactionHandlers.set(prefix, handler);
 }
 
 export class QQBotChannel implements IChannel {
@@ -31,6 +49,7 @@ export class QQBotChannel implements IChannel {
   private db?: Db;
   readonly name = "qqbot";
   private wsClient: QQBotWSClient | null = null;
+  private api: QQBotApi | null = null;
 
   constructor(
     config: QQBotChannelConfig,
@@ -42,9 +61,16 @@ export class QQBotChannel implements IChannel {
     this.db = db;
   }
 
+  /** Get the QQBotApi instance (available after start) */
+  getApi(): QQBotApi | null {
+    return this.api;
+  }
+
   async start(ctx: ChannelContext): Promise<void> {
     const { memory, agentLoop, config } = ctx;
     const { appId, clientSecret, mode } = this.config;
+
+    this.api = new QQBotApi({ appId, clientSecret });
 
     const modelOverrides = new Map<string, string>();
     const startedAt = new Date();
@@ -59,14 +85,20 @@ export class QQBotChannel implements IChannel {
         })
       : null;
 
+    // -----------------------------------------------------------------------
+    // Message handler (shared for C2C and Group)
+    // -----------------------------------------------------------------------
     const handleMessage = async (
-      openid: string,
+      source: MessageSource,
       content: string,
       _msgId: string,
     ): Promise<string> => {
+      // Derive userId from source
+      const userId = source.type === "c2c" ? source.openid : source.userOpenid;
+
       // ── 命令拦截 ──────────────────────────────────────────────────────────
       const cmdResult = await dispatch(content, {
-        openid,
+        openid: userId,
         args: [],
         memory,
         config,
@@ -75,17 +107,17 @@ export class QQBotChannel implements IChannel {
       });
       if (cmdResult !== null) {
         if (content.trimStart().startsWith("/new") && dispatcher) {
-          dispatcher.clearUserSession(openid);
+          dispatcher.clearUserSession(userId);
         }
         return cmdResult;
       }
 
       // ── Dispatcher 路由 ─────────────────────────────────────────────────
-      let sessionId = openid;
+      let sessionId = userId;
       let agentName: string | null = null;
       let currentAgentId: string | null = null;
       if (dispatcher) {
-        const routeResult = await dispatcher.route(content, openid);
+        const routeResult = await dispatcher.route(content, userId);
         sessionId = routeResult.sessionId;
         agentName = routeResult.agentName;
         currentAgentId = routeResult.agentId;
@@ -157,9 +189,9 @@ export class QQBotChannel implements IChannel {
         { role: "user" as const, content },
       ];
 
-      const modelOverride = modelOverrides.get(openid);
+      const modelOverride = modelOverrides.get(userId);
       let finalReply = "";
-      let _lastNonEmptyReply = ""; // 兜底：turn_start 重置前保存上一轮非空内容
+      let _lastNonEmptyReply = "";
 
       const turnMessages: Array<Record<string, unknown>> = [];
       let pendingAssistant: Record<string, unknown> | null = null;
@@ -185,7 +217,7 @@ export class QQBotChannel implements IChannel {
         ...(modelOverride ? { model: modelOverride } : {}),
         toolContextExtra: {
           ...(this.db ? { db: this.db } : {}),
-          userId: openid,
+          userId,
           msgId: _msgId,
           appId,
           clientSecret,
@@ -195,7 +227,7 @@ export class QQBotChannel implements IChannel {
           finalReply += event.delta;
         } else if (event.type === "turn_start") {
           flushPendingTurn();
-          if (finalReply) _lastNonEmptyReply = finalReply; // 重置前保存
+          if (finalReply) _lastNonEmptyReply = finalReply;
           finalReply = "";
         } else if (event.type === "turn_end") {
           pendingAssistant = { ...event.message };
@@ -266,15 +298,36 @@ export class QQBotChannel implements IChannel {
       return finalReply;
     };
 
+    // -----------------------------------------------------------------------
+    // Interaction handler
+    // -----------------------------------------------------------------------
+    const handleInteraction = async (event: InteractionEvent): Promise<void> => {
+      // Route to registered handlers by prefix
+      for (const [prefix, handler] of interactionHandlers) {
+        if (event.buttonData.startsWith(prefix)) {
+          await handler(event);
+          return;
+        }
+      }
+      console.log("[QQBotChannel] Unhandled interaction:", event.buttonData);
+    };
+
+    // -----------------------------------------------------------------------
+    // Start mode
+    // -----------------------------------------------------------------------
     if (mode === "websocket") {
+      const intents = this.config.intents ?? DEFAULT_INTENTS;
       this.wsClient = new QQBotWSClient({
         appId,
         clientSecret,
-        intents: this.config.intents ?? 1073741824,
+        intents,
         onMessage: handleMessage,
+        onInteraction: handleInteraction,
       });
       await this.wsClient.connect();
-      console.log("[QQBotChannel] WebSocket mode started");
+      // Expose the shared api instance from ws client
+      this.api = this.wsClient.getApi();
+      console.log("[QQBotChannel] WebSocket mode started (intents=0x%s)", intents.toString(16));
     } else {
       if (!this.fastify) {
         throw new Error(
@@ -286,7 +339,8 @@ export class QQBotChannel implements IChannel {
         this.fastify,
         { webhookPath, appId, clientSecret },
         async (openid, content, msgId) => {
-          const reply = await handleMessage(openid, content, msgId);
+          const source: MessageSource = { type: "c2c", openid };
+          const reply = await handleMessage(source, content, msgId);
           await sendC2CReply(appId, clientSecret, openid, reply, msgId);
           return reply;
         },
@@ -302,6 +356,3 @@ export class QQBotChannel implements IChannel {
     }
   }
 }
-
-// NOTE: qqbotRoute (legacy webhook-only function) has been removed.
-// Use QQBotChannel class instead, which supports both websocket and webhook modes.
