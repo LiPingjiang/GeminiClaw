@@ -89,6 +89,10 @@ export const evolutionConfigSchema = z.object({
   maxCyclesPerDay: z.number().int().min(0).default(0),
   /** Dry-run mode: run mutation + validation but skip actual slot switch */
   dryRun: z.boolean().default(false),
+  /** Auto-approval: risk levels that bypass human review */
+  autoApproveRiskLevels: z.array(z.enum(["low", "medium", "high"])).default(["low"]),
+  /** Approval timeout (ms): pending requests auto-reject after this */
+  approvalTimeoutMs: z.number().int().positive().default(60 * 60 * 1000),
 }).default({})
 
 export const configSchema = z.object({

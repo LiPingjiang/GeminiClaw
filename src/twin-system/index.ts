@@ -54,3 +54,6 @@ export type { TraceIntentSourceConfig, MemoryIntentSourceConfig } from "./intent
 
 export { EvolutionMetrics, DEFAULT_METRICS_CONFIG } from "./metrics.js"
 export type { CycleRecord, MetricsSnapshot, MetricsConfig } from "./metrics.js"
+
+export { ApprovalGate, DEFAULT_APPROVAL_CONFIG } from "./approval-gate.js"
+export type { ApprovalRequest, ApprovalGateConfig } from "./approval-gate.js"

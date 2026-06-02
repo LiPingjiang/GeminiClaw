@@ -65,6 +65,8 @@ import type { SchedulerConfig, ActivityTracker } from "./scheduler.js"
 import { EvolutionPipeline } from "./evolution-pipeline.js"
 import { TraceIntentSource, MemoryIntentSource, UpstreamIntentSource } from "./intent-sources.js"
 import { EvolutionMetrics } from "./metrics.js"
+import { ApprovalGate } from "./approval-gate.js"
+import type { ApprovalGateConfig } from "./approval-gate.js"
 
 // ── Logger ───────────────────────────────────────────────────────────────────
 
@@ -524,6 +526,7 @@ export interface TwinSystemInstance {
   activityTracker: ActivityRecorder
   errorCounter: ErrorCounter
   metrics: EvolutionMetrics
+  approvalGate: ApprovalGate
   /** Whether dry-run mode is enabled (skip actual slot switch) */
   dryRun: boolean
   /** Start the scheduler (call after server is listening) */
@@ -601,7 +604,14 @@ export function createTwinSystem(
     logger,
   })
 
-  // ── 6. Pipeline ─────────────────────────────────────────────────────────
+  // ── 6. Approval Gate ──────────────────────────────────────────────────────
+  const approvalGateConfig: Partial<ApprovalGateConfig> = {
+    autoApproveRiskLevels: evolutionConfig.autoApproveRiskLevels as ApprovalGateConfig["autoApproveRiskLevels"],
+    approvalTimeoutMs: evolutionConfig.approvalTimeoutMs,
+  }
+  const approvalGate = new ApprovalGate(approvalGateConfig, logger)
+
+  // ── 7. Pipeline ─────────────────────────────────────────────────────────
   const pipeline = new EvolutionPipeline({
     slotManager,
     safetyGuard,
@@ -618,6 +628,7 @@ export function createTwinSystem(
       failureRateThreshold: evolutionConfig.failureRateThreshold,
     },
     logger,
+    onApprovalNeeded: (intent, summary) => approvalGate.requestApproval(intent, summary),
   })
 
   // ── 7. Post-Switch Monitor ──────────────────────────────────────────────
@@ -743,6 +754,7 @@ export function createTwinSystem(
     activityTracker,
     errorCounter,
     metrics,
+    approvalGate,
     dryRun,
     start() {
       if (evolutionConfig.enabled) {

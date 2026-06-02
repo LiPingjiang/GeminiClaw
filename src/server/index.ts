@@ -7,6 +7,7 @@ import type { MemoryStrategy } from "../memory/strategy.js";
 import type { TwinSystemInstance } from "../twin-system/factory.js";
 import { healthRoute } from "./routes/health.js";
 import { evolutionRoute } from "./routes/evolution.js";
+import { approvalRoute } from "./routes/approvals.js";
 import { chatRoute } from "./routes/chat.js";
 import { AgentLoop } from "../agent/index.js";
 import { registry as toolRegistry } from "../tools/index.js";
@@ -174,6 +175,7 @@ export async function buildServer(
   // Evolution routes (twin-system based)
   if (twinSystem) {
     await fastify.register(evolutionRoute, { twinSystem });
+    await fastify.register(approvalRoute, { approvalGate: twinSystem.approvalGate });
   }
   await fastify.register(chatRoute, {
     router,

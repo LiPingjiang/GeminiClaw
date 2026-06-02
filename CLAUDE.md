@@ -88,7 +88,7 @@ Providers are loaded from config.yaml. Routing: try primary, fallback in order.
 pnpm install
 pnpm dev          # tsx watch
 pnpm build        # tsc
-pnpm test         # vitest（418 tests，全绿）
+pnpm test         # vitest（431 tests，全绿）
 ```
 
 ## Roadmap
@@ -102,6 +102,4 @@ pnpm test         # vitest（418 tests，全绿）
 
 7. ~~Intent sources: trace-based / memory-based / upstream-sync 意图生成器~~ ✅
 8. ~~Production enablement: EvolutionMetrics + maxCyclesPerDay + dryRun + /v1/health 可观测性~~ ✅
-
-**Next:**
-9. Auto-approval workflow: 低风险自动执行，高风险通知等待确认
+9. ~~Auto-approval workflow: ApprovalGate + autoApproveRiskLevels + timeout + API~~ ✅

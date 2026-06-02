@@ -38,6 +38,8 @@ function makeConfig(authToken?: string): Config {
       mainBranch: "main",
       maxCyclesPerDay: 0,
       dryRun: false,
+      autoApproveRiskLevels: ["low"],
+      approvalTimeoutMs: 3600000,
     },
   }
 }
