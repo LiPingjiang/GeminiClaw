@@ -8,7 +8,7 @@ Read `docs/ARCHITECTURE.md` for the full design philosophy before touching any c
 
 ## Current Status
 
-**Phase: Integration Complete.** 全功能实现并集成，441 个测试全绿。
+**Phase: Unified Architecture.** 旧进化引擎已完全移除，twin-system 是唯一的进化实现。394 个测试全绿。
 
 已完成：
 - config 加载与校验（Zod schema + evolution 配置段）
@@ -22,12 +22,12 @@ Read `docs/ARCHITECTURE.md` for the full design philosophy before touching any c
 - Integration Wiring：factory.ts DI 容器 + 真实适配器 + index.ts 接入 + 优雅关停
 - Async Runs：`/v1/runs` + SSE events
 - Upstream Tracker：cron-driven diff detection
-- Knowledge → Evolution Bridge：KnowledgeIntentSource + EvolutionBridge
+- E2E smoke test：13 个端到端集成测试
+- Old engine cleanup：`src/evolution/` 目录已完全删除，所有消费者已迁移到 twin-system
 
 待实现：
-- E2E smoke test（端到端进化循环）
-- Old engine cleanup（删除已被取代的旧文件）
-- 文档更新（ARCHITECTURE.md 补充 factory 层说明）
+- 生产环境启用进化（`evolution.enabled: true` + 配套监控）
+- Intent 源扩展（从 trace/memory/upstream 自动生成意图）
 
 ## Stack
 
@@ -37,15 +37,15 @@ Read `docs/ARCHITECTURE.md` for the full design philosophy before touching any c
 - pnpm (package manager)
 - BSL 1.1 license
 
-## Directory Layout (target)
+## Directory Layout
 
 ```
 src/
 ├── index.ts              ← entry point
 ├── server/               ← Fastify HTTP server + routes
-├── providers/            ← LLM provider adapters (Anthropic, OpenAI, mcli, Friday...)
+├── providers/            ← LLM provider adapters (Anthropic, mcli, Friday...)
 ├── memory/               ← session + long-term memory
-├── evolution/            ← Twin-System evolution engine
+├── twin-system/          ← self-evolution engine (factory DI + all components)
 └── config/               ← config loader (reads config.yaml, never hardcodes secrets)
 ```
 
@@ -56,12 +56,16 @@ src/
 - **config.yaml is gitignored.** Use config.example.yaml as the template.
 - **BSL 1.1.** Do not add dependencies with GPL or AGPL licenses.
 
-## API Surface (target)
+## API Surface
 
 ```
-POST /v1/agent/chat          — send message, returns response (or run_id for async)
-GET  /v1/runs/:id/events     — SSE stream for async runs
-GET  /v1/health              — health check
+POST /v1/agent/chat             — send message, returns response
+GET  /v1/runs/:id/events        — SSE stream for async runs
+GET  /v1/health                 — health check
+GET  /v1/evolution/status       — twin-system status
+POST /v1/evolution/run          — trigger one evolution cycle
+POST /v1/evolution/intents      — add user intent
+GET  /v1/evolution/candidates   — peek at intent queue
 ```
 
 ## Provider Model
@@ -78,34 +82,25 @@ interface Provider {
 
 Providers are loaded from config.yaml. Routing: try primary, fallback in order.
 
-## Build & Run
-
-```bash
-pnpm install
-pnpm dev          # tsx watch
-pnpm build        # tsc
-pnpm test         # vitest
-```
-
-## What To Build Next
-
-1. ~~Twin-System 目录结构（slot-a / slot-b / active 软链接）~~ ✅
-2. ~~evolution/ 进化引擎（intent → mutator → validator → switcher）~~ ✅
-3. ~~`/v1/runs/:id/events` 异步 run 接口~~ ✅
-4. ~~上游 OpenClaw diff 追踪 cron job~~ ✅
-5. ~~进化引擎统一（MutatorImpl / ValidatorImpl / Persistence / Aggregator / Monitor / Scheduler）~~ ✅
-
-**Next priorities:**
-6. Integration wiring: 将各组件组装为完整 runtime（config.yaml → DI container → server startup 一条龙）
-7. E2E smoke test: 端到端进化循环（intent → mutate → validate → switch → monitor）
-8. Old engine cleanup: 删除 `src/evolution/mutator/mutator.ts` 和 `src/evolution/validator/validator.ts`（已被新 impl 取代）
-9. Documentation: 更新 `docs/ARCHITECTURE.md` 反映 twin-system 新架构
-
 ## Build & Test
 
 ```bash
 pnpm install
 pnpm dev          # tsx watch
 pnpm build        # tsc
-pnpm test         # vitest（441 tests，全绿）
+pnpm test         # vitest（394 tests，全绿）
 ```
+
+## Roadmap
+
+1. ~~Twin-System 核心类型 + SlotManager + SafetyGuard + Pipeline~~ ✅
+2. ~~进化引擎组件（Mutator/Validator/Persistence/Aggregator/Monitor/Scheduler）~~ ✅
+3. ~~Integration Wiring（factory.ts DI + config schema + startup）~~ ✅
+4. ~~E2E smoke test（端到端进化循环）~~ ✅
+5. ~~Old engine cleanup（删除 src/evolution/ + 迁移所有消费者）~~ ✅
+6. ~~Documentation update（ARCHITECTURE.md twin-system 架构）~~ ✅
+
+**Next:**
+7. Intent sources: 实现 trace-based / memory-based / upstream-sync 意图生成器
+8. Production enablement: 配置 `evolution.enabled: true`，添加可观测性
+9. Auto-approval workflow: 低风险自动执行，高风险通知等待确认
