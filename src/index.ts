@@ -9,6 +9,7 @@ import { buildStrategy } from "./memory/strategy.js"
 import { buildServer } from "./server/index.js"
 import { openDb } from "./db/client.js"
 import { migrate } from "./db/schema.js"
+import { createTwinSystem } from "./twin-system/factory.js"
 import { join } from "path"
 import type { Provider } from "./providers/types.js"
 import type { ProviderConfig } from "./config/schema.js"
@@ -40,9 +41,29 @@ async function main(): Promise<void> {
   const routerProvider = providers.find(p => p.name === defaultProviderName) ?? providers[0] ?? null
   const strategy = buildStrategy(config, db, routerProvider)
   const server = await buildServer(config, router, strategy, db)
+
+  // ── Twin-System (optional, based on config.evolution.enabled) ──────────
+  const twinSystem = createTwinSystem(
+    config.evolution,
+    router,
+    db,
+    config.server.port,
+  )
+
   await server.listen({ port: config.server.port, host: config.server.host })
   console.log(`GeminiClaw listening on ${config.server.host}:${config.server.port}`)
   console.log(`Memory strategy: ${strategy.name}`)
+
+  // Start twin-system scheduler after server is up
+  twinSystem.start()
+
+  // Graceful shutdown
+  const shutdown = () => {
+    twinSystem.stop()
+    server.close()
+  }
+  process.on("SIGINT", shutdown)
+  process.on("SIGTERM", shutdown)
 }
 
 main().catch(err => {

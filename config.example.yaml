@@ -46,3 +46,36 @@ memory:
 agent:
   maxTurns: 20
   timeoutSeconds: 60
+
+# ── Twin-System 自进化引擎 ────────────────────────────────────────────────────
+# 默认关闭。开启后 GeminiClaw 会在空闲时自动进化自身代码。
+evolution:
+  enabled: false
+  dataDir: ".gemini-data"               # SQLite + evolution artifacts 存储目录
+
+  # 调度器
+  idleThresholdMs: 300000               # 空闲 5 分钟后触发
+  cronIntervalMs: 1800000               # 每 30 分钟定时检查（0 = 禁用 cron）
+  cooldownMs: 600000                    # 两次触发之间最少间隔 10 分钟
+
+  # 变异器
+  maxMutationRounds: 3                  # LLM 最多重试轮次
+  confidenceThreshold: 0.7              # 置信度阈值（低于此值需人工审批）
+
+  # 验证器
+  testPort: 19889                       # Level 2 验证的临时进程端口
+
+  # 切换后监控
+  postSwitchMonitorMs: 300000           # 切换后监控窗口 5 分钟
+  failureRateThreshold: 0.1             # 错误率超过 10% 触发回滚
+
+  # 安全护栏
+  protectedPaths:                       # 不允许自动进化的路径
+    - "src/config/"
+    - "src/twin-system/"
+    - ".gemini-data/"
+  maxEvolutionsPerFile24h: 3            # 单文件 24h 内最多进化次数
+
+  # 流水线
+  autoSwitch: false                     # true = 验证通过自动切换；false = 需人工审批
+  mainBranch: "main"                    # Git 主分支名

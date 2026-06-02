@@ -21,6 +21,22 @@ function makeConfig(authToken?: string): Config {
       triageAfterTurns: 3,
     },
     agent: { maxTurns: 10, timeoutSeconds: 30 },
+    evolution: {
+      enabled: false,
+      dataDir: ".gemini-data",
+      idleThresholdMs: 300000,
+      cronIntervalMs: 1800000,
+      cooldownMs: 600000,
+      maxMutationRounds: 3,
+      confidenceThreshold: 0.7,
+      testPort: 19889,
+      postSwitchMonitorMs: 300000,
+      failureRateThreshold: 0.1,
+      protectedPaths: ["src/config/", "src/twin-system/", ".gemini-data/"],
+      maxEvolutionsPerFile24h: 3,
+      autoSwitch: false,
+      mainBranch: "main",
+    },
   }
 }
 
