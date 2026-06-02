@@ -197,27 +197,117 @@ GeminiClaw 不做传统 merge，而是**主动筛选**：
 
 ---
 
-## 七、第一阶段实施路线
+## 七、当前实现：Twin-System + Factory DI
 
-> 目标：把基础建好，不急着接自动进化
+> 2026-05 已实现，以 git 分支（而非物理目录）实现双槽位。
 
-- [x] **Step 1**：理清 GeminiClaw 仓库结构，跑通构建流程
-  - 已完成（2026-05-05）：TypeScript + Fastify 5 + Vitest，78 测试全绿
-  - providers: llm-gw（含 extraHeaders）、Friday（含 SSE stream）、Anthropic
-  - memory: buffer 策略 + layered 策略（SQLite 分层 topics）
-  - 认证、输入校验、SSE hijack 全部就位
-- [ ] **Step 2**：建立 slot-a / slot-b 目录结构和软链接机制
-- [ ] **Step 3**：把 skill-self-optimizer 合并进来，作为内置能力
-- [ ] **Step 4**：实现手动切换（先不自动）：改 slot-B 代码 → 构建 → 测试 → 手动切换
-- [ ] **Step 5**：建立上游跟踪 cron job（AI 定期 diff OpenClaw 新版本）
-- [ ] **Step 6**：在 Step 4 跑稳之后，逐步自动化意图生成和切换决策
+### 7.1 目录结构
+
+```
+src/twin-system/              ← 新的类型安全进化引擎
+├── types.ts                  ← 核心类型定义 (SlotId, EvolutionIntent, PipelineConfig...)
+├── slot-manager.ts           ← 双槽位生命周期管理（git-branch based）
+├── safety-guard.ts           ← 安全护栏（保护路径、频率限制、熔断器）
+├── evolution-pipeline.ts     ← 流水线编排（intent → mutate → validate → switch）
+├── mutator-impl.ts           ← LLM 驱动代码变异（unified diff + fuzzy apply + tsc check）
+├── validator-impl.ts         ← 二级验证（L1: build+test, L2: 临时进程+行为回放）
+├── persistence.ts            ← SQLite 持久化（slots、records、circuit breaker、频率）
+├── intent-aggregator.ts      ← 多源意图收集 + 去重 + 优先级排序
+├── post-switch-monitor.ts    ← 切换后监控 + 自动回滚
+├── scheduler.ts              ← 调度器（idle 检测 + cron + 手动触发 + cooldown）
+├── factory.ts                ← DI 容器：配置 → 实例化所有组件 → 真实适配器
+└── e2e-smoke.test.ts         ← 端到端集成测试
+```
+
+### 7.2 Factory 层
+
+`factory.ts` 是整个 twin-system 的组装入口，负责：
+
+1. **读取 `config.evolution`** — Zod schema 校验后的配置对象
+2. **实例化真实适配器** — 将接口绑定到 Node.js 运行时：
+   - `NodeFileSystem` → `fs` 模块
+   - `TscTypeChecker` → `npx tsc --noEmit`
+   - `SlotGitOpsAdapter` / `MutatorGitOpsAdapter` → `git` CLI
+   - `ProviderRouterLlmClient` → 复用主 ProviderRouter（同配置、同 fallback）
+   - `ExecCommandRunner` / `ExecProcessSpawner` → `child_process`
+   - `HttpHealthChecker` / `HttpBehaviorTester` / `HttpHealthProbe` → HTTP 探针
+   - `ServerErrorCounter` → 内存请求计数器
+   - `SimpleFuzzyMatcher` → trim 比对 fallback
+   - `RequestActivityTracker` → idle 检测数据源
+3. **组装组件依赖图**：
+
+```
+Config
+  → PersistenceAdapter(db)
+  → SafetyGuard(config, persistence)
+  → SlotManager(gitOps, config)
+  → MutatorImpl(fs, typeChecker, git, llm, config)
+  → ValidatorImpl(runner, spawner, health, behavior, config)
+  → EvolutionPipeline(slotManager, safetyGuard, mutator, validator, config)
+  → PostSwitchMonitor(probe, counter, slotManager, config)
+  → IntentAggregator()
+  → SchedulerRunner(tracker, onTrigger: pipeline.run, config)
+```
+
+4. **返回 `TwinSystemInstance`** — 暴露 `start()` / `stop()` + 各组件引用
+
+### 7.3 接入点
+
+`src/index.ts` 中的启动流程：
+
+```typescript
+const twinSystem = createTwinSystem(config.evolution, router, db, config.server.port)
+await server.listen(...)
+twinSystem.start()   // enabled=false 时打印 log 但不启动调度器
+process.on("SIGTERM", () => { twinSystem.stop(); server.close() })
+```
+
+### 7.4 配置
+
+所有进化参数均在 `config.yaml` 的 `evolution:` 段配置，有完整默认值：
+
+```yaml
+evolution:
+  enabled: false           # 总开关
+  dataDir: ".gemini-data"
+  idleThresholdMs: 300000
+  cronIntervalMs: 1800000
+  cooldownMs: 600000
+  maxMutationRounds: 3
+  confidenceThreshold: 0.7
+  testPort: 19889
+  postSwitchMonitorMs: 300000
+  failureRateThreshold: 0.1
+  protectedPaths: [...]
+  maxEvolutionsPerFile24h: 3
+  autoSwitch: false
+  mainBranch: "main"
+```
 
 ---
 
-## 八、核心设计原则
+## 八、实施路线
+
+- [x] **Step 1**：基础运行时（2026-05-05）
+  - TypeScript + Fastify 5 + Vitest
+  - providers: Anthropic、mcli、llm-gw、Friday
+  - memory: buffer + layered 策略
+- [x] **Step 2**：Twin-System 核心类型 + SlotManager + SafetyGuard + Pipeline
+- [x] **Step 3**：进化引擎组件 — MutatorImpl、ValidatorImpl、PersistenceAdapter、IntentAggregator、PostSwitchMonitor、SchedulerRunner
+- [x] **Step 4**：Integration Wiring — factory.ts DI + config schema + index.ts 接入
+- [x] **Step 5**：E2E smoke test（13 个端到端集成测试）
+- [x] **Step 6**：Dead code cleanup（删除未引用的旧文件）
+- [ ] **Step 7**：迁移 server/index.ts 中的旧 EvolutionEngine → 新 twin-system
+- [ ] **Step 8**：删除完整 src/evolution/ 目录
+- [ ] **Step 9**：启用进化循环实际运行（`evolution.enabled: true`）
+
+---
+
+## 九、核心设计原则
 
 1. **始终有退路**：任何时候都能一键回滚到上一个稳定态
-2. **人在回路**：早期所有 high-risk 变更必须人工确认
+2. **人在回路**：早期所有 high-risk 变更必须人工确认（`autoSwitch: false`）
 3. **渐进自动化**：先手动跑通，再逐步自动化，不跳步
-4. **进化引擎受保护**：evolution/ 目录的代码不参与自动进化，防止自我破坏
-5. **状态与代码分离**：state/ 目录独立于槽位，切换时不丢数据
+4. **进化引擎受保护**：`src/twin-system/` 和 `src/config/` 在 protectedPaths 中，不参与自动进化
+5. **依赖注入**：所有外部 IO 通过接口注入，组件可独立测试
+6. **状态与代码分离**：SQLite DB 独立于槽位，切换时不丢数据
