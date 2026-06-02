@@ -63,6 +63,7 @@ import type {
 import { SchedulerRunner } from "./scheduler.js"
 import type { SchedulerConfig, ActivityTracker } from "./scheduler.js"
 import { EvolutionPipeline } from "./evolution-pipeline.js"
+import { TraceIntentSource, MemoryIntentSource, UpstreamIntentSource } from "./intent-sources.js"
 
 // ── Logger ───────────────────────────────────────────────────────────────────
 
@@ -629,8 +630,14 @@ export function createTwinSystem(
     logger,
   })
 
-  // ── 8. Intent Aggregator ────────────────────────────────────────────────
+  // ── 8. Intent Aggregator + Sources ─────────────────────────────────────
   const aggregator = new IntentAggregator()
+
+  // Register intent sources
+  aggregator.addSource(new TraceIntentSource(db))
+  aggregator.addSource(new MemoryIntentSource(db))
+  // Note: UpstreamIntentSource requires an UpstreamTracker instance.
+  // It will be registered externally if upstream tracking is configured.
 
   // ── 9. Scheduler ────────────────────────────────────────────────────────
   const activityTracker = new RequestActivityTracker()
@@ -646,6 +653,8 @@ export function createTwinSystem(
     activityTracker,
     onTrigger: async (reason) => {
       logger.info("Evolution triggered by scheduler (reason: %s)", reason)
+      // Collect fresh intents from all sources before picking next
+      await aggregator.collect()
       // Get next intent from aggregator
       const intent = aggregator.next()
       if (!intent) {

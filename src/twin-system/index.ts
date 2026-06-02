@@ -48,3 +48,6 @@ export type {
   TrackerCheckResult,
   TrackerStats,
 } from "./upstream-tracker.js"
+
+export { TraceIntentSource, MemoryIntentSource, UpstreamIntentSource } from "./intent-sources.js"
+export type { TraceIntentSourceConfig, MemoryIntentSourceConfig } from "./intent-sources.js"
