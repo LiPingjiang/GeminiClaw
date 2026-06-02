@@ -169,7 +169,7 @@ export async function buildServer(
     logger: { debug: () => undefined, error: console.error },
   });
 
-  await fastify.register(healthRoute);
+  await fastify.register(healthRoute, { twinSystem });
 
   // Evolution routes (twin-system based)
   if (twinSystem) {

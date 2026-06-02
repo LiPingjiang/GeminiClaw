@@ -36,6 +36,8 @@ function makeConfig(authToken?: string): Config {
       maxEvolutionsPerFile24h: 3,
       autoSwitch: false,
       mainBranch: "main",
+      maxCyclesPerDay: 0,
+      dryRun: false,
     },
   }
 }

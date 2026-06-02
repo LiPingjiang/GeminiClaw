@@ -51,3 +51,6 @@ export type {
 
 export { TraceIntentSource, MemoryIntentSource, UpstreamIntentSource } from "./intent-sources.js"
 export type { TraceIntentSourceConfig, MemoryIntentSourceConfig } from "./intent-sources.js"
+
+export { EvolutionMetrics, DEFAULT_METRICS_CONFIG } from "./metrics.js"
+export type { CycleRecord, MetricsSnapshot, MetricsConfig } from "./metrics.js"

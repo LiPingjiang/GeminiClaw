@@ -85,6 +85,10 @@ export const evolutionConfigSchema = z.object({
   autoSwitch: z.boolean().default(false),
   /** Git: main branch name */
   mainBranch: z.string().default("main"),
+  /** Budget: max evolution cycles per calendar day. 0 = unlimited. */
+  maxCyclesPerDay: z.number().int().min(0).default(0),
+  /** Dry-run mode: run mutation + validation but skip actual slot switch */
+  dryRun: z.boolean().default(false),
 }).default({})
 
 export const configSchema = z.object({

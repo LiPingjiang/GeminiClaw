@@ -64,6 +64,7 @@ import { SchedulerRunner } from "./scheduler.js"
 import type { SchedulerConfig, ActivityTracker } from "./scheduler.js"
 import { EvolutionPipeline } from "./evolution-pipeline.js"
 import { TraceIntentSource, MemoryIntentSource, UpstreamIntentSource } from "./intent-sources.js"
+import { EvolutionMetrics } from "./metrics.js"
 
 // ── Logger ───────────────────────────────────────────────────────────────────
 
@@ -522,6 +523,9 @@ export interface TwinSystemInstance {
   slotManager: SlotManager
   activityTracker: ActivityRecorder
   errorCounter: ErrorCounter
+  metrics: EvolutionMetrics
+  /** Whether dry-run mode is enabled (skip actual slot switch) */
+  dryRun: boolean
   /** Start the scheduler (call after server is listening) */
   start(): void
   /** Stop the scheduler + cleanup */
@@ -649,34 +653,79 @@ export function createTwinSystem(
     cronEnabled: evolutionConfig.cronIntervalMs > 0,
   }
 
+  // ── 10. Metrics ──────────────────────────────────────────────────────────
+  const metrics = new EvolutionMetrics({
+    maxCyclesPerDay: evolutionConfig.maxCyclesPerDay,
+    recentHistorySize: 20,
+  })
+
+  const dryRun = evolutionConfig.dryRun
+
   const scheduler = new SchedulerRunner({
     activityTracker,
     onTrigger: async (reason) => {
-      logger.info("Evolution triggered by scheduler (reason: %s)", reason)
+      logger.info("Evolution triggered (reason=%s, dryRun=%s)", reason, dryRun)
+
+      // Daily budget check
+      if (!metrics.canRunToday()) {
+        logger.warn("Daily cycle budget exhausted, skipping")
+        metrics.recordSkipped()
+        return false
+      }
+
       // Collect fresh intents from all sources before picking next
       await aggregator.collect()
       // Get next intent from aggregator
       const intent = aggregator.next()
       if (!intent) {
         logger.info("No intents in queue, skipping evolution cycle")
+        metrics.recordSkipped()
         return false
       }
+
+      const startedAt = Date.now()
       try {
         const result = await pipeline.run(intent)
+
+        metrics.recordCycle({
+          intentId: intent.id,
+          intentType: intent.type,
+          trigger: reason,
+          startedAt,
+          success: result.success,
+          abortReason: result.abortReason,
+          changedFiles: result.mutationResult?.changedFiles ?? [],
+          rolled_back: false,
+        })
+
         if (result.success) {
           // Record evolution frequency for changed files
           for (const file of result.mutationResult?.changedFiles ?? []) {
             persistence.recordEvolution(file)
           }
-          // Start monitoring
-          logger.info("Evolution succeeded, starting post-switch monitoring")
+          if (dryRun) {
+            logger.info("[DRY-RUN] Evolution validated but slot switch skipped")
+          } else {
+            logger.info("Evolution succeeded, starting post-switch monitoring")
+          }
+        } else {
+          logger.warn("Evolution cycle completed with failure: %s", result.abortReason)
         }
         return result.success
       } catch (err) {
-        logger.error(
-          "Evolution cycle failed: %s",
-          err instanceof Error ? err.message : String(err),
-        )
+        const msg = err instanceof Error ? err.message : String(err)
+        logger.error("Evolution cycle threw: %s", msg)
+
+        metrics.recordCycle({
+          intentId: intent.id,
+          intentType: intent.type,
+          trigger: reason,
+          startedAt,
+          success: false,
+          abortReason: msg,
+          changedFiles: [],
+          rolled_back: false,
+        })
         return false
       }
     },
@@ -693,10 +742,16 @@ export function createTwinSystem(
     slotManager,
     activityTracker,
     errorCounter,
+    metrics,
+    dryRun,
     start() {
       if (evolutionConfig.enabled) {
         scheduler.start()
-        logger.info("Twin-system scheduler started")
+        logger.info(
+          "Twin-system scheduler started (dryRun=%s, maxCyclesPerDay=%s)",
+          dryRun,
+          evolutionConfig.maxCyclesPerDay || "unlimited",
+        )
       } else {
         logger.info("Twin-system is disabled (evolution.enabled = false)")
       }
