@@ -4,14 +4,14 @@ import type { ProviderRouter } from "../providers/router.js";
 import type { MemoryStrategy } from "../memory/strategy.js";
 import type { AgentLoop } from "../agent/index.js";
 import type { Config } from "../config/schema.js";
-import type { EvolutionEngine } from "../evolution/index.js";
+import type { TwinSystemInstance } from "../twin-system/factory.js";
 
 export interface ChannelContext {
   router: ProviderRouter;
   memory: MemoryStrategy;
   agentLoop: AgentLoop;
   config: Config;
-  evolution?: EvolutionEngine;
+  twinSystem?: TwinSystemInstance;
 }
 
 export interface IChannel {

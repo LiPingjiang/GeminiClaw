@@ -487,7 +487,7 @@ class SimpleFuzzyMatcher implements FuzzyMatcher {
 
 // -- ActivityTracker (tracks HTTP request timestamps) --
 
-class RequestActivityTracker implements ActivityTracker {
+class RequestActivityTracker implements ActivityTracker, ActivityRecorder {
   private lastActivity = Date.now()
 
   recordActivity(): void {
@@ -507,6 +507,11 @@ function sleep(ms: number): Promise<void> {
 
 // ── Factory Output ───────────────────────────────────────────────────────────
 
+export interface ActivityRecorder {
+  recordActivity(): void
+  getIdleMs(): number
+}
+
 export interface TwinSystemInstance {
   pipeline: EvolutionPipeline
   scheduler: SchedulerRunner
@@ -514,8 +519,8 @@ export interface TwinSystemInstance {
   aggregator: IntentAggregator
   persistence: PersistenceAdapter
   slotManager: SlotManager
-  activityTracker: RequestActivityTracker
-  errorCounter: ServerErrorCounter
+  activityTracker: ActivityRecorder
+  errorCounter: ErrorCounter
   /** Start the scheduler (call after server is listening) */
   start(): void
   /** Stop the scheduler + cleanup */

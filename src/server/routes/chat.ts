@@ -2,6 +2,7 @@
 import type { FastifyInstance } from "fastify"
 import type { ProviderRouter } from "../../providers/router.js"
 import type { MemoryStrategy } from "../../memory/strategy.js"
+import type { TwinSystemInstance } from "../../twin-system/factory.js"
 
 interface ChatBody {
   message: string
@@ -15,10 +16,7 @@ interface ChatRouteOpts {
   strategy: MemoryStrategy
   authToken?: string
   agentLoop?: unknown
-  evolution?: {
-    onTraceRecorded: () => void
-    getTraceCollector: () => { record: (params: { sessionId: string; toolSequence: string[]; hadFailure: boolean; messageCount: number; responseLength: number }) => void }
-  }
+  twinSystem?: TwinSystemInstance
 }
 
 export async function chatRoute(
@@ -80,26 +78,15 @@ export async function chatRoute(
         raw.end()
       }
 
-      // 后台追加 + 异步处理
+      // 后台追加 + 通知 twin-system activity tracker
       if (fullContent) {
         await opts.strategy.appendTurn(
           sid,
           { role: "user", content: message },
           { role: "assistant", content: fullContent },
         )
-        // Trace collection for evolution engine
-        if (opts.evolution) {
-          setImmediate(() => {
-            opts.evolution!.getTraceCollector().record({
-              sessionId: sid,
-              toolSequence: [],
-              hadFailure: false,
-              messageCount: 2,
-              responseLength: fullContent.length,
-            })
-            opts.evolution!.onTraceRecorded()
-          })
-        }
+        // Notify twin-system of activity (for idle detection)
+        opts.twinSystem?.activityTracker.recordActivity()
       }
 
       return
@@ -114,19 +101,8 @@ export async function chatRoute(
       { role: "assistant", content: chatResponse.content },
     )
 
-    // Trace collection for evolution engine
-    if (opts.evolution) {
-      setImmediate(() => {
-        opts.evolution!.getTraceCollector().record({
-          sessionId: sid,
-          toolSequence: [],
-          hadFailure: false,
-          messageCount: 2,
-          responseLength: chatResponse.content.length,
-        })
-        opts.evolution!.onTraceRecorded()
-      })
-    }
+    // Notify twin-system of activity (for idle detection)
+    opts.twinSystem?.activityTracker.recordActivity()
 
     return reply.send({
       response: chatResponse.content,

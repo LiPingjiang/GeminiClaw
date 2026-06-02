@@ -4,11 +4,9 @@ import type { Db } from "../db/client.js";
 import type { Config } from "../config/schema.js";
 import type { ProviderRouter } from "../providers/router.js";
 import type { MemoryStrategy } from "../memory/strategy.js";
+import type { TwinSystemInstance } from "../twin-system/factory.js";
 import { healthRoute } from "./routes/health.js";
 import { evolutionRoute } from "./routes/evolution.js";
-import { EvolutionEngine } from "../evolution/index.js";
-import { EvolutionDB } from "../evolution/db.js";
-import { join } from "path";
 import { chatRoute } from "./routes/chat.js";
 import { AgentLoop } from "../agent/index.js";
 import { registry as toolRegistry } from "../tools/index.js";
@@ -70,6 +68,7 @@ export async function buildServer(
   router: ProviderRouter,
   strategy: MemoryStrategy,
   db?: Db,
+  twinSystem?: TwinSystemInstance,
 ): Promise<FastifyInstance> {
   const fastify = Fastify({ logger: false });
 
@@ -172,24 +171,16 @@ export async function buildServer(
 
   await fastify.register(healthRoute);
 
-  // Evolution Engine
-  const evoDbPath = join(process.cwd(), ".data/evolution/gemini-evolution.db");
-  const evoDB = new EvolutionDB(evoDbPath);
-  const memoryDbPath = join(config.memory.dataDir, "geminiclaw.db");
-  const evolution = new EvolutionEngine({
-    db: evoDB,
-    providerRouter: router,
-    repoRoot: process.cwd(),
-    memoryDbPath,
-  });
-  await evolution.start();
-  await fastify.register(evolutionRoute, { evolution });
+  // Evolution routes (twin-system based)
+  if (twinSystem) {
+    await fastify.register(evolutionRoute, { twinSystem });
+  }
   await fastify.register(chatRoute, {
     router,
     strategy,
     authToken: config.server.authToken,
     agentLoop,
-    evolution,
+    twinSystem,
   });
 
   // Channel framework — start QQBot if configured, pass db for GuidanceLayer
@@ -210,7 +201,7 @@ export async function buildServer(
     memory: strategy,
     agentLoop,
     config,
-    evolution,
+    twinSystem,
   });
 
   fastify.addHook("onClose", async () => {

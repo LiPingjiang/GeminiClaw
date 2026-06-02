@@ -40,8 +40,6 @@ async function main(): Promise<void> {
   const defaultProviderName = config.routing.default.split("/")[0]
   const routerProvider = providers.find(p => p.name === defaultProviderName) ?? providers[0] ?? null
   const strategy = buildStrategy(config, db, routerProvider)
-  const server = await buildServer(config, router, strategy, db)
-
   // ── Twin-System (optional, based on config.evolution.enabled) ──────────
   const twinSystem = createTwinSystem(
     config.evolution,
@@ -49,6 +47,11 @@ async function main(): Promise<void> {
     db,
     config.server.port,
   )
+
+  // Expose twin-system globally for tool commands (e.g. /进化)
+  ;(globalThis as any).__twinSystem = twinSystem
+
+  const server = await buildServer(config, router, strategy, db, twinSystem)
 
   await server.listen({ port: config.server.port, host: config.server.host })
   console.log(`GeminiClaw listening on ${config.server.host}:${config.server.port}`)
