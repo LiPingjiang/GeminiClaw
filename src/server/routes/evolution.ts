@@ -44,15 +44,35 @@ export async function evolutionRoute(
   // ---------------------------------------------------------------------------
   fastify.post("/v1/evolution/run", async (_req, reply) => {
     try {
+      // Collect fresh intents before picking next
+      await twinSystem.aggregator.collect()
       const intent = twinSystem.aggregator.next()
       if (!intent) {
+        twinSystem.metrics.recordSkipped()
         return reply.send({ success: false, reason: "No intents in queue" })
       }
+
+      const startedAt = Date.now()
       const result = await twinSystem.pipeline.run(intent)
+
+      // Record metrics (same as scheduler's onTrigger)
+      twinSystem.metrics.recordCycle({
+        intentId: intent.id,
+        intentType: intent.type,
+        trigger: "manual",
+        startedAt,
+        success: result.success,
+        abortReason: result.abortReason,
+        changedFiles: result.mutationResult?.changedFiles ?? [],
+        rolled_back: false,
+      })
+
       return reply.send({
         success: result.success,
         intent: intent.description,
         changedFiles: result.mutationResult?.changedFiles ?? [],
+        abortReason: result.abortReason,
+        durationMs: Date.now() - startedAt,
       })
     } catch (err) {
       fastify.log.error(err)
@@ -74,15 +94,30 @@ export async function evolutionRoute(
       return reply.status(400).send({ error: "description and targetFiles are required" })
     }
     try {
-      // Collect via a one-shot manual source
+      // Inject manually via a one-shot source that auto-removes itself after collect
+      const manualSource = {
+        name: "manual-user",
+        _consumed: false,
+        generate() {
+          if (this._consumed) return []
+          this._consumed = true
+          return [{
+            type: (body.riskLevel === "high" ? "behavior_fix" : "optimization") as "behavior_fix" | "optimization",
+            description: body.description!,
+            targetFiles: body.targetFiles!,
+            evidence: body.evidence ?? ["User-submitted intent"],
+            riskLevel: (body.riskLevel ?? "low") as "low" | "medium" | "high",
+            priority: 0.8,
+            dedupKey: `manual:${Date.now()}:${body.description!.slice(0, 30)}`,
+          }]
+        },
+      }
+      twinSystem.aggregator.addSource(manualSource)
       const newIntents = await twinSystem.aggregator.collect()
-      // Also directly add the user intent to the queue by creating a manual source
-      const { IntentAggregator } = await import("../../twin-system/intent-aggregator.js")
-      // Use a temporary source approach — just add via collect
-      // For now, trigger a collection and respond with queue state
       return reply.status(201).send({
         queued: true,
         description: body.description,
+        intentCount: newIntents.length,
         queueSize: twinSystem.aggregator.size(),
       })
     } catch (err) {
