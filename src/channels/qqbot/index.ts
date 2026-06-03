@@ -11,12 +11,13 @@ import { QQBotWSClient, DEFAULT_INTENTS } from "./ws-client.js";
 import type { MessageSource } from "./ws-client.js";
 import { QQBotApi, parseInteractionEvent } from "./api.js";
 import type { InteractionEvent, InlineKeyboard } from "./api.js";
-import { sendC2CReply } from "./api.js";
+import { sendC2CReply, buildBusyKeyboard } from "./api.js";
 import { dispatch } from "../../commands/dispatcher.js";
 import { AgentRepository } from "../../agents/repository.js";
-import { DispatcherAgent } from "../../guidance/dispatcher.js";
-import { templateManager } from "../../templates/manager.js";
+import { AgentGate } from "../../guidance/agent-gate.js";
+import type { GateResult } from "../../guidance/agent-gate.js";
 import { stripToolXml } from "../../utils/strip-tool-xml.js";
+import { randomUUID } from "node:crypto";
 
 export interface QQBotChannelConfig {
   enabled: boolean;
@@ -75,15 +76,21 @@ export class QQBotChannel implements IChannel {
     const modelOverrides = new Map<string, string>();
     const startedAt = new Date();
 
-    const dispatcher = this.db
-      ? new DispatcherAgent({
+    const gate = this.db
+      ? new AgentGate({
           db: this.db,
-          router: ctx.router,
           agentRepo: new AgentRepository(this.db),
-          templateManager,
-          model: config.agent.dispatcherModel,
+          maxAgents: config.agent.maxAgents ?? 5,
         })
       : null;
+
+    // Pending busy prompts: requestId -> { userId, message, msgId, source }
+    const pendingBusy = new Map<string, {
+      userId: string;
+      message: string;
+      msgId: string;
+      source: MessageSource;
+    }>();
 
     // -----------------------------------------------------------------------
     // Message handler (shared for C2C and Group)
@@ -106,25 +113,64 @@ export class QQBotChannel implements IChannel {
         startedAt,
       });
       if (cmdResult !== null) {
-        if (content.trimStart().startsWith("/new") && dispatcher) {
-          dispatcher.clearUserSession(userId);
+        if (content.trimStart().startsWith("/new") && gate) {
+          gate.clearUserSession(userId);
         }
         return cmdResult;
       }
 
-      // ── Dispatcher 路由 ─────────────────────────────────────────────────
+      // ── AgentGate: busy 检测 ────────────────────────────────────────────
       let sessionId = userId;
-      let agentName: string | null = null;
       let currentAgentId: string | null = null;
-      if (dispatcher) {
-        const routeResult = await dispatcher.route(content, userId);
-        sessionId = routeResult.sessionId;
-        agentName = routeResult.agentName;
-        currentAgentId = routeResult.agentId;
-        dispatcher.markBusy(routeResult.agentId);
+      if (gate) {
+        // Check if user's agent is busy
+        const busyInfo = gate.checkBusy(userId);
+        if (busyInfo) {
+          // Agent is busy — send keyboard prompt and return early
+          const requestId = randomUUID().slice(0, 8);
+          pendingBusy.set(requestId, {
+            userId,
+            message: content,
+            msgId: _msgId,
+            source,
+          });
+          const keyboard = buildBusyKeyboard(requestId);
+          const prompt = `⏳ 助手正在忙：**${busyInfo.currentWork}**\n\n你可以选择等待当前任务完成，或者新建一个助手来处理。`;
+          if (this.api) {
+            const target = source.type === "c2c"
+              ? { type: "c2c" as const, openid: source.openid }
+              : { type: "group" as const, groupOpenid: (source as any).groupOpenid };
+            await this.api.sendReply(target, prompt, _msgId, keyboard);
+          }
+          return prompt;
+        }
+
+        // Agent is idle — proceed
+        const gateResult = await gate.getOrCreateAgent(userId);
+        sessionId = gateResult.sessionId;
+        currentAgentId = gateResult.agentId;
+        gate.markBusy(gateResult.agentId, content.slice(0, 30));
       }
 
-      // ── 正常 LLM 流程 ──────────────────────────────────────────────────
+      // ── Delegate to processWithAgent ──────────────────────────────────
+      const reply = await processWithAgent(sessionId, currentAgentId, content, _msgId, userId);
+      // Mark agent as idle after processing
+      if (gate && currentAgentId) {
+        gate.markIdle(currentAgentId);
+      }
+      return reply;
+    };
+
+    // -----------------------------------------------------------------------
+    // Core LLM processing (shared by handleMessage and interaction handler)
+    // -----------------------------------------------------------------------
+    const processWithAgent = async (
+      sessionId: string,
+      agentId: string | null,
+      content: string,
+      msgId: string,
+      userId: string,
+    ): Promise<string> => {
       await memory.ensureSession(sessionId);
 
       // Session 标题：首条消息时自动写入（截取前 24 字）
@@ -218,7 +264,7 @@ export class QQBotChannel implements IChannel {
         toolContextExtra: {
           ...(this.db ? { db: this.db } : {}),
           userId,
-          msgId: _msgId,
+          msgId,
           appId,
           clientSecret,
         },
@@ -250,19 +296,10 @@ export class QQBotChannel implements IChannel {
       }
       flushPendingTurn();
 
-      // Mark agent as idle after processing
-      if (dispatcher && currentAgentId) {
-        dispatcher.markIdle(currentAgentId);
-      }
-
       // 兜底：若最终轮为空，使用上一轮的有效回复
       if (!finalReply && _lastNonEmptyReply) finalReply = _lastNonEmptyReply;
       if (!finalReply) finalReply = "（无回复）";
       finalReply = stripToolXml(finalReply);
-
-      if (agentName) {
-        finalReply = `**${agentName}**\n\n${finalReply}`;
-      }
 
       const userMsg = { role: "user" as const, content };
       const messagesToPersist: Array<Record<string, unknown>> = [userMsg];
@@ -288,7 +325,69 @@ export class QQBotChannel implements IChannel {
     };
 
     // -----------------------------------------------------------------------
-    // Interaction handler
+    // Busy-choice interaction handler
+    // -----------------------------------------------------------------------
+    registerInteractionHandler("busy:", async (event: InteractionEvent) => {
+      // Parse: "busy:{requestId}:{choice}" where choice = "queue" | "new"
+      const parts = event.buttonData.split(":");
+      if (parts.length < 3) return;
+      const requestId = parts[1];
+      const choice = parts[2]; // "queue" or "new"
+
+      const pending = pendingBusy.get(requestId);
+      if (!pending) {
+        console.warn("[QQBotChannel] busy interaction for unknown requestId:", requestId);
+        return;
+      }
+      pendingBusy.delete(requestId);
+
+      if (choice === "queue" && gate) {
+        // Queue the message — will be processed when agent becomes idle
+        // Send acknowledgement
+        if (this.api) {
+          const target = pending.source.type === "c2c"
+            ? { type: "c2c" as const, openid: (pending.source as any).openid }
+            : { type: "group" as const, groupOpenid: (pending.source as any).groupOpenid };
+          await this.api.sendActive(target, "✅ 已加入队列，助手完成当前任务后会立即处理你的消息。");
+        }
+
+        // Actually queue — when agent idle, gate.markIdle triggers drain
+        const gateResult = await gate.queueForAgent(pending.userId, pending.message);
+        // Now agent is idle, process the message
+        gate.markBusy(gateResult.agentId, pending.message.slice(0, 30));
+        const reply = await processWithAgent(
+          gateResult.sessionId, gateResult.agentId,
+          pending.message, pending.msgId, pending.userId,
+        );
+        gate.markIdle(gateResult.agentId);
+        // Send the reply
+        if (this.api) {
+          const target = pending.source.type === "c2c"
+            ? { type: "c2c" as const, openid: (pending.source as any).openid }
+            : { type: "group" as const, groupOpenid: (pending.source as any).groupOpenid };
+          await this.api.sendLongMessage(target, reply);
+        }
+      } else if (choice === "new" && gate) {
+        // Create new agent and process immediately
+        const gateResult = await gate.createNewAgent(pending.userId);
+        gate.markBusy(gateResult.agentId, pending.message.slice(0, 30));
+        const reply = await processWithAgent(
+          gateResult.sessionId, gateResult.agentId,
+          pending.message, pending.msgId, pending.userId,
+        );
+        gate.markIdle(gateResult.agentId);
+        // Send the reply
+        if (this.api) {
+          const target = pending.source.type === "c2c"
+            ? { type: "c2c" as const, openid: (pending.source as any).openid }
+            : { type: "group" as const, groupOpenid: (pending.source as any).groupOpenid };
+          await this.api.sendLongMessage(target, reply);
+        }
+      }
+    });
+
+    // -----------------------------------------------------------------------
+    // General interaction handler (routes to registered prefix handlers)
     // -----------------------------------------------------------------------
     const handleInteraction = async (event: InteractionEvent): Promise<void> => {
       // Route to registered handlers by prefix

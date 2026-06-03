@@ -536,6 +536,36 @@ export function buildConfirmKeyboard(actionKey: string): InlineKeyboard {
   };
 }
 
+/**
+ * Build a keyboard for when the user's agent is busy.
+ * Two buttons: queue (wait) or spawn new agent.
+ * @param requestId unique id to track this specific busy prompt
+ */
+export function buildBusyKeyboard(requestId: string): InlineKeyboard {
+  return {
+    content: {
+      rows: [
+        {
+          buttons: [
+            buildKeyboardButton(
+              "busy-queue",
+              "⏳ 排队等待",
+              `busy:${requestId}:queue`,
+              { visitedLabel: "已排队", style: 0, groupId: "busy-choice" },
+            ),
+            buildKeyboardButton(
+              "busy-new",
+              "✨ 新建助手",
+              `busy:${requestId}:new`,
+              { visitedLabel: "已新建", style: 1, groupId: "busy-choice" },
+            ),
+          ],
+        },
+      ],
+    },
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Interaction event parser
 // ---------------------------------------------------------------------------
