@@ -153,12 +153,15 @@ export class QQBotChannel implements IChannel {
       }
 
       // ── Delegate to processWithAgent ──────────────────────────────────
-      const reply = await processWithAgent(sessionId, currentAgentId, content, _msgId, userId);
-      // Mark agent as idle after processing
-      if (gate && currentAgentId) {
-        gate.markIdle(currentAgentId);
+      try {
+        const reply = await processWithAgent(sessionId, currentAgentId, content, _msgId, userId);
+        return reply;
+      } finally {
+        // ALWAYS mark idle, even if processWithAgent throws or agent loop hangs
+        if (gate && currentAgentId) {
+          gate.markIdle(currentAgentId);
+        }
       }
-      return reply;
     };
 
     // -----------------------------------------------------------------------
@@ -355,11 +358,15 @@ export class QQBotChannel implements IChannel {
         const gateResult = await gate.queueForAgent(pending.userId, pending.message);
         // Now agent is idle, process the message
         gate.markBusy(gateResult.agentId, pending.message.slice(0, 30));
-        const reply = await processWithAgent(
-          gateResult.sessionId, gateResult.agentId,
-          pending.message, pending.msgId, pending.userId,
-        );
-        gate.markIdle(gateResult.agentId);
+        let reply: string;
+        try {
+          reply = await processWithAgent(
+            gateResult.sessionId, gateResult.agentId,
+            pending.message, pending.msgId, pending.userId,
+          );
+        } finally {
+          gate.markIdle(gateResult.agentId);
+        }
         // Send the reply
         if (this.api) {
           const target = pending.source.type === "c2c"
@@ -371,11 +378,15 @@ export class QQBotChannel implements IChannel {
         // Create new agent and process immediately
         const gateResult = await gate.createNewAgent(pending.userId);
         gate.markBusy(gateResult.agentId, pending.message.slice(0, 30));
-        const reply = await processWithAgent(
-          gateResult.sessionId, gateResult.agentId,
-          pending.message, pending.msgId, pending.userId,
-        );
-        gate.markIdle(gateResult.agentId);
+        let reply: string;
+        try {
+          reply = await processWithAgent(
+            gateResult.sessionId, gateResult.agentId,
+            pending.message, pending.msgId, pending.userId,
+          );
+        } finally {
+          gate.markIdle(gateResult.agentId);
+        }
         // Send the reply
         if (this.api) {
           const target = pending.source.type === "c2c"
