@@ -10,6 +10,7 @@ import { registerSyncCommand } from "./commands/sync.js";
 import { registerChatCommand } from "./commands/chat.js";
 import { registerTemplateCommand } from "./commands/template.js";
 import { registerServerCommands } from "./commands/server.js";
+import { registerTuiCommand } from "./commands/tui.js";
 
 const program = new Command();
 program
@@ -58,5 +59,6 @@ registerSyncCommand(program);
 registerChatCommand(program);
 registerTemplateCommand(program);
 registerServerCommands(program);
+registerTuiCommand(program);
 
 program.parse();

@@ -9,6 +9,7 @@ import { healthRoute } from "./routes/health.js";
 import { evolutionRoute } from "./routes/evolution.js";
 import { approvalRoute } from "./routes/approvals.js";
 import { chatRoute } from "./routes/chat.js";
+import { streamRoute } from "./routes/stream.js";
 import { AgentLoop } from "../agent/index.js";
 import { registry as toolRegistry } from "../tools/index.js";
 import { ChannelRegistry } from "../channels/registry.js";
@@ -183,6 +184,14 @@ export async function buildServer(
     authToken: config.server.authToken,
     agentLoop,
     twinSystem,
+  });
+
+  // TUI stream route — AgentLoop 原生事件 SSE 流
+  await fastify.register(streamRoute, {
+    router,
+    strategy,
+    authToken: config.server.authToken,
+    agentLoop: agentLoop as AgentLoop,
   });
 
   // Channel framework — start QQBot if configured, pass db for GuidanceLayer
