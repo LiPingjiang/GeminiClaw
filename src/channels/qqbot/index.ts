@@ -18,6 +18,7 @@ import { AgentGate } from "../../guidance/agent-gate.js";
 import type { GateResult } from "../../guidance/agent-gate.js";
 import { stripToolXml } from "../../utils/strip-tool-xml.js";
 import { randomUUID } from "node:crypto";
+import { traceHub } from "../../trace/hub.js";
 
 export interface QQBotChannelConfig {
   enabled: boolean;
@@ -260,6 +261,9 @@ export class QQBotChannel implements IChannel {
         turnMessages.push(...pendingToolResults.splice(0));
       };
 
+      // ── TraceHub 埋点：把每个 AgentEvent 推给 gc watch ──────────────
+      const _traceUserId = userId.length > 8 ? userId.slice(0, 8) + "..." : userId;
+
       for await (const event of agentLoop.run({
         messages,
         sessionId,
@@ -272,6 +276,14 @@ export class QQBotChannel implements IChannel {
           clientSecret,
         },
       })) {
+        // 发布到 TraceHub（fire-and-forget，不阻塞主流程）
+        traceHub.publish({
+          ts: Date.now(),
+          userId: _traceUserId,
+          sessionId,
+          agentEvent: event as unknown as Record<string, unknown>,
+        });
+
         if (event.type === "message_delta") {
           finalReply += event.delta;
         } else if (event.type === "turn_start") {
