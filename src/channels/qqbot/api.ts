@@ -561,6 +561,16 @@ export function buildBusyKeyboard(requestId: string): InlineKeyboard {
             ),
           ],
         },
+        {
+          buttons: [
+            buildKeyboardButton(
+              "busy-interrupt",
+              "⚡ 打断任务",
+              `busy:${requestId}:interrupt`,
+              { visitedLabel: "已打断", style: 1, groupId: "busy-choice" },
+            ),
+          ],
+        },
       ],
     },
   };

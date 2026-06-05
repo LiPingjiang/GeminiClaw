@@ -37,6 +37,8 @@ const waitQueue = new Map<
     message: string;
   }>
 >();
+/** Map of agentId -> AbortController for the current run */
+const abortMap = new Map<string, AbortController>();
 
 export class AgentGate {
   private db: Db;
@@ -123,6 +125,29 @@ export class AgentGate {
     return this._createNewAgent(userId, "助手", "通用对话助手");
   }
 
+  /**
+   * Create (or reuse) an AbortController for the agent's current run.
+   * Call this right before starting agentLoop.run() to get the signal.
+   */
+  getSignal(agentId: string): AbortSignal {
+    // Always create a fresh controller for each new run
+    const controller = new AbortController();
+    abortMap.set(agentId, controller);
+    return controller.signal;
+  }
+
+  /**
+   * Interrupt the agent's current run by aborting its signal.
+   * The agentLoop will exit at the next turn boundary.
+   */
+  interruptAgent(agentId: string): void {
+    const controller = abortMap.get(agentId);
+    if (controller) {
+      controller.abort();
+      abortMap.delete(agentId);
+    }
+  }
+
   /** Mark an agent as busy with a work description */
   markBusy(agentId: string, work?: string): void {
     busyMap.set(agentId, true);
@@ -133,6 +158,7 @@ export class AgentGate {
   markIdle(agentId: string): void {
     busyMap.set(agentId, false);
     workMap.delete(agentId);
+    abortMap.delete(agentId); // clean up any leftover controller
     this._drainQueue(agentId);
   }
 
@@ -149,6 +175,11 @@ export class AgentGate {
   /** Check if an agent is currently busy */
   isBusy(agentId: string): boolean {
     return busyMap.get(agentId) || false;
+  }
+
+  /** Get the agentId currently bound to a user (null if none) */
+  getUserAgentId(userId: string): string | null {
+    return this._getSticky(userId)?.agentId ?? null;
   }
 
   // ── Private ─────────────────────────────────────────────────────────────

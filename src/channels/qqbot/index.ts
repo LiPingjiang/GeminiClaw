@@ -154,8 +154,9 @@ export class QQBotChannel implements IChannel {
       }
 
       // ── Delegate to processWithAgent ──────────────────────────────────
+      const runSignal = gate && currentAgentId ? gate.getSignal(currentAgentId) : undefined;
       try {
-        const reply = await processWithAgent(sessionId, currentAgentId, content, _msgId, userId);
+        const reply = await processWithAgent(sessionId, currentAgentId, content, _msgId, userId, runSignal);
         return reply;
       } finally {
         // ALWAYS mark idle, even if processWithAgent throws or agent loop hangs
@@ -174,6 +175,7 @@ export class QQBotChannel implements IChannel {
       content: string,
       msgId: string,
       userId: string,
+      signal?: AbortSignal,
     ): Promise<string> => {
       await memory.ensureSession(sessionId);
 
@@ -268,6 +270,7 @@ export class QQBotChannel implements IChannel {
         messages,
         sessionId,
         ...(modelOverride ? { model: modelOverride } : {}),
+        ...(signal ? { signal } : {}),
         toolContextExtra: {
           ...(this.db ? { db: this.db } : {}),
           userId,
@@ -310,6 +313,23 @@ export class QQBotChannel implements IChannel {
         }
       }
       flushPendingTurn();
+
+      // ── 打断退出：把已完成的部分 flush 进 memory，保留上下文 ──────────
+      if (signal?.aborted) {
+        const userMsg = { role: "user" as const, content };
+        const partialMessages: Array<Record<string, unknown>> = [userMsg];
+        if (turnMessages.length > 0) {
+          partialMessages.push(...turnMessages);
+        }
+        // 只有有实质内容时才持久化（避免写入空记录）
+        if (partialMessages.length > 1) {
+          await memory.appendMessages(
+            sessionId,
+            partialMessages as Parameters<typeof memory.appendMessages>[1],
+          );
+        }
+        return ""; // 调用方感知到打断，不发送回复
+      }
 
       // 兜底：若最终轮为空，使用上一轮的有效回复
       if (!finalReply && _lastNonEmptyReply) finalReply = _lastNonEmptyReply;
@@ -390,17 +410,48 @@ export class QQBotChannel implements IChannel {
         // Create new agent and process immediately
         const gateResult = await gate.createNewAgent(pending.userId);
         gate.markBusy(gateResult.agentId, pending.message.slice(0, 30));
+        const newSignal = gate.getSignal(gateResult.agentId);
         let reply: string;
         try {
           reply = await processWithAgent(
             gateResult.sessionId, gateResult.agentId,
-            pending.message, pending.msgId, pending.userId,
+            pending.message, pending.msgId, pending.userId, newSignal,
           );
         } finally {
           gate.markIdle(gateResult.agentId);
         }
         // Send the reply
         if (this.api) {
+          const target = pending.source.type === "c2c"
+            ? { type: "c2c" as const, openid: (pending.source as any).openid }
+            : { type: "group" as const, groupOpenid: (pending.source as any).groupOpenid };
+          await this.api.sendLongMessage(target, reply);
+        }
+      } else if (choice === "interrupt" && gate) {
+        // Interrupt the current run, then process the new message on the same agent
+        const currentAgentId = gate.getUserAgentId(pending.userId);
+        if (!currentAgentId) return;
+
+        // 1. Abort the running agentLoop — it will exit at the next turn boundary
+        gate.interruptAgent(currentAgentId);
+
+        // 2. Wait for the agent to become idle (markIdle is called in the finally block of processWithAgent)
+        const gateResult = await gate.queueForAgent(pending.userId, pending.message);
+
+        // 3. Process the new message on the same session (preserving context)
+        gate.markBusy(gateResult.agentId, pending.message.slice(0, 30));
+        const interruptSignal = gate.getSignal(gateResult.agentId);
+        let reply: string;
+        try {
+          reply = await processWithAgent(
+            gateResult.sessionId, gateResult.agentId,
+            pending.message, pending.msgId, pending.userId, interruptSignal,
+          );
+        } finally {
+          gate.markIdle(gateResult.agentId);
+        }
+        // Send the reply (only if non-empty)
+        if (reply && this.api) {
           const target = pending.source.type === "c2c"
             ? { type: "c2c" as const, openid: (pending.source as any).openid }
             : { type: "group" as const, groupOpenid: (pending.source as any).groupOpenid };
