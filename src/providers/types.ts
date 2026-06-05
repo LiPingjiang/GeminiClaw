@@ -73,6 +73,8 @@ export interface ChatResponse {
   model: string
   usage?: TokenUsage
   tool_calls?: ToolCall[]
+  /** The route actually used (e.g. "agnes/agnes-2.0-flash"). Present when fallback was triggered. */
+  routeUsed?: string
 }
 
 export interface StreamChunk {

@@ -69,7 +69,7 @@ export class QQBotChannel implements IChannel {
   }
 
   async start(ctx: ChannelContext): Promise<void> {
-    const { memory, agentLoop, config } = ctx;
+    const { memory, agentLoop, config, consumeFallbackRoute } = ctx;
     const { appId, clientSecret, mode } = this.config;
 
     this.api = new QQBotApi({ appId, clientSecret });
@@ -335,6 +335,12 @@ export class QQBotChannel implements IChannel {
       if (!finalReply && _lastNonEmptyReply) finalReply = _lastNonEmptyReply;
       if (!finalReply) finalReply = "（无回复）";
       finalReply = stripToolXml(finalReply);
+
+      // ── Fallback 注脚：当使用了非主模型时提示用户 ──────────────────────
+      const fallbackRoute = consumeFallbackRoute?.();
+      if (fallbackRoute) {
+        finalReply += `\n\n[fallback:${fallbackRoute}]`;
+      }
 
       const userMsg = { role: "user" as const, content };
       const messagesToPersist: Array<Record<string, unknown>> = [userMsg];

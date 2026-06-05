@@ -12,6 +12,8 @@ export interface ChannelContext {
   agentLoop: AgentLoop;
   config: Config;
   twinSystem?: TwinSystemInstance;
+  /** Get and reset the last fallback route used by the router (undefined = primary route) */
+  consumeFallbackRoute?: () => string | undefined;
 }
 
 export interface IChannel {

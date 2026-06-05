@@ -75,6 +75,16 @@ export async function buildServer(
 ): Promise<FastifyInstance> {
   const fastify = Fastify({ logger: false });
 
+  // Track the last fallback route used (shared across chatFn calls)
+  let _lastFallbackRoute: string | undefined;
+
+  /** Get and reset the last fallback route (call after agentLoop.run completes) */
+  function consumeFallbackRoute(): string | undefined {
+    const route = _lastFallbackRoute;
+    _lastFallbackRoute = undefined;
+    return route;
+  }
+
   const chatFn = async (
     messages: Array<{
       role: string;
@@ -134,6 +144,11 @@ export async function buildServer(
       providerMessages,
       options ? { model: options.model, tools: providerTools } : undefined,
     );
+
+    // Track fallback route for downstream consumers (QQBot channel etc.)
+    if (response.routeUsed) {
+      _lastFallbackRoute = response.routeUsed;
+    }
 
     const agentToolCalls = response.tool_calls
       ? response.tool_calls.map((tc: {
@@ -217,6 +232,7 @@ export async function buildServer(
     agentLoop,
     config,
     twinSystem,
+    consumeFallbackRoute,
   });
 
   fastify.addHook("onClose", async () => {

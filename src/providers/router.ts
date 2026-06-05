@@ -22,7 +22,8 @@ export class ProviderRouter {
 
     const errors: string[] = []
 
-    for (const route of chain) {
+    for (let i = 0; i < chain.length; i++) {
+      const route = chain[i]
       const { providerName, model } = parseRoute(route)
       const provider = this.providers.get(providerName)
       if (!provider) {
@@ -33,8 +34,16 @@ export class ProviderRouter {
         const response = await provider.chat(messages, { ...options, model })
         const sysMsg = messages.find(m => m.role === "system")
         const sysLen = sysMsg ? (typeof sysMsg.content === "string" ? sysMsg.content.length : 0) : 0
-        console.log(`[ProviderRouter] ✓ ${providerName}/${model} | msgs=${messages.length} sysPrompt=${sysLen}chars`)
-        return response
+        const isFallback = i > 0
+        if (isFallback) {
+          console.log(`[ProviderRouter] ⚠ FALLBACK → ${providerName}/${model} | msgs=${messages.length} sysPrompt=${sysLen}chars`)
+        } else {
+          console.log(`[ProviderRouter] ✓ ${providerName}/${model} | msgs=${messages.length} sysPrompt=${sysLen}chars`)
+        }
+        return {
+          ...response,
+          routeUsed: isFallback ? `${providerName}/${model}` : undefined,
+        }
       } catch (err) {
         errors.push(`${providerName}/${model}: ${(err as Error).message}`)
       }
