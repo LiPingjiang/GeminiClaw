@@ -26,7 +26,7 @@ function findChrome() {
 async function getBrowser() {
     if (_browser)
         return _browser;
-    const puppeteer = await import('puppeteer');
+    const puppeteer = await import('puppeteer-core');
     _browser = await puppeteer.default.launch({
         executablePath: findChrome(),
         headless: true,
