@@ -44,6 +44,14 @@ function createTestDb() {
       agent_name  TEXT,
       updated_at  INTEGER
     );
+    CREATE TABLE user_agents (
+      openid      TEXT NOT NULL,
+      agent_id    TEXT NOT NULL,
+      session_id  TEXT NOT NULL,
+      agent_name  TEXT NOT NULL,
+      created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+      PRIMARY KEY (openid, agent_id)
+    );
   `);
   return db;
 }

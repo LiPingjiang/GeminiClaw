@@ -32,6 +32,13 @@ export type MessageSource =
   | { type: "c2c"; openid: string }
   | { type: "group"; groupOpenid: string; userOpenid: string };
 
+/** Attachment from QQ message (image, file, etc.) */
+export interface QQAttachment {
+  content_type: string;
+  url: string;
+  filename?: string;
+}
+
 export interface QQBotWSOptions {
   appId: string;
   clientSecret: string;
@@ -42,6 +49,7 @@ export interface QQBotWSOptions {
     source: MessageSource,
     content: string,
     msgId: string,
+    attachments?: QQAttachment[],
   ) => Promise<string>;
   /** Interaction (button click) handler */
   onInteraction?: (event: InteractionEvent) => Promise<void>;
@@ -315,17 +323,29 @@ export class QQBotWSClient {
       author?: { user_openid?: string; id?: string };
       content?: string;
       id?: string;
+      attachments?: Array<{ content_type?: string; url?: string; filename?: string }>;
     } | null;
     const openid = msg?.author?.user_openid ?? msg?.author?.id ?? "";
     const content = (msg?.content ?? "").trim();
     const msgId = msg?.id ?? "";
-    if (!openid || !content) return;
+
+    // Extract image attachments
+    const attachments: QQAttachment[] = (msg?.attachments ?? [])
+      .filter((a) => a.url && a.content_type?.startsWith("image/"))
+      .map((a) => ({
+        content_type: a.content_type!,
+        url: a.url!,
+        filename: a.filename,
+      }));
+
+    // Allow message if it has content OR attachments (user may send image-only)
+    if (!openid || (!content && attachments.length === 0)) return;
 
     // Dedup
     if (this.api.isDuplicate(msgId)) return;
 
     const source: MessageSource = { type: "c2c", openid };
-    await this._processMessage(source, content, msgId);
+    await this._processMessage(source, content, msgId, attachments);
   }
 
   private async _handleGroupMessage(d: unknown): Promise<void> {
@@ -334,22 +354,33 @@ export class QQBotWSClient {
       author?: { member_openid?: string; id?: string };
       content?: string;
       id?: string;
+      attachments?: Array<{ content_type?: string; url?: string; filename?: string }>;
     } | null;
     const groupOpenid = msg?.group_openid ?? "";
     const userOpenid = msg?.author?.member_openid ?? msg?.author?.id ?? "";
     let content = (msg?.content ?? "").trim();
     const msgId = msg?.id ?? "";
-    if (!groupOpenid || !content) return;
+
+    // Extract image attachments
+    const attachments: QQAttachment[] = (msg?.attachments ?? [])
+      .filter((a) => a.url && a.content_type?.startsWith("image/"))
+      .map((a) => ({
+        content_type: a.content_type!,
+        url: a.url!,
+        filename: a.filename,
+      }));
+
+    if (!groupOpenid || (!content && attachments.length === 0)) return;
 
     // Dedup
     if (this.api.isDuplicate(msgId)) return;
 
     // Strip @bot mention prefix (common pattern: /@ <botname> actual message)
     content = content.replace(/^<@!\d+>\s*/, "").trim();
-    if (!content) return;
+    if (!content && attachments.length === 0) return;
 
     const source: MessageSource = { type: "group", groupOpenid, userOpenid };
-    await this._processMessage(source, content, msgId);
+    await this._processMessage(source, content, msgId, attachments);
   }
 
   private async _handleInteraction(d: unknown): Promise<void> {
@@ -375,6 +406,7 @@ export class QQBotWSClient {
     source: MessageSource,
     content: string,
     msgId: string,
+    attachments?: QQAttachment[],
   ): Promise<void> {
     const target = source.type === "c2c"
       ? { type: "c2c" as const, openid: source.openid }
@@ -392,7 +424,7 @@ export class QQBotWSClient {
 
     let reply = "";
     try {
-      reply = await this.opts.onMessage(source, content, msgId);
+      reply = await this.opts.onMessage(source, content, msgId, attachments?.length ? attachments : undefined);
     } catch (err) {
       clearTimeout(keepAliveTimer);
       console.error("[QQBotWSClient] onMessage error:", err);

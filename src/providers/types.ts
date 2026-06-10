@@ -46,9 +46,11 @@ export interface ToolCall {
 // ── Core message types ────────────────────────────────────────────────────────
 export interface Message {
   role: "user" | "assistant" | "system" | "tool"
-  content: string
+  content: string | ContentPart[]
   tool_calls?: ToolCall[]
   tool_call_id?: string
+  /** Multimodal content blocks from tool results (vision-capable models) */
+  multimodal?: ContentPart[]
 }
 
 export interface ChatOptions {

@@ -39,5 +39,18 @@ export function migrate(db: Db): void {
 
     CREATE INDEX IF NOT EXISTS idx_memory_topics_active
       ON memory_topics(active, last_accessed_at);
+
+    -- User-Agent relationship: tracks all agents a user has created
+    CREATE TABLE IF NOT EXISTS user_agents (
+      openid      TEXT NOT NULL,
+      agent_id    TEXT NOT NULL,
+      session_id  TEXT NOT NULL,
+      agent_name  TEXT NOT NULL,
+      created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+      PRIMARY KEY (openid, agent_id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_user_agents_openid
+      ON user_agents(openid);
   `)
 }

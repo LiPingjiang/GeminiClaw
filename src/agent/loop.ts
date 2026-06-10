@@ -11,13 +11,14 @@ import type {
   PausePayload,
   GuardrailConfig,
 } from "./types.js";
+import type { ContentPart } from "../providers/types.js";
 import { GuardrailController } from "./guardrails.js";
 import { hookBus } from "../hooks/index.js";
 
 const SEQUENTIAL_TOOLS = new Set(["exec", "write", "edit"]);
 const MUTATING_TOOLS = new Set(["exec", "write", "edit", "file_write"]);
 
-type UserOrSystemMessage = { role: "user" | "system"; content: string };
+type UserOrSystemMessage = { role: "user" | "system"; content: string | ContentPart[] };
 type AssistantMessage = {
   role: "assistant";
   content: string;
@@ -27,6 +28,8 @@ type ToolMessage = {
   role: "tool";
   tool_call_id: string;
   content: string;
+  /** Multimodal content blocks for vision-capable models */
+  multimodal?: ContentPart[];
 };
 export type InternalMessage =
   | UserOrSystemMessage
@@ -357,9 +360,43 @@ export class AgentLoop {
         return;
       }
 
-      const toolCallsToRun = this.config.maxToolCallsPerTurn
+      let toolCallsToRun = this.config.maxToolCallsPerTurn
         ? response.tool_calls.slice(0, this.config.maxToolCallsPerTurn)
         : response.tool_calls;
+
+      // ── Guardrails: dedup + pre-check ────────────────────────────────────
+      if (guardrails) {
+        // Deduplicate identical tool calls within same turn
+        const { unique, blocked } = guardrails.deduplicateToolCalls(toolCallsToRun);
+        for (const [tcId, reason] of blocked) {
+          const tcName = toolCallsToRun.find(tc => tc.id === tcId)?.name ?? "unknown";
+          yield { type: "tool_start", toolCallId: tcId, toolName: tcName, args: {} };
+          yield { type: "tool_end", toolCallId: tcId, toolName: tcName, result: { content: reason, isError: true }, isError: true, durationMs: 0 };
+          messages = [...messages, { role: "tool" as const, tool_call_id: tcId, content: reason }];
+        }
+        toolCallsToRun = unique;
+
+        // Pre-check: block tool calls that we already know are futile
+        const preBlocked: typeof toolCallsToRun = [];
+        const preAllowed: typeof toolCallsToRun = [];
+        for (const tc of toolCallsToRun) {
+          const decision = guardrails.beforeToolCall(tc.name, tc.args);
+          if (decision.action === "block") {
+            preBlocked.push(tc);
+            yield { type: "tool_start", toolCallId: tc.id, toolName: tc.name, args: tc.args };
+            yield { type: "tool_end", toolCallId: tc.id, toolName: tc.name, result: { content: decision.message, isError: true }, isError: true, durationMs: 0 };
+            messages = [...messages, { role: "tool" as const, tool_call_id: tc.id, content: decision.message }];
+          } else {
+            preAllowed.push(tc);
+          }
+        }
+        toolCallsToRun = preAllowed;
+
+        // If all tool calls were blocked, continue to next turn (model will see block messages)
+        if (toolCallsToRun.length === 0) {
+          continue;
+        }
+      }
 
       // ── High-confidence mode: intercept clarify_uncertainty tool call ─────
       if (this.config.uncertaintyCheck?.enabled && !this.uncertaintyCleared) {
@@ -445,25 +482,31 @@ export class AgentLoop {
         let anySuccess = false;
         let shouldHalt = false;
         for (const result of results) {
-          const toolName =
-            toolCallsToRun.find((tc) => tc.id === result.toolCallId)?.name ??
-            "unknown";
+          const tc = toolCallsToRun.find((tc) => tc.id === result.toolCallId);
+          const toolName = tc?.name ?? "unknown";
+
+          // Check failure-based guardrail
           const decision = guardrails.record(toolName, result.isError);
           if (decision.action === "warn") {
-            yield {
-              type: "guardrail_warn",
-              toolName,
-              message: decision.message,
-            };
+            yield { type: "guardrail_warn", toolName, message: decision.message };
           } else if (decision.action === "halt") {
-            yield {
-              type: "guardrail_halt",
-              toolName,
-              message: decision.message,
-            };
+            yield { type: "guardrail_halt", toolName, message: decision.message };
             shouldHalt = true;
             break;
           }
+
+          // [NEW] Check result-based "no-progress" guardrail for successful calls
+          if (!result.isError && tc) {
+            const resultDecision = guardrails.recordResult(toolName, tc.args, result.content);
+            if (resultDecision.action === "warn") {
+              yield { type: "guardrail_warn", toolName, message: resultDecision.message };
+            } else if (resultDecision.action === "halt") {
+              yield { type: "guardrail_halt", toolName, message: resultDecision.message };
+              shouldHalt = true;
+              break;
+            }
+          }
+
           if (!result.isError) anySuccess = true;
         }
         if (shouldHalt) {
@@ -508,6 +551,7 @@ export class AgentLoop {
             role: "tool",
             tool_call_id: tr.toolCallId,
             content: tr.content,
+            ...(tr.multimodal ? { multimodal: tr.multimodal } : {}),
           },
         ];
       }
@@ -570,7 +614,7 @@ export class AgentLoop {
     ) => Promise<Partial<ToolResult> | undefined>,
   ): Promise<{
     events: AgentEvent[];
-    result: { toolCallId: string; content: string; isError: boolean };
+    result: { toolCallId: string; content: string; isError: boolean; multimodal?: ContentPart[] };
   }> {
     const events: AgentEvent[] = [];
     events.push({
@@ -696,6 +740,7 @@ export class AgentLoop {
     const startMs = Date.now();
     let toolResult: ToolResult;
     let isError = false;
+    let multimodal: ContentPart[] | undefined;
     try {
       const toolContext: ToolContext = {
         sessionId,
@@ -707,7 +752,19 @@ export class AgentLoop {
         },
         extra: this._toolContextExtra,
       };
-      toolResult = await entry.handler(tc.args, toolContext);
+      const rawResult = await entry.handler(tc.args, toolContext);
+
+      // ── Multimodal envelope handling (Hermes-style) ─────────────────────
+      // Tools can return { type: "multimodal", content: [...], textSummary }
+      // We extract the image parts and store them separately so they bypass truncation.
+      if (rawResult && (rawResult as any).type === "multimodal") {
+        const mm = rawResult as { content: Array<{ type: string; text?: string; image_url?: { url: string; detail?: string } }>; textSummary: string };
+        multimodal = mm.content as ContentPart[];
+        // The text content for guardrails/logging is the textSummary
+        toolResult = { content: mm.textSummary, isError: false };
+      } else {
+        toolResult = rawResult as ToolResult;
+      }
       isError = toolResult.isError ?? false;
     } catch (err) {
       isError = true;
@@ -718,7 +775,11 @@ export class AgentLoop {
     }
 
     const durationMs = Date.now() - startMs;
+    // Only truncate text content; multimodal image data is preserved in full
     toolResult = { ...toolResult, content: this.truncate(toolResult.content) };
+    if (multimodal) {
+      toolResult = { ...toolResult, multimodal };
+    }
 
     if (afterToolCall) {
       const ctx: AfterToolCallContext = {

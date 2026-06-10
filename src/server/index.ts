@@ -49,6 +49,8 @@ function makeRegistryAdapter() {
           const result = await entry.handler(args, ctx);
           if (result.type === "error")
             return { content: result.error, isError: true };
+          if (result.type === "multimodal")
+            return { content: result.textSummary, multimodal: result.content };
           return { content: result.text };
         },
         schema: entry.schema,
@@ -88,9 +90,10 @@ export async function buildServer(
   const chatFn = async (
     messages: Array<{
       role: string;
-      content: string;
+      content: string | Array<{ type: string; text?: string; image_url?: { url: string; detail?: string } }>;
       tool_calls?: Array<{ id: string; name: string; args: Record<string, unknown> }>;
       tool_call_id?: string;
+      multimodal?: Array<{ type: string; text?: string; image_url?: { url: string; detail?: string } }>;
     }>,
     options?: {
       model?: string;
@@ -107,6 +110,8 @@ export async function buildServer(
           role: "tool" as const,
           content: m.content,
           tool_call_id: m.tool_call_id,
+          // Pass through multimodal content for vision-capable providers
+          ...(m.multimodal ? { multimodal: m.multimodal } : {}),
         };
       if (
         m.role === "assistant" &&
@@ -141,7 +146,7 @@ export async function buildServer(
       : undefined;
 
     const response = await router.chat(
-      providerMessages,
+      providerMessages as import("../providers/types.js").Message[],
       options ? { model: options.model, tools: providerTools } : undefined,
     );
 

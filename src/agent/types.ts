@@ -1,9 +1,11 @@
 // src/agent/types.ts
-import type { Message } from "../providers/types.js";
+import type { Message, ContentPart } from "../providers/types.js";
 
 export interface ToolResult {
   content: string;
   isError?: boolean;
+  /** Multimodal content blocks (images + text). When present, 'content' is the text-only fallback. */
+  multimodal?: ContentPart[];
 }
 
 export type AgentMode = "auto" | "step" | "plan" | "high-confidence";
@@ -13,6 +15,12 @@ export interface GuardrailConfig {
   sameToolFailureHaltAfter?: number;
   noProgressWarnAfter?: number;
   noProgressHaltAfter?: number;
+  /** Warn after N identical results from idempotent tool (default: 2) */
+  idempotentNoProgressWarnAfter?: number;
+  /** Halt after N identical results from idempotent tool (default: 5) */
+  idempotentNoProgressHaltAfter?: number;
+  /** Global circuit breaker: halt if any tool signature repeats N times (default: 15) */
+  globalCircuitBreakerThreshold?: number;
 }
 
 export interface PlanStep {

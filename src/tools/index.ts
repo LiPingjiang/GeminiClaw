@@ -16,4 +16,5 @@ import './read_session.js';
 import './dragon_api.js';
 import './cloud_query.js';
 import './send_image.js';
+import './view_image.js';
 export { registry } from './registry.js';

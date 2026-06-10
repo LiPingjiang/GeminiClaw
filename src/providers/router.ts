@@ -1,5 +1,6 @@
 import type { Provider, Message, ChatOptions, ChatResponse, StreamChunk } from "./types.js"
 import type { RoutingConfig } from "../config/schema.js"
+import { stripToolXml, detectRepetitionLoop } from "../utils/strip-tool-xml.js"
 
 function parseRoute(route: string): { providerName: string; model: string } {
   const idx = route.indexOf("/")
@@ -40,8 +41,23 @@ export class ProviderRouter {
         } else {
           console.log(`[ProviderRouter] ✓ ${providerName}/${model} | msgs=${messages.length} sysPrompt=${sysLen}chars`)
         }
+
+        // ── Sanitize response content ──
+        let content = response.content
+        if (content) {
+          // Strip leaked internal reasoning tags (antThinking, thinking, etc.)
+          content = stripToolXml(content)
+          // Detect repetition loop (model stuck generating same block)
+          const cleaned = detectRepetitionLoop(content)
+          if (cleaned !== null) {
+            console.log(`[ProviderRouter] ⚠ Repetition loop detected in ${providerName}/${model} output, truncated from ${content.length} to ${cleaned.length} chars`)
+            content = cleaned || "（模型响应异常，请重试）"
+          }
+        }
+
         return {
           ...response,
+          content,
           routeUsed: isFallback ? `${providerName}/${model}` : undefined,
         }
       } catch (err) {

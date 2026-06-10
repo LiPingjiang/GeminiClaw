@@ -6,12 +6,13 @@ import type { FastifyInstance } from "fastify";
 import type { IChannel, ChannelContext } from "../types.js";
 import type { Db } from "../../db/client.js";
 import { messageText } from "../../providers/types.js";
+import type { ContentPart } from "../../providers/types.js";
 import { registerWebhookRoute } from "./webhook.js";
 import { QQBotWSClient, DEFAULT_INTENTS } from "./ws-client.js";
-import type { MessageSource } from "./ws-client.js";
+import type { MessageSource, QQAttachment } from "./ws-client.js";
 import { QQBotApi, parseInteractionEvent } from "./api.js";
 import type { InteractionEvent, InlineKeyboard } from "./api.js";
-import { sendC2CReply, buildBusyKeyboard } from "./api.js";
+import { sendC2CReply, buildBusyKeyboard, buildAgentSelectKeyboard } from "./api.js";
 import { dispatch } from "../../commands/dispatcher.js";
 import { AgentRepository } from "../../agents/repository.js";
 import { AgentGate } from "../../guidance/agent-gate.js";
@@ -100,6 +101,7 @@ export class QQBotChannel implements IChannel {
       source: MessageSource,
       content: string,
       _msgId: string,
+      attachments?: QQAttachment[],
     ): Promise<string> => {
       // Derive userId from source
       const userId = source.type === "c2c" ? source.openid : source.userOpenid;
@@ -126,6 +128,7 @@ export class QQBotChannel implements IChannel {
       if (gate) {
         // Check if user's agent is busy
         const busyInfo = gate.checkBusy(userId);
+        console.log(`[AgentGate] checkBusy(${userId.slice(0, 8)}…) → ${busyInfo ? `BUSY: ${busyInfo.currentWork}` : "idle"}`);
         if (busyInfo) {
           // Agent is busy — send keyboard prompt and return early
           const requestId = randomUUID().slice(0, 8);
@@ -156,7 +159,7 @@ export class QQBotChannel implements IChannel {
       // ── Delegate to processWithAgent ──────────────────────────────────
       const runSignal = gate && currentAgentId ? gate.getSignal(currentAgentId) : undefined;
       try {
-        const reply = await processWithAgent(sessionId, currentAgentId, content, _msgId, userId, runSignal);
+        const reply = await processWithAgent(sessionId, currentAgentId, content, _msgId, userId, runSignal, attachments);
         return reply;
       } finally {
         // ALWAYS mark idle, even if processWithAgent throws or agent loop hangs
@@ -176,6 +179,7 @@ export class QQBotChannel implements IChannel {
       msgId: string,
       userId: string,
       signal?: AbortSignal,
+      attachments?: QQAttachment[],
     ): Promise<string> => {
       await memory.ensureSession(sessionId);
 
@@ -194,6 +198,26 @@ export class QQBotChannel implements IChannel {
       }
 
       const convCtx = await memory.getContext(sessionId, content);
+
+      // ── Build user message content: text + optional image attachments ──
+      let userContent: string | ContentPart[];
+      if (attachments && attachments.length > 0) {
+        const parts: ContentPart[] = [];
+        if (content) {
+          parts.push({ type: "text", text: content });
+        }
+        for (const att of attachments) {
+          // QQ image URLs need https:// prefix
+          const imgUrl = att.url.startsWith("//") ? `https:${att.url}` : att.url;
+          parts.push({ type: "image_url", image_url: { url: imgUrl, detail: "auto" } });
+        }
+        if (parts.length === 0) {
+          parts.push({ type: "text", text: "(image)" });
+        }
+        userContent = parts;
+      } else {
+        userContent = content;
+      }
 
       const messages = [
         ...convCtx.messages.flatMap((m) => {
@@ -238,7 +262,7 @@ export class QQBotChannel implements IChannel {
           }
           return [];
         }),
-        { role: "user" as const, content },
+        { role: "user" as const, content: userContent },
       ];
 
       const modelOverride = modelOverrides.get(userId);
@@ -374,10 +398,18 @@ export class QQBotChannel implements IChannel {
       if (parts.length < 3) return;
       const requestId = parts[1];
       const choice = parts[2]; // "queue" or "new"
+      console.log(`[AgentGate] INTERACTION received: choice=${choice}, requestId=${requestId}, user=${event.userOpenid.slice(0, 8)}…`);
 
       const pending = pendingBusy.get(requestId);
       if (!pending) {
-        console.warn("[QQBotChannel] busy interaction for unknown requestId:", requestId);
+        console.warn("[QQBotChannel] busy interaction for unknown requestId:", requestId, "(possibly expired after restart)");
+        // Give user feedback instead of silently ignoring
+        if (this.api) {
+          const target = event.chatType === "group" && event.groupOpenid
+            ? { type: "group" as const, groupOpenid: event.groupOpenid }
+            : { type: "c2c" as const, openid: event.userOpenid };
+          await this.api.sendActive(target, "⚠️ 该操作已过期（可能由于助手重启），请重新发送消息。");
+        }
         return;
       }
       pendingBusy.delete(requestId);
@@ -463,6 +495,111 @@ export class QQBotChannel implements IChannel {
             : { type: "group" as const, groupOpenid: (pending.source as any).groupOpenid };
           await this.api.sendLongMessage(target, reply);
         }
+      } else if (choice === "select" && gate) {
+        // Show agent selection keyboard
+        const agents = gate.listUserAgents(pending.userId);
+        const target = pending.source.type === "c2c"
+          ? { type: "c2c" as const, openid: (pending.source as any).openid }
+          : { type: "group" as const, groupOpenid: (pending.source as any).groupOpenid };
+
+        // Filter to only show agents other than the currently busy one
+        const currentBusyAgent = gate.getUserAgentId(pending.userId);
+        const otherAgents = agents.filter((a) => a.agentId !== currentBusyAgent);
+
+        if (otherAgents.length === 0) {
+          // No other agents available — tell user and offer to create new
+          if (this.api) {
+            await this.api.sendActive(
+              target,
+              "📋 你目前只有当前助手，没有其他可选助手。\n请新建一个或等待当前任务完成。",
+              buildBusyKeyboard(requestId),
+            );
+            // Re-insert pending so user can still pick another option
+            pendingBusy.set(requestId, pending);
+          }
+        } else {
+          // Show agent selection keyboard — keep pendingBusy alive for selagent handler
+          pendingBusy.set(requestId, pending);
+          if (this.api) {
+            const keyboard = buildAgentSelectKeyboard(requestId, otherAgents);
+            await this.api.sendActive(target, "📋 选择一个助手来处理你的消息：", keyboard);
+          }
+        }
+      }
+    });
+
+    // -----------------------------------------------------------------------
+    // Agent-selection interaction handler
+    // -----------------------------------------------------------------------
+    registerInteractionHandler("selagent:", async (event: InteractionEvent) => {
+      const parts = event.buttonData.split(":");
+      // Format: "selagent:{requestId}:{agentId|back}"
+      if (parts.length < 3) return;
+      const requestId = parts[1];
+      const action = parts[2]; // agentId or "back"
+      console.log(`[AgentGate] SELAGENT interaction: action=${action}, requestId=${requestId}`);
+
+      const pending = pendingBusy.get(requestId);
+      if (!pending) {
+        console.warn("[QQBotChannel] selagent interaction for unknown requestId:", requestId);
+        if (this.api) {
+          const target = event.chatType === "group" && event.groupOpenid
+            ? { type: "group" as const, groupOpenid: event.groupOpenid }
+            : { type: "c2c" as const, openid: event.userOpenid };
+          await this.api.sendActive(target, "⚠️ 该操作已过期，请重新发送消息。");
+        }
+        return;
+      }
+
+      const target = pending.source.type === "c2c"
+        ? { type: "c2c" as const, openid: (pending.source as any).openid }
+        : { type: "group" as const, groupOpenid: (pending.source as any).groupOpenid };
+
+      if (action === "back") {
+        // Return to busy keyboard — keep pendingBusy alive
+        pendingBusy.set(requestId, pending);
+        if (this.api) {
+          await this.api.sendActive(target, "⏳ 请选择操作：", buildBusyKeyboard(requestId));
+        }
+        return;
+      }
+
+      // action is an agentId — user selected a specific agent
+      const selectedAgentId = action;
+
+      if (!gate) return;
+
+      // Verify agent is still idle
+      if (gate.isBusy(selectedAgentId)) {
+        // Agent became busy since keyboard was shown — refresh list
+        pendingBusy.set(requestId, pending);
+        if (this.api) {
+          const agents = gate.listUserAgents(pending.userId);
+          const currentBusyAgent = gate.getUserAgentId(pending.userId);
+          const otherAgents = agents.filter((a) => a.agentId !== currentBusyAgent);
+          const keyboard = buildAgentSelectKeyboard(requestId, otherAgents);
+          await this.api.sendActive(target, "⚠️ 该助手已被占用，请重新选择：", keyboard);
+        }
+        return;
+      }
+
+      // Switch to selected agent and process message
+      pendingBusy.delete(requestId);
+      const gateResult = await gate.switchToAgent(pending.userId, selectedAgentId);
+      gate.markBusy(gateResult.agentId, pending.message.slice(0, 30));
+      const selectSignal = gate.getSignal(gateResult.agentId);
+      let reply: string;
+      try {
+        reply = await processWithAgent(
+          gateResult.sessionId, gateResult.agentId,
+          pending.message, pending.msgId, pending.userId, selectSignal,
+        );
+      } finally {
+        gate.markIdle(gateResult.agentId);
+      }
+      // Send the reply
+      if (reply && this.api) {
+        await this.api.sendLongMessage(target, reply);
       }
     });
 
@@ -470,6 +607,7 @@ export class QQBotChannel implements IChannel {
     // General interaction handler (routes to registered prefix handlers)
     // -----------------------------------------------------------------------
     const handleInteraction = async (event: InteractionEvent): Promise<void> => {
+      console.log(`[QQBotChannel] INTERACTION_CREATE: buttonData="${event.buttonData}", user=${event.userOpenid.slice(0, 8)}…, chatType=${event.chatType}`);
       // Route to registered handlers by prefix
       for (const [prefix, handler] of interactionHandlers) {
         if (event.buttonData.startsWith(prefix)) {

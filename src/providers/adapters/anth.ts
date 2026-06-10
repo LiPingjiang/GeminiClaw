@@ -61,10 +61,29 @@ function toAnthropicMessages(messages) {
             continue;
         if (m.role === "tool") {
             const last = result[result.length - 1];
+            // Build tool_result content — include multimodal images if present
+            let toolContent;
+            if (m.multimodal && Array.isArray(m.multimodal) && m.multimodal.length > 0) {
+                // Convert ContentPart[] to Anthropic content blocks inside tool_result
+                toolContent = m.multimodal.map((part) => {
+                    if (part.type === "text") {
+                        return { type: "text", text: part.text };
+                    }
+                    const url = part.image_url.url;
+                    if (url.startsWith("data:")) {
+                        const [meta, data] = url.split(",", 2);
+                        const mediaType = (meta.split(";")[0].split(":")[1] ?? "image/jpeg");
+                        return { type: "image", source: { type: "base64", media_type: mediaType, data } };
+                    }
+                    return { type: "image", source: { type: "url", url } };
+                });
+            } else {
+                toolContent = typeof m.content === "string" ? m.content : "";
+            }
             const block = {
                 type: "tool_result",
                 tool_use_id: m.tool_call_id ?? "",
-                content: typeof m.content === "string" ? m.content : "",
+                content: toolContent,
             };
             if (last && last.role === "user" && Array.isArray(last.content)) {
                 ;

@@ -538,7 +538,7 @@ export function buildConfirmKeyboard(actionKey: string): InlineKeyboard {
 
 /**
  * Build a keyboard for when the user's agent is busy.
- * Two buttons: queue (wait) or spawn new agent.
+ * Four buttons: queue, new, interrupt, select existing.
  * @param requestId unique id to track this specific busy prompt
  */
 export function buildBusyKeyboard(requestId: string): InlineKeyboard {
@@ -569,11 +569,71 @@ export function buildBusyKeyboard(requestId: string): InlineKeyboard {
               `busy:${requestId}:interrupt`,
               { visitedLabel: "已打断", style: 1, groupId: "busy-choice" },
             ),
+            buildKeyboardButton(
+              "busy-select",
+              "📋 选择助手",
+              `busy:${requestId}:select`,
+              { visitedLabel: "已选择", style: 1, groupId: "busy-choice" },
+            ),
           ],
         },
       ],
     },
   };
+}
+
+/**
+ * Build a keyboard listing all user's agents for selection.
+ * Each agent gets a button showing name + busy/idle status.
+ * @param requestId unique id to track this specific busy prompt
+ * @param agents list of user's agents with their busy status
+ */
+export function buildAgentSelectKeyboard(
+  requestId: string,
+  agents: Array<{ agentId: string; agentName: string; busy: boolean }>,
+): InlineKeyboard {
+  const rows: Array<{ buttons: InlineKeyboardButton[] }> = [];
+
+  // Build agent buttons, max 2 per row, max 4 rows for agents (leaving 1 row for back button)
+  const MAX_AGENTS_SHOWN = 8; // 4 rows × 2 buttons
+  const shown = agents.slice(0, MAX_AGENTS_SHOWN);
+
+  for (let i = 0; i < shown.length; i += 2) {
+    const rowButtons: InlineKeyboardButton[] = [];
+    for (let j = i; j < Math.min(i + 2, shown.length); j++) {
+      const a = shown[j];
+      const status = a.busy ? "🔴忙" : "🟢闲";
+      const label = `${a.agentName} ${status}`;
+      // Busy agents use style 0 (grey), idle use style 1 (blue)
+      rowButtons.push(
+        buildKeyboardButton(
+          `sel-${j}`,
+          label,
+          `selagent:${requestId}:${a.agentId}`,
+          {
+            visitedLabel: `已选 ${a.agentName}`,
+            style: a.busy ? 0 : 1,
+            groupId: "agent-select",
+          },
+        ),
+      );
+    }
+    rows.push({ buttons: rowButtons });
+  }
+
+  // Back button row
+  rows.push({
+    buttons: [
+      buildKeyboardButton(
+        "sel-back",
+        "↩️ 返回",
+        `selagent:${requestId}:back`,
+        { visitedLabel: "已返回", style: 0, groupId: "agent-select" },
+      ),
+    ],
+  });
+
+  return { content: { rows } };
 }
 
 // ---------------------------------------------------------------------------

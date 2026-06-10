@@ -83,10 +83,10 @@ export async function runsRoute(
           }))
         }
 
-        const messages: Message[] = [
+        const messages = [
           ...priorMessages as Message[],
           { role: "user" as const, content: message },
-        ]
+        ] as any
 
         if (agentLoop) {
           // Agent loop mode: stream with tool calls

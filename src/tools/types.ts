@@ -10,9 +10,30 @@ export interface JSONSchema {
   [key: string]: unknown;
 }
 
+// ── Multimodal content parts for tool results ────────────────────────────────
+export interface TextContentBlock {
+  type: "text";
+  text: string;
+}
+
+export interface ImageContentBlock {
+  type: "image_url";
+  image_url: { url: string; detail?: string };
+}
+
+export type MultimodalContentBlock = TextContentBlock | ImageContentBlock;
+
+// ── Tool result types ────────────────────────────────────────────────────────
 export type ToolResult =
   | { type: "text"; text: string }
-  | { type: "error"; error: string };
+  | { type: "error"; error: string }
+  | {
+      type: "multimodal";
+      /** Content blocks: text + image interleaved (Hermes-style envelope) */
+      content: MultimodalContentBlock[];
+      /** Plain-text fallback for non-vision models or guardrail hashing */
+      textSummary: string;
+    };
 
 export interface ToolContext {
   sessionId: string;

@@ -24,6 +24,13 @@ export interface BusyInfo {
   currentWork: string; // what the agent is doing
 }
 
+export interface AgentInfo {
+  agentId: string;
+  agentName: string;
+  sessionId: string;
+  busy: boolean;
+}
+
 /** Map of agentId -> busy state */
 const busyMap = new Map<string, boolean>();
 /** Map of agentId -> current work description */
@@ -182,6 +189,49 @@ export class AgentGate {
     return this._getSticky(userId)?.agentId ?? null;
   }
 
+  /**
+   * List all agents belonging to a user, with their busy/idle status.
+   * Queries the user_agents mapping table.
+   */
+  listUserAgents(userId: string): AgentInfo[] {
+    const rows = this.db
+      .prepare(
+        `SELECT ua.agent_id, ua.agent_name, ua.session_id
+         FROM user_agents ua
+         JOIN agents a ON a.id = ua.agent_id
+         WHERE ua.openid = ? AND a.status = 'active'
+         ORDER BY ua.created_at DESC`,
+      )
+      .all(userId) as Array<{ agent_id: string; agent_name: string; session_id: string }>;
+
+    return rows.map((r) => ({
+      agentId: r.agent_id,
+      agentName: r.agent_name,
+      sessionId: r.session_id,
+      busy: busyMap.get(r.agent_id) || false,
+    }));
+  }
+
+  /**
+   * Switch the user's sticky session to an existing agent.
+   * Returns GateResult for the switched agent.
+   */
+  async switchToAgent(userId: string, agentId: string): Promise<GateResult> {
+    const agent = this.agentRepo.getById(agentId) as any;
+    if (!agent || agent.status !== "active") {
+      throw new Error(`Agent not found or inactive: ${agentId}`);
+    }
+
+    const result: GateResult = {
+      sessionId: agent.session_id,
+      agentId: agent.id,
+      agentName: agent.agent_name,
+      isNew: false,
+    };
+    this._setSticky(userId, result);
+    return result;
+  }
+
   // ── Private ─────────────────────────────────────────────────────────────
 
   private _getSticky(userId: string): {
@@ -237,7 +287,18 @@ export class AgentGate {
       isNew: true,
     };
     this._setSticky(userId, result);
+    this._recordUserAgent(userId, result);
     return result;
+  }
+
+  /** Record agent in user_agents mapping table */
+  private _recordUserAgent(userId: string, result: GateResult): void {
+    this.db
+      .prepare(
+        `INSERT OR IGNORE INTO user_agents (openid, agent_id, session_id, agent_name)
+         VALUES (?, ?, ?, ?)`,
+      )
+      .run(userId, result.agentId, result.sessionId, result.agentName);
   }
 
   private _countUserAgents(_userId: string): number {
@@ -248,7 +309,7 @@ export class AgentGate {
     return row?.cnt ?? 0;
   }
 
-  private _recycleOldest(_userId: string): void {
+  private _recycleOldest(userId: string): void {
     // Find the oldest idle agent and mark it completed
     const agents = this.db
       .prepare(
@@ -259,6 +320,10 @@ export class AgentGate {
     for (const a of agents) {
       if (!busyMap.get(a.id)) {
         this.agentRepo.update(a.id, { status: "completed" });
+        // Clean up user_agents record
+        this.db
+          .prepare(`DELETE FROM user_agents WHERE openid = ? AND agent_id = ?`)
+          .run(userId, a.id);
         return;
       }
     }

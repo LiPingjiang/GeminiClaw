@@ -193,8 +193,15 @@ registry.register({
             if (action === 'screenshot') {
                 const buf = await page.screenshot({ type: 'png', fullPage: false });
                 const b64 = buf.toString('base64');
-                // Return as text with data URL so the LLM knows what it is
-                return { type: 'text', text: `[Screenshot taken, ${buf.length} bytes]\ndata:image/png;base64,${b64.slice(0, 100)}... (truncated for context)` };
+                // Return as multimodal envelope — full image for LLM vision analysis
+                return {
+                    type: 'multimodal',
+                    content: [
+                        { type: 'text', text: `[Screenshot captured: ${buf.length} bytes, PNG]` },
+                        { type: 'image_url', image_url: { url: `data:image/png;base64,${b64}`, detail: 'auto' } },
+                    ],
+                    textSummary: `[Screenshot taken, ${buf.length} bytes PNG. Image sent to vision model for analysis.]`,
+                };
             }
             // ── back ───────────────────────────────────────────────────────────────
             if (action === 'back') {
