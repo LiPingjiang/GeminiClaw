@@ -319,6 +319,9 @@ export class QQBotWSClient {
   // Message handlers
   // -------------------------------------------------------------------------
   private async _handleC2CMessage(d: unknown): Promise<void> {
+    // DEBUG: Log raw C2C message payload to understand image format
+    console.log("[QQBotWSClient] C2C_MESSAGE raw payload:", JSON.stringify(d, null, 2)?.slice(0, 2000));
+
     const msg = d as {
       author?: { user_openid?: string; id?: string };
       content?: string;

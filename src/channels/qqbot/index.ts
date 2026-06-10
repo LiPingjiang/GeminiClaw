@@ -209,7 +209,40 @@ export class QQBotChannel implements IChannel {
         for (const att of attachments) {
           // QQ image URLs need https:// prefix
           const imgUrl = att.url.startsWith("//") ? `https:${att.url}` : att.url;
-          parts.push({ type: "image_url", image_url: { url: imgUrl, detail: "auto" } });
+          // Download image and convert to base64 data URI
+          // QQ multimedia CDN requires Authorization header with bot access token
+          try {
+            const token = await this.api!.getToken();
+            const imgResp = await fetch(imgUrl, {
+              headers: { Authorization: `QQBot ${token}` },
+            });
+            if (imgResp.ok) {
+              const buf = Buffer.from(await imgResp.arrayBuffer());
+              const mime = att.content_type || imgResp.headers.get("content-type") || "image/jpeg";
+              const b64 = buf.toString("base64");
+              const dataUri = `data:${mime};base64,${b64}`;
+              parts.push({ type: "image_url", image_url: { url: dataUri, detail: "auto" } });
+              console.log(`[QQBot] Downloaded image (${buf.length} bytes) as base64 data URI`);
+            } else {
+              console.warn(`[QQBot] Image download failed (${imgResp.status}), trying without auth...`);
+              // Fallback: try without auth (some CDN URLs are publicly accessible)
+              const fallbackResp = await fetch(imgUrl);
+              if (fallbackResp.ok) {
+                const buf = Buffer.from(await fallbackResp.arrayBuffer());
+                const mime = att.content_type || fallbackResp.headers.get("content-type") || "image/jpeg";
+                const b64 = buf.toString("base64");
+                const dataUri = `data:${mime};base64,${b64}`;
+                parts.push({ type: "image_url", image_url: { url: dataUri, detail: "auto" } });
+                console.log(`[QQBot] Downloaded image without auth (${buf.length} bytes)`);
+              } else {
+                console.error(`[QQBot] Image download failed completely (${fallbackResp.status}), skipping`);
+                parts.push({ type: "text", text: `[图片无法下载: ${att.filename || "unknown"}]` });
+              }
+            }
+          } catch (err) {
+            console.error(`[QQBot] Image download error:`, err);
+            parts.push({ type: "text", text: `[图片下载失败: ${att.filename || "unknown"}]` });
+          }
         }
         if (parts.length === 0) {
           parts.push({ type: "text", text: "(image)" });
