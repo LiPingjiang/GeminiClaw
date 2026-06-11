@@ -39,6 +39,8 @@ export interface GitOps {
   getHeadCommit(): string
   /** Stage all changes */
   stageAll(): void
+  /** Discard ALL uncommitted changes (tracked + staged) in the working tree */
+  discardChanges(): void
 }
 
 export interface SlotManagerConfig {
@@ -152,7 +154,13 @@ export class SlotManager {
       throw new Error(`Intent ${intentId} not found on standby slot`)
     }
 
-    // Cleanup: go back to main, delete the evolution branch
+    // Cleanup: discard any uncommitted mutation changes so they cannot leak
+    // into main's working tree, then go back to main and delete the branch.
+    try {
+      this.git.discardChanges()
+    } catch {
+      // best-effort
+    }
     this.git.checkout(this.config.mainBranch)
     try {
       this.git.deleteBranch(standby.branch)
@@ -270,6 +278,13 @@ export class SlotManager {
     const standby = this.getStandby()
     if (standby.status === "standby") return
 
+    // Discard uncommitted mutation changes before switching back to main,
+    // otherwise a failed/aborted (or dry-run) cycle pollutes main's tree.
+    try {
+      this.git.discardChanges()
+    } catch {
+      // best-effort
+    }
     this.git.checkout(this.config.mainBranch)
     if (standby.branch) {
       try {

@@ -201,6 +201,11 @@ class SlotGitOpsAdapter implements SlotGitOps {
   stageAll(): void {
     this.exec("git add -A")
   }
+
+  discardChanges(): void {
+    // Reset staged + tracked modifications back to HEAD of the current branch.
+    this.exec("git reset --hard HEAD")
+  }
 }
 
 // -- LLM Client Adapter (wraps ProviderRouter) --

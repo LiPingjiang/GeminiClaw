@@ -27,6 +27,7 @@ function createMockGitOps(): GitOps {
     deleteBranch: vi.fn(),
     getHeadCommit: vi.fn(() => "abc123"),
     stageAll: vi.fn(),
+    discardChanges: vi.fn(),
   }
 }
 

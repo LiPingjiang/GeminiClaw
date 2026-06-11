@@ -69,6 +69,7 @@ function createMockSlotGitOps(): SlotGitOps {
     deleteBranch: vi.fn(),
     getHeadCommit: vi.fn().mockReturnValue("abc123def"),
     stageAll: vi.fn(),
+    discardChanges: vi.fn(),
   }
 }
 
