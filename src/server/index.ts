@@ -13,6 +13,7 @@ import { streamRoute } from "./routes/stream.js"
 import { traceRoute } from "./routes/trace.js";
 import { AgentLoop } from "../agent/index.js";
 import { registry as toolRegistry } from "../tools/index.js";
+import { setMultiAgentRuntime } from "../multi-agent/runtime-context.js";
 import { ChannelRegistry } from "../channels/registry.js";
 import type { IChannel } from "../channels/types.js"
 import { QQBotChannel } from "../channels/qqbot/index.js";
@@ -190,6 +191,13 @@ export async function buildServer(
       },
     },
     logger: { debug: () => undefined, error: console.error },
+  });
+
+  // Wire the multi-agent runtime so the `delegate_tasks` tool can spawn
+  // isolated sub-agents reusing the same chatFn + tool registry.
+  setMultiAgentRuntime({
+    chatFn: chatFn as any,
+    toolRegistry: makeRegistryAdapter() as any,
   });
 
   await fastify.register(healthRoute, { twinSystem });

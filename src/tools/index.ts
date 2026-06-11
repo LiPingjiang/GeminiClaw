@@ -22,4 +22,5 @@ import './view_image.js';
 import './memory_inspect.js';
 import './memory_search.js';
 import './memory_edit.js';
+import './delegate_tasks.js';
 export { registry } from './registry.js';
