@@ -651,33 +651,28 @@ export class QQBotChannel implements IChannel {
           await this.api.sendLongMessage(target, reply);
         }
       } else if (choice === "select" && gate) {
-        // Show agent selection keyboard
+        // Show agent selection keyboard listing ALL active agents (idle AND busy).
         const agents = gate.listUserAgents(pending.userId);
         const target = pending.source.type === "c2c"
           ? { type: "c2c" as const, openid: (pending.source as any).openid }
           : { type: "group" as const, groupOpenid: (pending.source as any).groupOpenid };
 
-        // Filter to only show agents other than the currently busy one
-        const currentBusyAgent = gate.getUserAgentId(pending.userId);
-        const otherAgents = agents.filter((a) => a.agentId !== currentBusyAgent);
-
-        if (otherAgents.length === 0) {
-          // No other agents available — tell user and offer to create new
+        if (agents.length === 0) {
+          // No agents at all — offer to create new
           if (this.api) {
             await this.api.sendActive(
               target,
-              "📋 你目前只有当前助手，没有其他可选助手。\n请新建一个或等待当前任务完成。",
+              "📋 当前没有可选助手，请新建一个。",
               buildBusyKeyboard(requestId),
             );
-            // Re-insert pending so user can still pick another option
             pendingBusy.set(requestId, pending);
           }
         } else {
           // Show agent selection keyboard — keep pendingBusy alive for selagent handler
           pendingBusy.set(requestId, pending);
           if (this.api) {
-            const keyboard = buildAgentSelectKeyboard(requestId, otherAgents);
-            await this.api.sendActive(target, "📋 选择一个助手来处理你的消息：", keyboard);
+            const keyboard = buildAgentSelectKeyboard(requestId, agents, 0);
+            await this.api.sendActive(target, "📋 选择一个助手来处理你的消息（🟢闲 / 🔴忙）：", keyboard);
           }
         }
       }
@@ -719,26 +714,39 @@ export class QQBotChannel implements IChannel {
         return;
       }
 
-      // action is an agentId — user selected a specific agent
-      const selectedAgentId = action;
-
       if (!gate) return;
 
-      // Verify agent is still idle
-      if (gate.isBusy(selectedAgentId)) {
-        // Agent became busy since keyboard was shown — refresh list
+      // Pagination: "page:{n}" re-renders the agent list at the requested page.
+      if (action === "page") {
+        const page = parseInt(parts[3] ?? "0", 10) || 0;
         pendingBusy.set(requestId, pending);
         if (this.api) {
           const agents = gate.listUserAgents(pending.userId);
-          const currentBusyAgent = gate.getUserAgentId(pending.userId);
-          const otherAgents = agents.filter((a) => a.agentId !== currentBusyAgent);
-          const keyboard = buildAgentSelectKeyboard(requestId, otherAgents);
-          await this.api.sendActive(target, "⚠️ 该助手已被占用，请重新选择：", keyboard);
+          const keyboard = buildAgentSelectKeyboard(requestId, agents, page);
+          await this.api.sendActive(target, "📋 选择一个助手来处理你的消息（🟢闲 / 🔴忙）：", keyboard);
         }
         return;
       }
 
-      // Switch to selected agent and process message
+      // action is an agentId — user selected a specific agent
+      const selectedAgentId = action;
+
+      // If the selected agent is busy, switch to it (set sticky) and let the user
+      // decide how to handle the conflict: queue, interrupt, or new agent.
+      if (gate.isBusy(selectedAgentId)) {
+        await gate.switchToAgent(pending.userId, selectedAgentId);
+        pendingBusy.set(requestId, pending);
+        if (this.api) {
+          await this.api.sendActive(
+            target,
+            "⚠️ 该助手正在忙，你希望如何处理？",
+            buildBusyKeyboard(requestId),
+          );
+        }
+        return;
+      }
+
+      // Idle agent — switch and process immediately.
       pendingBusy.delete(requestId);
       const gateResult = await gate.switchToAgent(pending.userId, selectedAgentId);
       gate.markBusy(gateResult.agentId, pending.message.slice(0, 30));
