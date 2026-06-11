@@ -201,8 +201,11 @@ export class QQBotChannel implements IChannel {
               const wm = new WorkingMemoryBuilder(new MemoryPaths(memoryRoot));
               const today = new Date().toISOString().slice(0, 10);
               usageLine =
-                wm.renderUsageSummary(ms.targetAgentId, today) + "\n\n";
-            } catch {}
+                wm.renderUsageSummary(ms.targetAgentId, today) +
+                "\n（随时说「返回」即可切回助手）\n\n";
+            } catch {
+              usageLine = "（随时说「返回」即可切回助手）\n\n";
+            }
             const reply = await runMemoryManager(
               ms.sessionId,
               ms.targetAgentId,
