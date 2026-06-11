@@ -73,6 +73,6 @@ it("multiple sessions are isolated", async () => {
   const ctxA = await strategy.getContext("sA", "next")
   const ctxB = await strategy.getContext("sB", "next")
 
-  expect(ctxA.messages.some(m => m.content.includes("session B"))).toBe(false)
-  expect(ctxB.messages.some(m => m.content.includes("session A"))).toBe(false)
+  expect(ctxA.messages.some(m => typeof m.content === "string" && m.content.includes("session B"))).toBe(false)
+  expect(ctxB.messages.some(m => typeof m.content === "string" && m.content.includes("session A"))).toBe(false)
 })

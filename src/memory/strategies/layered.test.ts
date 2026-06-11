@@ -110,7 +110,7 @@ it("getContext loads topic doc when router matches with high confidence", async 
 
   // 应有包含文档内容的 system message
   const docMsg = ctx.messages.filter(m => m.role === "system")
-  expect(docMsg.some(m => m.content.includes("详细概览内容"))).toBe(true)
+  expect(docMsg.some(m => typeof m.content === "string" && m.content.includes("详细概览内容"))).toBe(true)
 })
 
 it("getContext loads lower-level doc when router returns low confidence (< 0.7)", async () => {
@@ -144,7 +144,7 @@ it("getContext loads lower-level doc when router returns low confidence (< 0.7)"
   const ctx = await strategy.getContext("s1", "随便问问")
 
   // 低置信度时仍加载文档，但 level 被 clamp（不超过 level 2）
-  const docMsgs = ctx.messages.filter(m => m.role === "system" && m.content.includes("详细内容"))
+  const docMsgs = ctx.messages.filter(m => m.role === "system" && typeof m.content === "string" && m.content.includes("详细内容"))
   expect(docMsgs.length).toBeGreaterThanOrEqual(1)
 })
 
