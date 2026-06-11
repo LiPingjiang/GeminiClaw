@@ -199,6 +199,22 @@ export class QQBotChannel implements IChannel {
 
       const convCtx = await memory.getContext(sessionId, content);
 
+      // ── Inject current agent identity (fixed working memory, never compacted) ──
+      let agentIdentityMsg: { role: "system"; content: string } | null = null;
+      let currentAgentDisplayName: string | null = null;
+      if (agentId && this.db) {
+        const agentRow = this.db
+          .prepare("SELECT agent_name, description FROM agents WHERE id = ?")
+          .get(agentId) as { agent_name: string; description: string | null } | undefined;
+        if (agentRow) {
+          currentAgentDisplayName = agentRow.agent_name;
+          agentIdentityMsg = {
+            role: "system" as const,
+            content: `## 当前助手身份\n你现在以【${agentRow.agent_name}】身份工作。${agentRow.description ? "\n职责：" + agentRow.description : ""}`,
+          };
+        }
+      }
+
       // ── Build user message content: text + optional image attachments ──
       let userContent: string | ContentPart[];
       if (attachments && attachments.length > 0) {
@@ -295,6 +311,8 @@ export class QQBotChannel implements IChannel {
           }
           return [];
         }),
+        // Inject agent identity as a system message (never persisted/compacted)
+        ...(agentIdentityMsg ? [agentIdentityMsg] : []),
         { role: "user" as const, content: userContent },
       ];
 
@@ -415,6 +433,11 @@ export class QQBotChannel implements IChannel {
         sessionId,
         messagesToPersist as Parameters<typeof memory.appendMessages>[1],
       );
+
+      // ── Prepend bold agent name as first line (display only, not persisted) ──
+      if (currentAgentDisplayName) {
+        finalReply = `**${currentAgentDisplayName}**\n${finalReply}`;
+      }
       // Notify twin-system activity tracker (for idle detection)
       if (ctx.twinSystem) {
         ctx.twinSystem.activityTracker.recordActivity();

@@ -8,6 +8,8 @@ import './web_fetch.js';
 import './clarify_uncertainty_register.js';
 import './evolution_command.js';
 import './create_agent.js';
+import './list_agents.js';
+import './switch_agent.js';
 import './web_search.js';
 import './browser.js';
 import './repo_map.js';
