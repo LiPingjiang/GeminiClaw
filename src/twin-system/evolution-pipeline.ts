@@ -60,6 +60,12 @@ export interface EvolutionPipelineConfig {
   }
   /** Called when human approval is needed. Returns true if approved. */
   onApprovalNeeded?: (intent: EvolutionIntent, summary: string) => Promise<boolean>
+  /**
+   * Dry-run mode: validate the full pipeline (mutation + build + test) but
+   * do NOT execute the slot switch (no squash-merge into main). Slot is
+   * released cleanly back to standby. Used for safe observation in production.
+   */
+  dryRun?: boolean
 }
 
 export interface PipelineResult {
@@ -80,6 +86,7 @@ export class EvolutionPipeline {
   private config: PipelineConfig
   private logger: NonNullable<EvolutionPipelineConfig["logger"]>
   private onApprovalNeeded?: EvolutionPipelineConfig["onApprovalNeeded"]
+  private dryRun: boolean
   private events: PipelineEvent[] = []
 
   constructor(params: EvolutionPipelineConfig) {
@@ -94,6 +101,7 @@ export class EvolutionPipeline {
       error: () => {},
     }
     this.onApprovalNeeded = params.onApprovalNeeded
+    this.dryRun = params.dryRun ?? false
   }
 
   /**
@@ -231,6 +239,28 @@ export class EvolutionPipeline {
     }
 
     // ── Step 6: Execute Switch ────────────────────────────────────────────
+    // Dry-run: validation passed, but skip the actual slot switch and
+    // release the standby slot cleanly so the next cycle can run.
+    if (this.dryRun) {
+      this.log(
+        `[DRY-RUN] Validation passed for ${intent.id}; skipping slot switch and releasing standby.`,
+      )
+      this.slotManager.abortEvolution()
+      this.emit({
+        type: "pipeline_completed",
+        intentId: intent.id,
+        success: true,
+        summary: `[DRY-RUN] ${intent.description}: validated, switch skipped.`,
+      })
+      return {
+        success: true,
+        intentId: intent.id,
+        mutationResult,
+        validationResult,
+        events: [...this.events],
+      }
+    }
+
     let switchRecord: EvolutionRecord
     try {
       switchRecord = this.slotManager.executeSwitch(intent)

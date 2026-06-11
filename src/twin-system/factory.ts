@@ -631,6 +631,7 @@ export function createTwinSystem(
     },
     logger,
     onApprovalNeeded: (intent, summary) => approvalGate.requestApproval(intent, summary),
+    dryRun: evolutionConfig.dryRun,
   })
 
   // ── 7. Post-Switch Monitor ──────────────────────────────────────────────
@@ -674,10 +675,21 @@ export function createTwinSystem(
 
   const dryRun = evolutionConfig.dryRun
 
+  // Guards against concurrent re-entry: a pipeline cycle may run for several
+  // minutes (e.g. waiting on human approval). Without this lock the scheduler
+  // would keep triggering new cycles that collide on the standby slot.
+  let cycleRunning = false
+
   const scheduler = new SchedulerRunner({
     activityTracker,
     onTrigger: async (reason) => {
       logger.info("Evolution triggered (reason=%s, dryRun=%s)", reason, dryRun)
+
+      // Re-entry guard: skip if a cycle is still in flight.
+      if (cycleRunning) {
+        logger.info("Evolution cycle already running, skipping trigger")
+        return false
+      }
 
       // Daily budget check
       if (!metrics.canRunToday()) {
@@ -697,6 +709,7 @@ export function createTwinSystem(
       }
 
       const startedAt = Date.now()
+      cycleRunning = true
       try {
         const result = await pipeline.run(intent)
 
@@ -740,6 +753,8 @@ export function createTwinSystem(
           rolled_back: false,
         })
         return false
+      } finally {
+        cycleRunning = false
       }
     },
     config: schedulerConfig,
