@@ -21,6 +21,10 @@ import { stripToolXml } from "../../utils/strip-tool-xml.js";
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { MemoryPaths } from "../../memory/paths.js";
+import { MemoryManagerSession, MEMORY_MANAGER_PROMPT } from "../../guidance/memory-manager.js";
+import { resolveMemIntent } from "../../guidance/mem-intent.js";
+import { homedir } from "node:os";
+import { join as pathJoin } from "node:path";
 import { traceHub } from "../../trace/hub.js";
 
 export interface QQBotChannelConfig {
@@ -88,6 +92,48 @@ export class QQBotChannel implements IChannel {
         })
       : null;
 
+    // ── Memory manager (isolated /mem sessions) ──────────────────────────
+    const memMgr = this.db ? new MemoryManagerSession(this.db) : null;
+    const memoryRoot = pathJoin(homedir(), ".gemeniclaw");
+
+    // Drive the agent loop for a memory-management turn. Isolated: never
+    // persists to the target agent's history (no appendMessages).
+    const runMemoryManager = async (
+      memSessionId: string,
+      targetAgentId: string,
+      content: string,
+      userId: string,
+    ): Promise<string> => {
+      const messages = [
+        { role: "system" as const, content: MEMORY_MANAGER_PROMPT },
+        { role: "user" as const, content },
+      ];
+      const modelOverride = modelOverrides.get(userId);
+      let finalReply = "";
+      let _lastNonEmptyReply = "";
+      for await (const event of agentLoop.run({
+        messages,
+        sessionId: memSessionId,
+        ...(modelOverride ? { model: modelOverride } : {}),
+        toolContextExtra: {
+          ...(this.db ? { db: this.db } : {}),
+          userId,
+          memoryRoot,
+          targetAgentId,
+        },
+      })) {
+        if (event.type === "message_delta") {
+          finalReply += event.delta;
+        } else if (event.type === "turn_start") {
+          if (finalReply) _lastNonEmptyReply = finalReply;
+          finalReply = "";
+        }
+      }
+      if (!finalReply && _lastNonEmptyReply) finalReply = _lastNonEmptyReply;
+      if (!finalReply) finalReply = "（无回复）";
+      return "🧠 记忆管家\n" + stripToolXml(finalReply);
+    };
+
     // Pending busy prompts: requestId -> { userId, message, msgId, source }
     const pendingBusy = new Map<string, {
       userId: string;
@@ -122,6 +168,35 @@ export class QQBotChannel implements IChannel {
           gate.clearUserSession(userId);
         }
         return cmdResult;
+      }
+
+      // ── 记忆管理拦截 ────────────────────────────────────────────────────
+      if (memMgr) {
+        const memIntent = resolveMemIntent(content);
+        if (memMgr.isActive(userId) || memIntent) {
+          if (memIntent?.action === "exit") {
+            memMgr.exit(userId);
+            return "已退出记忆管理，回到正常对话。";
+          }
+          if (memIntent?.action === "enter" && !memMgr.isActive(userId)) {
+            const sticky = this.db!
+              .prepare("SELECT agent_id, agent_name FROM user_sessions WHERE openid = ?")
+              .get(userId) as { agent_id: string; agent_name: string } | undefined;
+            if (!sticky) {
+              return "你当前还没有活跃助手，先聊两句创建一个再来整理记忆。";
+            }
+            const ms = memMgr.enter(userId, sticky.agent_id, sticky.agent_name);
+            return await runMemoryManager(
+              ms.sessionId,
+              ms.targetAgentId,
+              `请先查看 ${sticky.agent_name} 的记忆全景，并简要汇报各层现状。`,
+              userId,
+            );
+          }
+          // 已在记忆管理中 → 路由到记忆管家
+          const ms = memMgr.getActive(userId)!;
+          return await runMemoryManager(ms.sessionId, ms.targetAgentId, content, userId);
+        }
       }
 
       // ── AgentGate: busy 检测 ────────────────────────────────────────────

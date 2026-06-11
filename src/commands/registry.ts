@@ -17,6 +17,11 @@ export const COMMAND_REGISTRY = [
         category: "session",
     },
     {
+        name: "mem",
+        description: "进入记忆管理（整理当前助手记忆）",
+        category: "session",
+    },
+    {
         name: "stop",
         description: "停止当前请求（进行中）",
         category: "session",
