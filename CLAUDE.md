@@ -14,7 +14,7 @@ Read `docs/ARCHITECTURE.md` for the full design philosophy before touching any c
 - config 加载与校验（Zod schema + evolution 配置段）
 - providers：Anthropic、mcli（支持 extraHeaders）、Friday（含 SSE stream）
 - ProviderRouter：主路由 + 有序 fallback
-- memory：buffer 策略（滑动窗口）+ layered 策略（SQLite 分层 topics）
+- memory：buffer 策略（滑动窗口）+ layered 策略；分层记忆架构（工作记忆=全局+私人，各分固定区/非固定区；离线记忆=全局长期+per-agent+public_knowledge 公共知识库）；MemoryPaths 解析路径、WorkingMemoryBuilder 组装四层；/mem 记忆管家隔离会话（memory_inspect/memory_edit，固定区改动需 confirm）
 - server：Fastify 5，`/v1/agent/chat`（非流式 + SSE 流式）、`/v1/health`、Bearer 认证
 - 输入校验：空消息 → 400
 - Twin-System：SlotManager、SafetyGuard、EvolutionPipeline
