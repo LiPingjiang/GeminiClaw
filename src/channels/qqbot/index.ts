@@ -21,6 +21,7 @@ import { stripToolXml } from "../../utils/strip-tool-xml.js";
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { MemoryPaths } from "../../memory/paths.js";
+import { MemoryWriter } from "../../memory/memory-writer.js";
 import { MemoryManagerSession, MEMORY_MANAGER_PROMPT } from "../../guidance/memory-manager.js";
 import { resolveMemIntent } from "../../guidance/mem-intent.js";
 import { homedir } from "node:os";
@@ -95,6 +96,7 @@ export class QQBotChannel implements IChannel {
     // ── Memory manager (isolated /mem sessions) ──────────────────────────
     const memMgr = this.db ? new MemoryManagerSession(this.db) : null;
     const memoryRoot = pathJoin(homedir(), ".gemeniclaw");
+    const memoryWriter = new MemoryWriter(new MemoryPaths(memoryRoot));
 
     // Drive the agent loop for a memory-management turn. Isolated: never
     // persists to the target agent's history (no appendMessages).
@@ -435,6 +437,8 @@ export class QQBotChannel implements IChannel {
           msgId,
           appId,
           clientSecret,
+          memoryRoot,
+          targetAgentId: agentId,
         },
       })) {
         // 发布到 TraceHub（fire-and-forget，不阻塞主流程）
@@ -516,6 +520,18 @@ export class QQBotChannel implements IChannel {
         sessionId,
         messagesToPersist as Parameters<typeof memory.appendMessages>[1],
       );
+
+      // ── Auto-persist this turn into daily memory (non-fatal) ──────────
+      try {
+        await memoryWriter.recordTurn({
+          userText: content,
+          assistantText: finalReply,
+          date: new Date().toISOString().slice(0, 10),
+          agentId,
+        });
+      } catch (e) {
+        console.warn("[QQBotChannel] memoryWriter.recordTurn failed (non-fatal):", String(e));
+      }
 
       // ── Prepend bold agent name as first line (display only, not persisted) ──
       if (currentAgentDisplayName) {
