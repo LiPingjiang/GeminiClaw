@@ -256,8 +256,11 @@ export class QQBotChannel implements IChannel {
 
       // ── Delegate to processWithAgent ──────────────────────────────────
       const runSignal = gate && currentAgentId ? gate.getSignal(currentAgentId) : undefined;
+      const progressTarget = source.type === "c2c"
+        ? { type: "c2c" as const, openid: source.openid }
+        : { type: "group" as const, groupOpenid: (source as any).groupOpenid };
       try {
-        const reply = await processWithAgent(sessionId, currentAgentId, content, _msgId, userId, runSignal, attachments);
+        const reply = await processWithAgent(sessionId, currentAgentId, content, _msgId, userId, runSignal, attachments, progressTarget);
         return reply;
       } finally {
         // ALWAYS mark idle, even if processWithAgent throws or agent loop hangs
@@ -278,6 +281,9 @@ export class QQBotChannel implements IChannel {
       userId: string,
       signal?: AbortSignal,
       attachments?: QQAttachment[],
+      progressTarget?:
+        | { type: "c2c"; openid: string }
+        | { type: "group"; groupOpenid: string },
     ): Promise<string> => {
       await memory.ensureSession(sessionId);
 
@@ -445,6 +451,37 @@ export class QQBotChannel implements IChannel {
       // ── TraceHub 埋点：把每个 AgentEvent 推给 gc watch ──────────────
       const _traceUserId = userId.length > 8 ? userId.slice(0, 8) + "..." : userId;
 
+      // ── Progress heartbeat: 长任务期间穿插简要进度汇报（参考 Hermes/OpenClaw heartbeat）─
+      // 避免用户在工具执行期间长时间收不到任何反馈而不停追问。
+      const HEARTBEAT_INTERVAL_MS = 25_000;
+      const HEARTBEAT_FIRST_DELAY_MS = 20_000;
+      let lastUserVisibleAt = Date.now();
+      let lastToolName: string | null = null;
+      let toolRunCount = 0;
+      let heartbeatsSent = 0;
+      let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+      const sendHeartbeat = async () => {
+        if (!this.api || !progressTarget) return;
+        if (signal?.aborted) return;
+        const idleMs = Date.now() - lastUserVisibleAt;
+        const threshold = heartbeatsSent === 0 ? HEARTBEAT_FIRST_DELAY_MS : HEARTBEAT_INTERVAL_MS;
+        // 仅在“有工具在跑 + 超过阈值未向用户输出”时才汇报
+        if (lastToolName === null) return;
+        if (idleMs < threshold) return;
+        const elapsedSec = Math.round((Date.now() - lastUserVisibleAt) / 1000);
+        const note = `⏳ 正在处理中（已执行 ${toolRunCount} 个步骤，当前：${lastToolName}，耗时 ~${elapsedSec}s）…`;
+        heartbeatsSent += 1;
+        lastUserVisibleAt = Date.now();
+        try {
+          await this.api.sendActive(progressTarget, note);
+        } catch (e) {
+          console.warn("[QQBotChannel] heartbeat sendActive failed (non-fatal):", String(e));
+        }
+      };
+      if (this.api && progressTarget) {
+        heartbeatTimer = setInterval(() => { void sendHeartbeat(); }, 5_000);
+      }
+
       for await (const event of agentLoop.run({
         messages,
         sessionId,
@@ -470,6 +507,8 @@ export class QQBotChannel implements IChannel {
 
         if (event.type === "message_delta") {
           finalReply += event.delta;
+          // 有实质文本输出，重置空闲计时
+          if (event.delta && event.delta.trim()) lastUserVisibleAt = Date.now();
         } else if (event.type === "turn_start") {
           flushPendingTurn();
           if (finalReply) _lastNonEmptyReply = finalReply;
@@ -477,6 +516,8 @@ export class QQBotChannel implements IChannel {
         } else if (event.type === "turn_end") {
           pendingAssistant = { ...event.message };
         } else if (event.type === "tool_start") {
+          lastToolName = event.toolName;
+          toolRunCount += 1;
           pendingToolCalls.push({
             id: event.toolCallId,
             type: "function",
@@ -493,6 +534,7 @@ export class QQBotChannel implements IChannel {
           });
         }
       }
+      if (heartbeatTimer) { clearInterval(heartbeatTimer); heartbeatTimer = null; }
       flushPendingTurn();
 
       // ── 打断退出：把已完成的部分 flush 进 memory，保留上下文 ──────────

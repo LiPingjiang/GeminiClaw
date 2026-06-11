@@ -20,7 +20,7 @@ export async function healthRoute(
       const ts = opts.twinSystem
       const metricsSnap = ts.metrics.snapshot()
       base.evolution = {
-        enabled: true,
+        enabled: ts.enabled,
         dryRun: ts.dryRun,
         totalCycles: metricsSnap.totalCycles,
         successCount: metricsSnap.successCount,

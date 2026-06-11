@@ -527,6 +527,8 @@ export interface TwinSystemInstance {
   errorCounter: ErrorCounter
   metrics: EvolutionMetrics
   approvalGate: ApprovalGate
+  /** Whether the evolution engine is enabled (config.evolution.enabled) */
+  enabled: boolean
   /** Whether dry-run mode is enabled (skip actual slot switch) */
   dryRun: boolean
   /** Start the scheduler (call after server is listening) */
@@ -755,6 +757,7 @@ export function createTwinSystem(
     errorCounter,
     metrics,
     approvalGate,
+    enabled: evolutionConfig.enabled,
     dryRun,
     start() {
       if (evolutionConfig.enabled) {
