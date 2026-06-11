@@ -13,6 +13,19 @@ describe("resolveMemIntent", () => {
     expect(resolveMemIntent("/exit")?.action).toBe("exit")
     expect(resolveMemIntent("退出记忆管理")?.action).toBe("exit")
   })
+  it("detects natural-language return/back as exit", () => {
+    expect(resolveMemIntent("/back")?.action).toBe("exit")
+    expect(resolveMemIntent("/q")?.action).toBe("exit")
+    expect(resolveMemIntent("返回")?.action).toBe("exit")
+    expect(resolveMemIntent("回去")?.action).toBe("exit")
+    expect(resolveMemIntent("切回助手")?.action).toBe("exit")
+    expect(resolveMemIntent("回到对话")?.action).toBe("exit")
+    expect(resolveMemIntent("不整理了")?.action).toBe("exit")
+  })
+  it("does not treat normal chat as exit", () => {
+    expect(resolveMemIntent("帮我回顾下昨天的信号")).toBeNull()
+    expect(resolveMemIntent("返回结果是什么意思")).toBeNull()
+  })
   it("returns null for normal chat", () => {
     expect(resolveMemIntent("今天龙股有什么信号")).toBeNull()
   })

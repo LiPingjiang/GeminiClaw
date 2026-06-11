@@ -22,7 +22,8 @@ import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { MemoryPaths } from "../../memory/paths.js";
 import { MemoryWriter } from "../../memory/memory-writer.js";
-import { MemoryManagerSession, MEMORY_MANAGER_PROMPT } from "../../guidance/memory-manager.js";
+import { WorkingMemoryBuilder } from "../../memory/working-memory.js";
+import { MemoryManagerSession, MEMORY_MANAGER_PROMPT, renderExit } from "../../guidance/memory-manager.js";
 import { resolveMemIntent } from "../../guidance/mem-intent.js";
 import { homedir } from "node:os";
 import { join as pathJoin } from "node:path";
@@ -175,12 +176,19 @@ export class QQBotChannel implements IChannel {
       // ── 记忆管理拦截 ────────────────────────────────────────────────────
       if (memMgr) {
         const memIntent = resolveMemIntent(content);
-        if (memMgr.isActive(userId) || memIntent) {
-          if (memIntent?.action === "exit") {
+        const memActive = memMgr.isActive(userId);
+        // Only engage the manager when the user is already inside it, or is
+        // explicitly entering. A bare "返回/退出" outside the manager falls
+        // through to normal chat (no false "已退出" reply).
+        if (memActive || memIntent?.action === "enter") {
+          if (memIntent?.action === "exit" && memActive) {
+            const ms = memMgr.getActive(userId)!;
+            const recent = memMgr.recentDialog(ms.targetAgentId, 5);
+            const name = ms.targetAgentName;
             memMgr.exit(userId);
-            return "已退出记忆管理，回到正常对话。";
+            return renderExit(name, recent);
           }
-          if (memIntent?.action === "enter" && !memMgr.isActive(userId)) {
+          if (memIntent?.action === "enter" && !memActive) {
             const sticky = this.db!
               .prepare("SELECT agent_id, agent_name FROM user_sessions WHERE openid = ?")
               .get(userId) as { agent_id: string; agent_name: string } | undefined;
@@ -188,12 +196,20 @@ export class QQBotChannel implements IChannel {
               return "你当前还没有活跃助手，先聊两句创建一个再来整理记忆。";
             }
             const ms = memMgr.enter(userId, sticky.agent_id, sticky.agent_name);
-            return await runMemoryManager(
+            let usageLine = "";
+            try {
+              const wm = new WorkingMemoryBuilder(new MemoryPaths(memoryRoot));
+              const today = new Date().toISOString().slice(0, 10);
+              usageLine =
+                wm.renderUsageSummary(ms.targetAgentId, today) + "\n\n";
+            } catch {}
+            const reply = await runMemoryManager(
               ms.sessionId,
               ms.targetAgentId,
               `请先查看 ${sticky.agent_name} 的记忆全景，并简要汇报各层现状。`,
               userId,
             );
+            return usageLine + reply;
           }
           // 已在记忆管理中 → 路由到记忆管家
           const ms = memMgr.getActive(userId)!;

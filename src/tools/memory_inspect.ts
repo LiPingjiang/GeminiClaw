@@ -28,6 +28,8 @@ registry.register({
     const wm = new WorkingMemoryBuilder(paths);
     const date = new Date().toISOString().slice(0, 10);
     const mem = wm.build(targetAgentId ?? "__none__", date);
+    const contextWindow =
+      (ctx.extra?.contextWindow as number | undefined) ?? 200_000;
 
     const layer = (params.layer as string) || "all";
     const want = (k: string) => layer === "all" || layer === k;
@@ -54,6 +56,15 @@ registry.register({
       sections.push(`# 公共知识库\n${list || "(空)"}`);
     }
 
-    return { type: "text", text: sections.join("\n\n---\n\n") };
+    let out = sections.join("\n\n---\n\n");
+    if (layer === "all") {
+      const usage = wm.renderUsageSummary(
+        targetAgentId ?? "__none__",
+        date,
+        contextWindow,
+      );
+      out = `${usage}\n\n---\n\n${out}`;
+    }
+    return { type: "text", text: out };
   },
 });

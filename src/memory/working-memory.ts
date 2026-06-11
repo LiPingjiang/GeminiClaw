@@ -8,6 +8,30 @@ export interface WorkingMemory {
   agentNonFixed: string // agent MEMORY.md + 当日日记（私人非固定，可压缩）
 }
 
+/** 单层记忆占用 */
+export interface LayerUsage {
+  chars: number
+  tokens: number
+}
+
+/** 记忆占用总览（各层 + 合计 + 占上下文窗口比例） */
+export interface MemoryUsage {
+  globalFixed: LayerUsage
+  globalNonFixed: LayerUsage
+  agentFixed: LayerUsage
+  agentNonFixed: LayerUsage
+  totalTokens: number
+  contextWindow: number
+  /** totalTokens / contextWindow，0~1 */
+  ratio: number
+}
+
+/** token 估算：chars / 4 × 1.2 安全系数（与 compaction 一致） */
+export function estimateTokens(text: string): number {
+  if (!text) return 0
+  return Math.ceil((text.length / 4) * 1.2)
+}
+
 function readIf(path: string): string {
   return existsSync(path) ? readFileSync(path, "utf-8").trim() : ""
 }
@@ -28,6 +52,51 @@ export class WorkingMemoryBuilder {
     const agentNonFixed = [agentLtm, agentToday].filter(Boolean).join("\n\n")
 
     return { globalFixed, globalNonFixed, agentFixed, agentNonFixed }
+  }
+
+  /**
+   * 计算当前工作记忆的 token 占用，以及占上下文窗口的比例。
+   * contextWindow 默认 200000（Claude 级别），调用方可按实际模型覆盖。
+   */
+  measure(agentId: string, date: string, contextWindow = 200_000): MemoryUsage {
+    const wm = this.build(agentId, date)
+    const layer = (s: string): LayerUsage => ({
+      chars: s.length,
+      tokens: estimateTokens(s),
+    })
+    const globalFixed = layer(wm.globalFixed)
+    const globalNonFixed = layer(wm.globalNonFixed)
+    const agentFixed = layer(wm.agentFixed)
+    const agentNonFixed = layer(wm.agentNonFixed)
+    const totalTokens =
+      globalFixed.tokens +
+      globalNonFixed.tokens +
+      agentFixed.tokens +
+      agentNonFixed.tokens
+    const cw = contextWindow > 0 ? contextWindow : 200_000
+    return {
+      globalFixed,
+      globalNonFixed,
+      agentFixed,
+      agentNonFixed,
+      totalTokens,
+      contextWindow: cw,
+      ratio: totalTokens / cw,
+    }
+  }
+
+  /** 渲染成人类可读的占用摘要（一行 + 各层明细），用于 /mem。 */
+  renderUsageSummary(agentId: string, date: string, contextWindow = 200_000): string {
+    const u = this.measure(agentId, date, contextWindow)
+    const pct = (u.ratio * 100).toFixed(1)
+    const fmt = (l: LayerUsage) => `${l.tokens} tok`
+    return [
+      `📊 记忆占用：约 ${u.totalTokens} tokens / ${u.contextWindow}（${pct}%）`,
+      `  · 全局固定区：${fmt(u.globalFixed)}`,
+      `  · 全局非固定区：${fmt(u.globalNonFixed)}`,
+      `  · 私人固定区：${fmt(u.agentFixed)}`,
+      `  · 私人非固定区：${fmt(u.agentNonFixed)}`,
+    ].join("\n")
   }
 
   /** 渲染成可直接拼进 systemPrompt 的文本（带分区标题）。 */
