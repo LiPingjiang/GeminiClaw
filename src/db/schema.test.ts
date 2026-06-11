@@ -20,6 +20,7 @@ it("creates all tables on migrate", () => {
   expect(names).toContain("chat_sessions")
   expect(names).toContain("chat_messages")
   expect(names).toContain("public_knowledge")
+  expect(names).toContain("agent_memory")
   db.close()
 })
 
@@ -83,5 +84,50 @@ it("memory_topics VIEW reads from public_knowledge", () => {
   // Legacy code using memory_topics should still work via the compat VIEW
   const topic = db.prepare(`SELECT * FROM memory_topics WHERE id = ?`).get("topic_002") as { title: string }
   expect(topic.title).toBe("兼容性测试")
+  db.close()
+})
+
+it("agent_memory table has correct default values", () => {
+  const db = openDb(TEST_DB)
+  migrate(db)
+
+  // Need a parent agents row first (FK constraint)
+  db.prepare(`INSERT INTO chat_sessions (id) VALUES (?)`).run("sess-1")
+  db.prepare(`
+    INSERT INTO agents (id, session_id, template_name, agent_name)
+    VALUES (?, ?, ?, ?)
+  `).run("agent-001", "sess-1", "base", "测试助手")
+
+  db.prepare(`INSERT INTO agent_memory (agent_id) VALUES (?)`).run("agent-001")
+
+  const row = db.prepare(`SELECT * FROM agent_memory WHERE agent_id = ?`).get("agent-001") as {
+    has_agent_md: number
+    has_memory_md: number
+    has_daily: number
+    cold_start_done: number
+  }
+  expect(row.has_agent_md).toBe(0)
+  expect(row.has_memory_md).toBe(0)
+  expect(row.has_daily).toBe(0)
+  expect(row.cold_start_done).toBe(0)
+  db.close()
+})
+
+it("agent_memory cascades on agent delete", () => {
+  const db = openDb(TEST_DB)
+  migrate(db)
+
+  db.prepare(`INSERT INTO chat_sessions (id) VALUES (?)`).run("sess-2")
+  db.prepare(`
+    INSERT INTO agents (id, session_id, template_name, agent_name)
+    VALUES (?, ?, ?, ?)
+  `).run("agent-002", "sess-2", "base", "删除测试")
+  db.prepare(`INSERT INTO agent_memory (agent_id) VALUES (?)`).run("agent-002")
+
+  // Deleting the agent should cascade-delete the agent_memory row
+  db.prepare(`DELETE FROM agents WHERE id = ?`).run("agent-002")
+
+  const row = db.prepare(`SELECT * FROM agent_memory WHERE agent_id = ?`).get("agent-002")
+  expect(row).toBeUndefined()
   db.close()
 })
