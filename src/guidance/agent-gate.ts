@@ -29,6 +29,8 @@ export interface AgentInfo {
   agentName: string;
   sessionId: string;
   busy: boolean;
+  /** Recent topic summary (first chars of the agent's last user message) */
+  topic?: string;
 }
 
 /** Map of agentId -> busy state */
@@ -190,25 +192,35 @@ export class AgentGate {
   }
 
   /**
-   * List all agents belonging to a user, with their busy/idle status.
-   * Queries the user_agents mapping table.
+   * List all active top-level agents, with busy/idle status and a recent-topic
+   * summary used to disambiguate identically-named agents in the picker.
+   * Queries the real `agents` table (depth=0, active) rather than the sparse
+   * user_agents mapping table. `userId` is kept for signature compatibility.
    */
-  listUserAgents(userId: string): AgentInfo[] {
+  listUserAgents(_userId: string): AgentInfo[] {
     const rows = this.db
       .prepare(
-        `SELECT ua.agent_id, ua.agent_name, ua.session_id
-         FROM user_agents ua
-         JOIN agents a ON a.id = ua.agent_id
-         WHERE ua.openid = ? AND a.status = 'active'
-         ORDER BY ua.created_at DESC`,
+        `SELECT a.id AS agent_id, a.agent_name, a.session_id,
+                (SELECT substr(m.content, 1, 16) FROM chat_messages m
+                 WHERE m.session_id = a.session_id AND m.role = 'user'
+                 ORDER BY m.id DESC LIMIT 1) AS topic
+         FROM agents a
+         WHERE a.depth = 0 AND a.status = 'active'
+         ORDER BY a.updated_at DESC`,
       )
-      .all(userId) as Array<{ agent_id: string; agent_name: string; session_id: string }>;
+      .all() as Array<{
+      agent_id: string;
+      agent_name: string;
+      session_id: string;
+      topic: string | null;
+    }>;
 
     return rows.map((r) => ({
       agentId: r.agent_id,
       agentName: r.agent_name,
       sessionId: r.session_id,
       busy: busyMap.get(r.agent_id) || false,
+      topic: (r.topic || "").replace(/\n+/g, " ").trim(),
     }));
   }
 
