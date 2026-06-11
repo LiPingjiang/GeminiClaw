@@ -64,6 +64,7 @@ import { SchedulerRunner } from "./scheduler.js"
 import type { SchedulerConfig, ActivityTracker } from "./scheduler.js"
 import { EvolutionPipeline } from "./evolution-pipeline.js"
 import { TraceIntentSource, MemoryIntentSource, UpstreamIntentSource } from "./intent-sources.js"
+import { ConversationIntentSource } from "./conversation-intent-source.js"
 import { EvolutionMetrics } from "./metrics.js"
 import { ApprovalGate } from "./approval-gate.js"
 import type { ApprovalGateConfig } from "./approval-gate.js"
@@ -522,6 +523,8 @@ export interface ActivityRecorder {
 }
 
 export interface TwinSystemInstance {
+  /** Shared SQLite db handle (used by conversation-scan API) */
+  db: Db
   pipeline: EvolutionPipeline
   scheduler: SchedulerRunner
   monitor: PostSwitchMonitor
@@ -659,6 +662,7 @@ export function createTwinSystem(
   // Register intent sources
   aggregator.addSource(new TraceIntentSource(db))
   aggregator.addSource(new MemoryIntentSource(db))
+  aggregator.addSource(new ConversationIntentSource(db))
   // Note: UpstreamIntentSource requires an UpstreamTracker instance.
   // It will be registered externally if upstream tracking is configured.
 
@@ -796,6 +800,7 @@ export function createTwinSystem(
   })
 
   return {
+    db,
     pipeline,
     scheduler,
     monitor,

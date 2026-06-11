@@ -9,6 +9,7 @@
 
 import type { FastifyInstance } from "fastify"
 import type { TwinSystemInstance } from "../../twin-system/factory.js"
+import { ConversationIntentSource, type ScanFilter } from "../../twin-system/conversation-intent-source.js"
 
 interface EvolutionRouteOpts {
   twinSystem: TwinSystemInstance
@@ -146,6 +147,98 @@ export async function evolutionRoute(
     } catch (err) {
       fastify.log.error(err)
       return reply.status(500).send({ error: "Failed to list candidates" })
+    }
+  })
+
+  // ---------------------------------------------------------------------------
+  // POST /v1/evolution/scan-conversations
+  // Scan a batch of real conversations, turn problematic ones into
+  // evidence-anchored intents, and (optionally) run an evolution cycle on the
+  // top one immediately. This is the manual test-closed-loop entry point.
+  //
+  // Body (all optional):
+  //   { since, until, sessionIds, keyword, maxIntents, maxSampleMessages, run }
+  //   - since/until: ISO datetime (SQLite "YYYY-MM-DD HH:MM:SS" or ISO)
+  //   - sessionIds:  string[] of specific sessions to scan
+  //   - keyword:     only scan sessions containing this substring
+  //   - run:         if true, immediately run one evolution cycle on the
+  //                  highest-priority scanned intent (default false = queue only)
+  // ---------------------------------------------------------------------------
+  fastify.post("/v1/evolution/scan-conversations", async (req, reply) => {
+    const body = (req.body ?? {}) as ScanFilter & { run?: boolean }
+    try {
+      const normalize = (t?: string): string | undefined =>
+        t ? t.replace("T", " ").slice(0, 19) : undefined
+
+      const filter: ScanFilter = {
+        since: normalize(body.since),
+        until: normalize(body.until),
+        sessionIds: body.sessionIds,
+        keyword: body.keyword,
+        maxIntents: body.maxIntents,
+        maxSampleMessages: body.maxSampleMessages,
+      }
+
+      const source = new ConversationIntentSource(twinSystem.db, {}, filter)
+      // Register a one-shot source so the aggregator picks up scanned intents,
+      // applying its normal dedup + priority logic.
+      let consumed = false
+      twinSystem.aggregator.addSource({
+        name: "conversation-scan-manual",
+        generate() {
+          if (consumed) return []
+          consumed = true
+          return source.generate()
+        },
+      })
+
+      const newIntents = await twinSystem.aggregator.collect()
+      const scanned = newIntents.filter(
+        (i) => typeof i.id === "string",
+      )
+
+      if (!body.run) {
+        return reply.status(201).send({
+          scanned: scanned.length,
+          queueSize: twinSystem.aggregator.size(),
+          intents: scanned.map((i) => ({
+            id: i.id,
+            riskLevel: i.riskLevel,
+            evidence: i.evidence,
+            preview: i.description.slice(0, 120),
+          })),
+        })
+      }
+
+      // run = true: immediately run one cycle on the next (highest-priority) intent
+      const intent = twinSystem.aggregator.next()
+      if (!intent) {
+        return reply.send({ scanned: scanned.length, ran: false, reason: "No intents produced from scan" })
+      }
+      const startedAt = Date.now()
+      const result = await twinSystem.pipeline.run(intent)
+      twinSystem.metrics.recordCycle({
+        intentId: intent.id,
+        intentType: intent.type,
+        trigger: "manual",
+        startedAt,
+        success: result.success,
+        abortReason: result.abortReason,
+        changedFiles: result.mutationResult?.changedFiles ?? [],
+        rolled_back: false,
+      })
+      return reply.send({
+        scanned: scanned.length,
+        ran: true,
+        intentId: intent.id,
+        success: result.success,
+        changedFiles: result.mutationResult?.changedFiles ?? [],
+        abortReason: result.abortReason,
+        durationMs: Date.now() - startedAt,
+      })
+    } catch (err) {
+      fastify.log.error(err)
+      return reply.status(500).send({ error: "Failed to scan conversations" })
     }
   })
 }
