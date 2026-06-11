@@ -70,7 +70,7 @@ export type AgentEvent =
   | {
       type: "agent_end";
       totalTurns: number;
-      stopReason: "no_tool_calls" | "max_turns" | "aborted";
+      stopReason: "no_tool_calls" | "max_turns" | "aborted" | "error";
     }
   | { type: "paused"; pauseId: string; payload: PausePayload }
   | { type: "guardrail_warn"; toolName: string; message: string }

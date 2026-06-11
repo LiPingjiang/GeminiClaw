@@ -551,12 +551,10 @@ describe("Orchestrator", () => {
   })
 
   it("handles fail-fast mode", async () => {
-    // Use a chatFn that throws on the first call — AgentLoop catches this
-    // and produces agent_end with stopReason "aborted", resulting in empty output.
-    // SubAgentRunner treats chatFn throws as failures only if they propagate.
-    // Since AgentLoop swallows chatFn errors, we simulate failure by having
-    // SubAgentRunner catch it at runner level. Let's directly throw from the
-    // entire runner by making the error happen before AgentLoop starts.
+    // chatFn throws on the FIRST sub-agent's call. AgentLoop surfaces this as
+    // agent_end with stopReason="error", which SubAgentRunner now maps to a
+    // failed TaskResult (success=false). With failFast + sequential, the first
+    // task fails and the second is cancelled before it ever runs.
     let callCount = 0
     const mockChat = vi.fn().mockImplementation(async () => {
       callCount++
@@ -579,12 +577,12 @@ describe("Orchestrator", () => {
       { title: "Should not run", description: "Skipped" },
     ])
 
-    // When AgentLoop catches chatFn error, it emits agent_end with stopReason=aborted
-    // and produces empty output. SubAgentRunner marks this as success=true with empty output.
-    // The sequential executor still completes both since "failure" isn't propagated
-    // as TaskResult.success=false. This is the correct behavior: chatFn errors are
-    // swallowed by AgentLoop as graceful degradation.
-    expect(result.metrics.tasksCompleted).toBeGreaterThanOrEqual(1)
+    // Fail-fast: first task failed, second cancelled, nothing completed.
+    expect(result.metrics.tasksCompleted).toBe(0)
+    expect(result.metrics.tasksFailed).toBeGreaterThanOrEqual(1)
+    expect(result.metrics.tasksCancelled).toBeGreaterThanOrEqual(1)
+    // The second sub-agent's chatFn must never have been reached.
+    expect(callCount).toBe(1)
     expect(result.summary).toContain("Task Delegation Results")
   })
 

@@ -268,7 +268,7 @@ export class AgentLoop {
         });
       } catch (err) {
         this.logger.error("chatFn threw", err);
-        yield { type: "agent_end", totalTurns: turn, stopReason: "aborted" };
+        yield { type: "agent_end", totalTurns: turn, stopReason: "error" };
         return;
       }
 

@@ -147,4 +147,61 @@ describe("delegate_tasks tool", () => {
     expect(res.type).toBe("text")
     expect((res as { text: string }).text).toMatch(/Leaf/)
   })
+
+  it("marks a sub-agent that throws as failed (❌) in the envelope", async () => {
+    // chatFn throws only for the "Boom" task; the other one succeeds.
+    const chat = vi.fn(
+      async (messages: Array<{ role: string; content: string }>) => {
+        const userMsg = messages.find((m) => m.role === "user")?.content ?? ""
+        const m = /## Task: (.+)/.exec(userMsg)
+        const title = m ? m[1].trim() : "unknown"
+        if (title === "Boom") throw new Error("sub-agent exploded")
+        return { content: `done:${title}`, tool_calls: undefined }
+      },
+    )
+    setMultiAgentRuntime({ chatFn: chat as any, toolRegistry: mockRegistry() })
+    const res = await tool().handler(
+      {
+        tasks: [
+          { title: "Okay", description: "this one works" },
+          { title: "Boom", description: "this one throws" },
+        ],
+        strategy: "parallel",
+      },
+      ctx(),
+    )
+    expect(res.type).toBe("text")
+    const text = (res as { text: string }).text
+    expect(text).toMatch(/1 成功/)
+    expect(text).toMatch(/1 失败/)
+    expect((text.match(/❌/g) ?? []).length).toBe(1)
+    expect((text.match(/✅/g) ?? []).length).toBe(1)
+    expect(text.indexOf("Okay")).toBeLessThan(text.indexOf("Boom"))
+  })
+
+  it("marks tasks cancelled (⛔) when the abort signal is already aborted", async () => {
+    const chat = mockChatFn()
+    setMultiAgentRuntime({ chatFn: chat as any, toolRegistry: mockRegistry() })
+    const controller = new AbortController()
+    controller.abort() // aborted before execution starts
+    const res = await tool().handler(
+      {
+        tasks: [
+          { title: "First", description: "won't run" },
+          { title: "Second", description: "won't run" },
+        ],
+        strategy: "sequential",
+      },
+      {
+        ...ctx(),
+        extra: { signal: controller.signal },
+      } as ToolContext,
+    )
+    expect(res.type).toBe("text")
+    const text = (res as { text: string }).text
+    expect(text).toMatch(/0 成功/)
+    expect(text).toMatch(/2 取消/)
+    expect((text.match(/⛔/g) ?? []).length).toBe(2)
+    expect(chat).not.toHaveBeenCalled()
+  })
 })

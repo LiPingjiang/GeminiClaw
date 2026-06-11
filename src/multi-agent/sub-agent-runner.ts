@@ -109,6 +109,7 @@ export class SubAgentRunner {
 
     try {
       let finalOutput = ""
+      let loopErrored = false
 
       const iterator = loop.run({
         messages,
@@ -144,8 +145,11 @@ export class SubAgentRunner {
             }
             break
           }
-          case "agent_end":
+          case "agent_end": {
+            const endEvent = event as { stopReason?: string }
+            if (endEvent.stopReason === "error") loopErrored = true
             break
+          }
         }
       }
 
@@ -153,6 +157,22 @@ export class SubAgentRunner {
         turnsUsed,
         toolCallCount,
         durationMs: Date.now() - startMs,
+      }
+
+      if (loopErrored) {
+        const failResult: TaskResult = {
+          success: false,
+          output: finalOutput || "Task failed: sub-agent LLM call errored",
+          artifacts,
+          metrics,
+        }
+        this.emit({
+          type: "task_failed",
+          taskId: task.id,
+          error: "sub-agent LLM call errored",
+        })
+        this.emit({ type: "agent_terminated", agentId, reason: "error" })
+        return failResult
       }
 
       const result: TaskResult = {
