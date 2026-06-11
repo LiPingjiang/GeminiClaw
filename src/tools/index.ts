@@ -20,4 +20,5 @@ import './cloud_query.js';
 import './send_image.js';
 import './view_image.js';
 import './memory_inspect.js';
+import './memory_edit.js';
 export { registry } from './registry.js';
