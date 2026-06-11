@@ -736,8 +736,37 @@ export function createTwinSystem(
           }
           if (dryRun) {
             logger.info("[DRY-RUN] Evolution validated but slot switch skipped")
-          } else {
+          } else if (result.switchRecord) {
+            // Real switch landed on main. Monitor health + error rate for the
+            // configured window; PostSwitchMonitor auto-rolls-back on failure.
             logger.info("Evolution succeeded, starting post-switch monitoring")
+            try {
+              const monitorResult = await monitor.monitor(result.switchRecord)
+              if (monitorResult.rolledBack) {
+                logger.warn(
+                  "Post-switch monitor rolled back evolution %s: %s",
+                  intent.id,
+                  monitorResult.rollbackReason ?? "unknown",
+                )
+                metrics.recordRollback()
+              } else {
+                logger.info(
+                  "Post-switch monitoring passed for %s (%dms)",
+                  intent.id,
+                  monitorResult.durationMs,
+                )
+              }
+            } catch (mErr) {
+              logger.error(
+                "Post-switch monitoring threw for %s: %s",
+                intent.id,
+                mErr instanceof Error ? mErr.message : String(mErr),
+              )
+            }
+          } else {
+            logger.warn(
+              "Evolution reported success but no switchRecord; skipping monitoring",
+            )
           }
         } else {
           logger.warn("Evolution cycle completed with failure: %s", result.abortReason)
