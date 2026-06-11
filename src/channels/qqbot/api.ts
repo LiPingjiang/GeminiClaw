@@ -590,24 +590,37 @@ export function buildBusyKeyboard(requestId: string): InlineKeyboard {
  */
 export function buildAgentSelectKeyboard(
   requestId: string,
-  agents: Array<{ agentId: string; agentName: string; busy: boolean }>,
+  agents: Array<{ agentId: string; agentName: string; busy: boolean; topic?: string }>,
+  page = 0,
 ): InlineKeyboard {
   const rows: Array<{ buttons: InlineKeyboardButton[] }> = [];
 
-  // Build agent buttons, max 2 per row, max 4 rows for agents (leaving 1 row for back button)
-  const MAX_AGENTS_SHOWN = 8; // 4 rows × 2 buttons
-  const shown = agents.slice(0, MAX_AGENTS_SHOWN);
+  // Pagination: 8 agents per page (4 rows × 2 buttons). Extra rows reserved for
+  // page-navigation + back buttons.
+  const PAGE_SIZE = 8;
+  const totalPages = Math.max(1, Math.ceil(agents.length / PAGE_SIZE));
+  const safePage = Math.min(Math.max(0, page), totalPages - 1);
+  const start = safePage * PAGE_SIZE;
+  const shown = agents.slice(start, start + PAGE_SIZE);
+
+  // Truncate topic so the QQ button label stays within length limits.
+  const clipTopic = (t?: string): string => {
+    const s = (t || "").trim();
+    if (!s) return "";
+    return s.length > 10 ? s.slice(0, 10) + "…" : s;
+  };
 
   for (let i = 0; i < shown.length; i += 2) {
     const rowButtons: InlineKeyboardButton[] = [];
     for (let j = i; j < Math.min(i + 2, shown.length); j++) {
       const a = shown[j];
-      const status = a.busy ? "🔴忙" : "🟢闲";
-      const label = `${a.agentName} ${status}`;
+      const status = a.busy ? "🔴" : "🟢";
+      const topic = clipTopic(a.topic);
+      const label = topic ? `${a.agentName} ${status} · ${topic}` : `${a.agentName} ${status}`;
       // Busy agents use style 0 (grey), idle use style 1 (blue)
       rowButtons.push(
         buildKeyboardButton(
-          `sel-${j}`,
+          `sel-${start + j}`,
           label,
           `selagent:${requestId}:${a.agentId}`,
           {
@@ -619,6 +632,32 @@ export function buildAgentSelectKeyboard(
       );
     }
     rows.push({ buttons: rowButtons });
+  }
+
+  // Pagination navigation row (only when more than one page)
+  if (totalPages > 1) {
+    const navButtons: InlineKeyboardButton[] = [];
+    if (safePage > 0) {
+      navButtons.push(
+        buildKeyboardButton(
+          "sel-prev",
+          "⬅️ 上一页",
+          `selagent:${requestId}:page:${safePage - 1}`,
+          { visitedLabel: "上一页", style: 0, groupId: "agent-select" },
+        ),
+      );
+    }
+    if (safePage < totalPages - 1) {
+      navButtons.push(
+        buildKeyboardButton(
+          "sel-next",
+          "下一页 ➡️",
+          `selagent:${requestId}:page:${safePage + 1}`,
+          { visitedLabel: "下一页", style: 0, groupId: "agent-select" },
+        ),
+      );
+    }
+    if (navButtons.length > 0) rows.push({ buttons: navButtons });
   }
 
   // Back button row
