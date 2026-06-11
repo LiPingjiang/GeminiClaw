@@ -36,7 +36,8 @@ export class WorkingMemoryBuilder {
     const parts: string[] = []
     if (wm.globalFixed) parts.push(wm.globalFixed)
     if (wm.agentFixed) {
-      parts.push(`## 当前助手身份（${agentName}）\n${wm.agentFixed}`)
+      const header = agentName ? `## 当前助手身份（${agentName}）` : "## 当前助手身份"
+      parts.push(`${header}\n${wm.agentFixed}`)
     }
     const nonFixed: string[] = []
     if (wm.globalNonFixed) nonFixed.push(`### 全局长期记忆\n${wm.globalNonFixed}`)
@@ -44,6 +45,19 @@ export class WorkingMemoryBuilder {
     if (nonFixed.length > 0) {
       parts.push(`---\n\n## 记忆\n${nonFixed.join("\n\n")}`)
     }
+    return parts.join("\n\n")
+  }
+
+  /** 仅渲染全局记忆（无 agent 上下文时使用，冷启动 / 全局会话）。 */
+  renderGlobalOnly(date: string): string {
+    const globalFixed = readIf(this.paths.globalAgentMd())
+    const globalLtm = readIf(this.paths.globalMemoryMd())
+    const globalToday = readIf(this.paths.globalDaily(date))
+    const globalNonFixed = [globalLtm, globalToday].filter(Boolean).join("\n\n")
+
+    const parts: string[] = []
+    if (globalFixed) parts.push(globalFixed)
+    if (globalNonFixed) parts.push(`---\n\n## 记忆\n### 全局长期记忆\n${globalNonFixed}`)
     return parts.join("\n\n")
   }
 }

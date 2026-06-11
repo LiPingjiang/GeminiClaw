@@ -8,7 +8,7 @@ export interface ConversationContext {
 export interface MemoryStrategy {
   readonly name: string
   ensureSession(sessionId: string): Promise<void>
-  getContext(sessionId: string, userMessage: string): Promise<ConversationContext>
+  getContext(sessionId: string, userMessage: string, agentId?: string): Promise<ConversationContext>
   appendTurn(sessionId: string, userMsg: Message, assistantMsg: Message): Promise<void>
   appendMessages?(sessionId: string, messages: Message[]): Promise<void>
 }

@@ -1,8 +1,5 @@
 // src/memory/strategies/layered.ts
 import { randomUUID } from "crypto"
-import { existsSync, readFileSync } from "fs"
-import { join } from "path"
-import os from "os"
 import type { Message } from "../../providers/types.js"
 import type { MemoryStrategy, ConversationContext } from "../strategy.js"
 import type { Db } from "../../db/client.js"
@@ -12,6 +9,8 @@ import type { TopicSummary } from "../router.js"
 import { TriageService } from "../triage.js"
 import { BackgroundService } from "../background.js"
 import { buildContext } from "../context.js"
+import { MemoryPaths } from "../paths.js"
+import { WorkingMemoryBuilder } from "../working-memory.js"
 
 interface LayeredStrategyConfig {
   db: Db
@@ -22,6 +21,7 @@ interface LayeredStrategyConfig {
   triageAfterTurns: number
   compactThresholdBytes: number
   maxActiveTopics: number
+  memoryRoot?: string
 }
 
 export class LayeredStrategy implements MemoryStrategy {
@@ -31,10 +31,12 @@ export class LayeredStrategy implements MemoryStrategy {
   private triage: TriageService
   private background: BackgroundService
   private config: LayeredStrategyConfig
+  private wm: WorkingMemoryBuilder
 
   constructor(config: LayeredStrategyConfig) {
     this.db = config.db
     this.config = config
+    this.wm = new WorkingMemoryBuilder(new MemoryPaths(config.memoryRoot))
     this.router = new TopicRouter(config.routerProvider)
     this.triage = new TriageService(config.triageProvider, {
       triageAfterTurns: config.triageAfterTurns,
@@ -52,30 +54,7 @@ export class LayeredStrategy implements MemoryStrategy {
     }
   }
 
-  /** 动态读取 workspace memory，每轮注入最新内容 */
-  private loadWorkspaceMemory(): string {
-    const wsDir = join(os.homedir(), ".gemeniclaw", ".workspace")
-    const parts: string[] = []
-
-    // 长期记忆
-    const memoryPath = join(wsDir, "MEMORY.md")
-    if (existsSync(memoryPath)) {
-      const content = readFileSync(memoryPath, "utf-8").trim()
-      if (content) parts.push(`## 长期记忆（MEMORY.md）\n${content}`)
-    }
-
-    // 今日日记
-    const today = new Date().toISOString().slice(0, 10)
-    const dailyPath = join(wsDir, "memory", `${today}.md`)
-    if (existsSync(dailyPath)) {
-      const content = readFileSync(dailyPath, "utf-8").trim()
-      if (content) parts.push(`## 今日日记（${today}）\n${content}`)
-    }
-
-    return parts.length > 0 ? `\n\n---\n\n${parts.join("\n\n")}` : ""
-  }
-
-  async getContext(sessionId: string, userMessage: string): Promise<ConversationContext> {
+  async getContext(sessionId: string, userMessage: string, agentId?: string): Promise<ConversationContext> {
     await this.ensureSession(sessionId)
 
     // 1. 获取活跃事项索引
@@ -120,7 +99,11 @@ export class LayeredStrategy implements MemoryStrategy {
     }
 
     // 4. 组装 context（动态注入 workspace memory）
-    const workspaceMem = this.loadWorkspaceMemory()
+    const _date = new Date().toISOString().slice(0, 10)
+    const _mem = agentId
+      ? this.wm.renderSystemPrompt(agentId, _date, "")
+      : this.wm.renderGlobalOnly(_date)
+    const workspaceMem = _mem ? `\n\n---\n\n${_mem}` : ""
     const messages = buildContext({
       systemPrompt: this.config.systemPrompt + workspaceMem,
       activeTopics,

@@ -19,6 +19,8 @@ import { AgentGate } from "../../guidance/agent-gate.js";
 import type { GateResult } from "../../guidance/agent-gate.js";
 import { stripToolXml } from "../../utils/strip-tool-xml.js";
 import { randomUUID } from "node:crypto";
+import { existsSync } from "node:fs";
+import { MemoryPaths } from "../../memory/paths.js";
 import { traceHub } from "../../trace/hub.js";
 
 export interface QQBotChannelConfig {
@@ -197,7 +199,7 @@ export class QQBotChannel implements IChannel {
         }
       }
 
-      const convCtx = await memory.getContext(sessionId, content);
+      const convCtx = await memory.getContext(sessionId, content, agentId ?? undefined);
 
       // ── Inject current agent identity (fixed working memory, never compacted) ──
       let agentIdentityMsg: { role: "system"; content: string } | null = null;
@@ -208,10 +210,16 @@ export class QQBotChannel implements IChannel {
           .get(agentId) as { agent_name: string; description: string | null } | undefined;
         if (agentRow) {
           currentAgentDisplayName = agentRow.agent_name;
-          agentIdentityMsg = {
-            role: "system" as const,
-            content: `## 当前助手身份\n你现在以【${agentRow.agent_name}】身份工作。${agentRow.description ? "\n职责：" + agentRow.description : ""}`,
-          };
+          // Identity is normally injected by WorkingMemoryBuilder via the agent
+          // fixed zone (agents/<id>/AGENT.md). Only fall back to a DB-derived
+          // system message when that file does not yet exist (pre-migration).
+          const hasFixedOnDisk = existsSync(new MemoryPaths().agentAgentMd(agentId));
+          if (!hasFixedOnDisk) {
+            agentIdentityMsg = {
+              role: "system" as const,
+              content: `## 当前助手身份\n你现在以【${agentRow.agent_name}】身份工作。${agentRow.description ? "\n职责：" + agentRow.description : ""}`,
+            };
+          }
         }
       }
 
