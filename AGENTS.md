@@ -8,7 +8,7 @@ Read `docs/ARCHITECTURE.md` for the full design philosophy before touching any c
 
 ## Current Status
 
-**Phase: Unified Architecture.** 旧进化引擎已完全移除，twin-system 是唯一的进化实现。394 个测试全绿。
+**Phase: Unified Architecture.** 旧进化引擎已完全移除，twin-system 是唯一的进化实现。569 个测试全绿。
 
 已完成：
 - config 加载与校验（Zod schema + evolution 配置段）
@@ -24,6 +24,7 @@ Read `docs/ARCHITECTURE.md` for the full design philosophy before touching any c
 - Upstream Tracker：cron-driven diff detection
 - E2E smoke test：13 个端到端集成测试
 - Old engine cleanup：`src/evolution/` 目录已完全删除，所有消费者已迁移到 twin-system
+- Multi-agent 子委派：`delegate_tasks` 工具（借鉴 Hermes 批量并行 + OpenClaw 边界隔离）接入既有 Orchestrator，经 runtime-context 单例复用 server 的 chatFn + toolRegistry；支持 parallel 策略、leaf 角色工具裁剪、maxConcurrent 并发；已端到端实测跑通（真实 provider 并行子 agent）
 
 待实现：
 - 生产环境启用进化（`evolution.enabled: true` + 配套监控）
@@ -45,6 +46,7 @@ src/
 ├── server/               ← Fastify HTTP server + routes
 ├── providers/            ← LLM provider adapters (Anthropic, mcli, Friday...)
 ├── memory/               ← session + long-term memory
+├── multi-agent/          ← sub-agent delegation (Orchestrator + runtime-context + delegate_tasks)
 ├── twin-system/          ← self-evolution engine (factory DI + all components)
 └── config/               ← config loader (reads config.yaml, never hardcodes secrets)
 ```
@@ -88,7 +90,7 @@ Providers are loaded from config.yaml. Routing: try primary, fallback in order.
 pnpm install
 pnpm dev          # tsx watch
 pnpm build        # tsc
-pnpm test         # vitest（431 tests，全绿）
+pnpm test         # vitest（569 tests，54 files，全绿）
 ```
 
 ## Roadmap
@@ -103,3 +105,4 @@ pnpm test         # vitest（431 tests，全绿）
 7. ~~Intent sources: trace-based / memory-based / upstream-sync 意图生成器~~ ✅
 8. ~~Production enablement: EvolutionMetrics + maxCyclesPerDay + dryRun + /v1/health 可观测性~~ ✅
 9. ~~Auto-approval workflow: ApprovalGate + autoApproveRiskLevels + timeout + API~~ ✅
+10. ~~Multi-agent 子委派：delegate_tasks 工具 + runtime-context 单例 + Orchestrator 接入（E2E 实测通过）~~ ✅
