@@ -80,7 +80,7 @@ export class LayeredStrategy implements MemoryStrategy {
 
     // 1. 获取活跃事项索引
     const activeTopics = this.db.prepare(`
-      SELECT id, title, summary FROM memory_topics WHERE active = 1
+      SELECT id, title, summary FROM public_knowledge WHERE active = 1
       ORDER BY last_accessed_at DESC LIMIT 16
     `).all() as TopicSummary[]
 
@@ -92,7 +92,7 @@ export class LayeredStrategy implements MemoryStrategy {
     const topicDocs = []
     for (const match of routeResult.matches) {
       const topic = this.db.prepare(`
-        SELECT id, title, summary, doc_level2, doc_level3 FROM memory_topics WHERE id = ?
+        SELECT id, title, summary, doc_level2, doc_level3 FROM public_knowledge WHERE id = ?
       `).get(match.topicId) as {
         id: string; title: string; summary: string | null;
         doc_level2: string | null; doc_level3: string | null
@@ -102,7 +102,7 @@ export class LayeredStrategy implements MemoryStrategy {
 
       // 更新访问记录
       this.db.prepare(`
-        UPDATE memory_topics
+        UPDATE public_knowledge
         SET last_accessed_at = datetime('now'), access_count = access_count + 1
         WHERE id = ?
       `).run(match.topicId)
@@ -155,7 +155,7 @@ export class LayeredStrategy implements MemoryStrategy {
     `).all(sessionId) as Message[]
 
     const activeTopics = this.db.prepare(`
-      SELECT id, title, summary FROM memory_topics WHERE active = 1
+      SELECT id, title, summary FROM public_knowledge WHERE active = 1
     `).all() as TopicSummary[]
 
     const triageResult = await this.triage.triage(sessionId, allMessages, activeTopics)
@@ -164,7 +164,7 @@ export class LayeredStrategy implements MemoryStrategy {
     if (triageResult.action === "new_topic") {
       topicId = `topic_${randomUUID().replace(/-/g, "").slice(0, 12)}`
       this.db.prepare(`
-        INSERT INTO memory_topics (id, title, summary) VALUES (?, ?, ?)
+        INSERT INTO public_knowledge (id, title, summary) VALUES (?, ?, ?)
       `).run(topicId, triageResult.title, triageResult.summary)
     } else if (triageResult.action === "merge_topic") {
       topicId = triageResult.topicId

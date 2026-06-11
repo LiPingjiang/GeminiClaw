@@ -79,7 +79,7 @@ it("getContext loads topic doc when router matches with high confidence", async 
 
   // 插入一个活跃事项
   db.prepare(`
-    INSERT INTO memory_topics (id, title, summary, doc_level2, active)
+    INSERT INTO public_knowledge (id, title, summary, doc_level2, active)
     VALUES (?, ?, ?, ?, 1)
   `).run("t1", "GeminiClaw 开发", "构建记忆系统", "详细概览内容")
 
@@ -118,7 +118,7 @@ it("getContext loads lower-level doc when router returns low confidence (< 0.7)"
   const db = makeDb()
 
   db.prepare(`
-    INSERT INTO memory_topics (id, title, summary, doc_level2, active)
+    INSERT INTO public_knowledge (id, title, summary, doc_level2, active)
     VALUES (?, ?, ?, ?, 1)
   `).run("t1", "某事项", "摘要", "详细内容")
 
@@ -188,7 +188,7 @@ it("appendTurn creates new topic when triage returns new_topic after threshold",
   // 等待异步后台任务
   await new Promise(r => setTimeout(r, 100))
 
-  const topics = db.prepare(`SELECT * FROM memory_topics WHERE active = 1`).all() as Array<{ title: string }>
+  const topics = db.prepare(`SELECT * FROM public_knowledge WHERE active = 1`).all() as Array<{ title: string }>
   expect(topics.some(t => t.title === "GeminiClaw 记忆系统")).toBe(true)
 })
 

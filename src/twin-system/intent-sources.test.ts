@@ -26,7 +26,7 @@ function createTestDb(): Db {
       content TEXT NOT NULL,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
-    CREATE TABLE memory_topics (
+    CREATE TABLE public_knowledge (
       id TEXT PRIMARY KEY,
       title TEXT NOT NULL,
       summary TEXT,
@@ -163,7 +163,7 @@ describe("MemoryIntentSource", () => {
     const source = new MemoryIntentSource(db, { hotTopicThreshold: 5 })
 
     const stmt = db.prepare(
-      "INSERT INTO memory_topics (id, title, active, access_count, summary) VALUES (?, ?, 1, ?, ?)",
+      "INSERT INTO public_knowledge (id, title, active, access_count, summary) VALUES (?, ?, 1, ?, ?)",
     )
     stmt.run("t1", "TypeScript Patterns", 25, null)
     stmt.run("t2", "API Design", 30, null)
@@ -181,7 +181,7 @@ describe("MemoryIntentSource", () => {
 
     const oldDate = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString()
     const stmt = db.prepare(
-      "INSERT INTO memory_topics (id, title, active, last_accessed_at, access_count) VALUES (?, ?, 1, ?, 1)",
+      "INSERT INTO public_knowledge (id, title, active, last_accessed_at, access_count) VALUES (?, ?, 1, ?, 1)",
     )
     stmt.run("t1", "Old Topic 1", oldDate)
     stmt.run("t2", "Old Topic 2", oldDate)
@@ -199,7 +199,7 @@ describe("MemoryIntentSource", () => {
     const source = new MemoryIntentSource(db, { topicCountWarningThreshold: 3 })
 
     const stmt = db.prepare(
-      "INSERT INTO memory_topics (id, title, active, access_count) VALUES (?, ?, 1, 1)",
+      "INSERT INTO public_knowledge (id, title, active, access_count) VALUES (?, ?, 1, 1)",
     )
     stmt.run("t1", "Topic 1")
     stmt.run("t2", "Topic 2")
@@ -220,7 +220,7 @@ describe("MemoryIntentSource", () => {
     })
 
     const stmt = db.prepare(
-      "INSERT INTO memory_topics (id, title, active, access_count, summary) VALUES (?, ?, 1, 5, 'ok')",
+      "INSERT INTO public_knowledge (id, title, active, access_count, summary) VALUES (?, ?, 1, 5, 'ok')",
     )
     stmt.run("t1", "Topic 1")
     stmt.run("t2", "Topic 2")

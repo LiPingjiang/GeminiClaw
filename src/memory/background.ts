@@ -37,7 +37,7 @@ export class BackgroundService {
 
   async appendToTopic(topicId: string, content: string): Promise<void> {
     const topic = this.db.prepare(
-      `SELECT doc_level2, doc_size FROM memory_topics WHERE id = ?`
+      `SELECT doc_level2, doc_size FROM public_knowledge WHERE id = ?`
     ).get(topicId) as { doc_level2: string | null; doc_size: number } | undefined
 
     if (!topic) return
@@ -51,13 +51,13 @@ export class BackgroundService {
       const compacted = await this.compact(newContent)
       const compactedSize = Buffer.byteLength(compacted, "utf8")
       this.db.prepare(`
-        UPDATE memory_topics
+        UPDATE public_knowledge
         SET doc_level2 = ?, doc_size = ?, updated_at = datetime('now')
         WHERE id = ?
       `).run(compacted, compactedSize, topicId)
     } else {
       this.db.prepare(`
-        UPDATE memory_topics
+        UPDATE public_knowledge
         SET doc_level2 = ?, doc_size = ?, updated_at = datetime('now')
         WHERE id = ?
       `).run(newContent, newSize, topicId)
@@ -75,7 +75,7 @@ export class BackgroundService {
 
   async evictIfNeeded(): Promise<void> {
     const activeCount = (this.db.prepare(
-      `SELECT COUNT(*) as cnt FROM memory_topics WHERE active = 1`
+      `SELECT COUNT(*) as cnt FROM public_knowledge WHERE active = 1`
     ).get() as { cnt: number }).cnt
 
     if (activeCount <= this.config.maxActiveTopics) return
@@ -89,7 +89,7 @@ export class BackgroundService {
           + (1.0 - CAST(access_count AS REAL) / MAX(access_count) OVER ()) * 0.3
           + (CAST(doc_size AS REAL) / 10240.0) * 0.1
         ) AS score
-      FROM memory_topics
+      FROM public_knowledge
       WHERE active = 1
       ORDER BY score DESC
       LIMIT ?
@@ -97,7 +97,7 @@ export class BackgroundService {
 
     for (const { id } of toEvict) {
       this.db.prepare(`
-        UPDATE memory_topics SET active = 0, updated_at = datetime('now') WHERE id = ?
+        UPDATE public_knowledge SET active = 0, updated_at = datetime('now') WHERE id = ?
       `).run(id)
     }
   }

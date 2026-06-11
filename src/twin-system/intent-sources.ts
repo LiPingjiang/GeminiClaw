@@ -189,7 +189,7 @@ export class MemoryIntentSource implements IntentSource {
     try {
       const stmt = this.db.prepare(`
         SELECT id, title, access_count
-        FROM memory_topics
+        FROM public_knowledge
         WHERE active = 1 AND access_count >= ? AND (summary IS NULL OR summary = '')
         ORDER BY access_count DESC
         LIMIT 5
@@ -227,7 +227,7 @@ export class MemoryIntentSource implements IntentSource {
 
       const stmt = this.db.prepare(`
         SELECT COUNT(*) as stale_count
-        FROM memory_topics
+        FROM public_knowledge
         WHERE active = 1 AND last_accessed_at < ?
       `)
       const row = stmt.get(staleSince) as { stale_count: number } | undefined
@@ -255,7 +255,7 @@ export class MemoryIntentSource implements IntentSource {
     try {
       const stmt = this.db.prepare(`
         SELECT COUNT(*) as active_count
-        FROM memory_topics
+        FROM public_knowledge
         WHERE active = 1
       `)
       const row = stmt.get() as { active_count: number } | undefined

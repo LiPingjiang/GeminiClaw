@@ -23,7 +23,8 @@ export function migrate(db: Db): void {
     CREATE INDEX IF NOT EXISTS idx_chat_messages_session
       ON chat_messages(session_id, id);
 
-    CREATE TABLE IF NOT EXISTS memory_topics (
+    -- Renamed from memory_topics → public_knowledge (shared knowledge base across all agents)
+    CREATE TABLE IF NOT EXISTS public_knowledge (
       id               TEXT PRIMARY KEY,
       title            TEXT NOT NULL,
       summary          TEXT,
@@ -37,8 +38,11 @@ export function migrate(db: Db): void {
       access_count     INTEGER NOT NULL DEFAULT 0
     );
 
-    CREATE INDEX IF NOT EXISTS idx_memory_topics_active
-      ON memory_topics(active, last_accessed_at);
+    CREATE INDEX IF NOT EXISTS idx_public_knowledge_active
+      ON public_knowledge(active, last_accessed_at);
+
+    -- Backward-compat alias: any legacy SQL referencing memory_topics still works
+    CREATE VIEW IF NOT EXISTS memory_topics AS SELECT * FROM public_knowledge;
 
     -- User-Agent relationship: tracks all agents a user has created
     CREATE TABLE IF NOT EXISTS user_agents (
