@@ -6,7 +6,7 @@
 
 <p align="center">
   <strong>The first self-evolving agent runtime.</strong><br/>
-  Twin-System architecture · Layered memory · Multi-model routing · Zero vendor lock-in
+  Twin-System architecture · Layered memory · Multi-agent · Multi-model routing · Zero vendor lock-in
 </p>
 
 <p align="center">
@@ -14,7 +14,7 @@
     <img src="https://img.shields.io/badge/license-BSL%201.1-blue" alt="License: BSL 1.1" />
   </a>
   <img src="https://img.shields.io/badge/node-%3E%3D20-green" alt="Node >= 20" />
-  <img src="https://img.shields.io/badge/tests-125%20passing-brightgreen" alt="125 tests passing" />
+  <img src="https://img.shields.io/badge/tests-553%20passing-brightgreen" alt="553 tests passing" />
 </p>
 
 ---
@@ -28,7 +28,9 @@ It takes the best of both [OpenClaw](https://github.com/openclaw/openclaw) and [
 | | OpenClaw | Hermes | **GeminiClaw** |
 |---|---|---|---|
 | **Language** | TypeScript | Python | TypeScript |
-| **Agent loop + tools** | ✅ 30+ tools | ✅ 69 tools | 🔜 Phase G |
+| **Agent loop + tools** | ✅ 30+ tools | ✅ 69 tools | ✅ 25+ tools |
+| **Multi-agent** | ⚠️ subagents | ⚠️ subagents | ✅ per-user agents + Agent Gate |
+| **Multimodal (image)** | ✅ | ✅ | ✅ full pipeline |
 | **Multi-model routing** | ✅ | ✅ | ✅ |
 | **Automatic fallback** | ⚠️ config-only | ✅ | ✅ |
 | **Multi-channel** | ✅ 20+ channels | ✅ Telegram/Discord/Slack/WhatsApp/Signal | ✅ QQBot built-in · plugin system |
@@ -36,11 +38,11 @@ It takes the best of both [OpenClaw](https://github.com/openclaw/openclaw) and [
 | **Session persistence** | ✅ JSONL ⚠️ corruption risk | ✅ SQLite WAL | ✅ SQLite WAL |
 | **Cross-session search** | ❌ | ✅ FTS5 + CJK trigram | ✅ FTS5 + CJK trigram |
 | **Memory hierarchy** | ❌ flat file | ❌ flat curator | ✅ 4-layer L0-L3 topics |
+| **Memory search tool** | ❌ | ⚠️ | ✅ `memory_search` across all sources |
 | **Self-evolution** | ❌ | ❌ | ✅ **Twin-System** |
 | **Hot-swap without downtime** | ❌ | ❌ | ✅ git branch flow |
 | **Rollback on regression** | ❌ | ❌ | ✅ circuit breaker |
 | **Zero vendor lock-in** | ⚠️ | ✅ | ✅ |
-| **Codebase size (core)** | ~100K+ lines | ~20K lines | ~5K lines (target) |
 
 ---
 
@@ -56,14 +58,16 @@ GeminiClaw is named after the Gemini twins — because it always runs in two sta
 
 **The cycle:**
 1. **Trace** — every conversation is recorded as a lightweight trace in SQLite
-2. **Intent** — the Intent Engine analyzes traces and generates improvement proposals
-3. **Mutate** — an LLM (via the built-in provider layer) rewrites code on a `evolution/<id>` branch
+2. **Intent** — Intent Sources analyze traces, memory topics, and upstream diffs to generate improvement proposals
+3. **Mutate** — an LLM (via the built-in provider layer) rewrites code on an `evolution/<id>` branch
 4. **Validate** — build + test (Level 1) + behavior comparison against live traces (Level 2)
 5. **Switch** — squash merge to `main`, restart; the old commit is the rollback point
 
-**Safety:** the Circuit Breaker monitors failure rate after every switch. If it spikes, the system reverts automatically and notifies you.
+**Safety:** the Circuit Breaker / PostSwitchMonitor watches the failure rate after every switch. If it spikes, the system reverts automatically and notifies you.
 
-**Slot model (v2):** no file copying, no symlinks. `main` = live runtime. `evolution/xxx` = work-in-progress. Switching is just a git merge + process restart.
+**Auto-approval:** high-confidence, low-risk mutations can be approved automatically via the Approval Gate (configurable risk levels + timeout). Anything riskier waits for a human.
+
+**Slot model:** no file copying, no symlinks. `main` = live runtime. `evolution/xxx` = work-in-progress. Switching is just a git merge + process restart, managed by the SlotManager.
 
 ---
 
@@ -103,6 +107,38 @@ Layer 3  Full detail                       ~2K tokens    loaded on explicit requ
 - **Smart routing** — a lightweight classifier decides which topics matter per message
 - **Triage** — new messages are classified: update existing topic, create new, or ignore
 
+### Memory tools & auto-persistence
+
+GeminiClaw doesn't just store memory — it actively writes and searches it:
+
+- **Auto-persistence** — `MemoryWriter` persists every conversation turn into per-day `daily/` files automatically, so nothing is lost between sessions.
+- **`memory_search`** — full-text search across **all** memory sources at once: daily logs, per-agent private memory, public knowledge, and raw chat history.
+- **`memory_edit` / `memory_inspect`** — inspect the whole memory overview and edit specific layers, with a fixed-layer guard so structural layers can't be corrupted.
+- **Per-agent private memory** — `WorkingMemoryBuilder` assembles the four memory layers plus each agent's private memory into the working context.
+- **`/mem` command** — a `/mem` slash command and natural-language triggers route to an isolated Memory Manager session for direct memory operations.
+
+---
+
+## Multi-Agent & Agent Gate
+
+GeminiClaw runs a real multi-agent system rather than ad-hoc subagents.
+
+- **Per-user agents** — each user has their own set of agents; `list_agents` / `switch_agent` / `create_agent` tools let the runtime (and the user) move between them.
+- **Agent Gate** — guards the busy state. When the selected agent is mid-task, an inline keyboard offers **queue / interrupt / new agent** instead of dropping the message.
+- **Agent selection** — the "select agent" keyboard lists **all** active agents (including busy ones), each annotated with a recent-topic summary so same-named agents are distinguishable, plus a 🟢/🔴 busy marker. Lists longer than 8 paginate. Picking a busy agent opens the queue/interrupt choice.
+- **Interruptible tasks** — every task runs under an `AbortController`; interrupting flushes memory first so context is preserved for the next turn.
+- **Session inspection** — `list_sessions` / `read_session` let an agent recover from a truncated run by reading its own history and resuming from the breakpoint.
+
+---
+
+## Multimodal
+
+A full image pipeline runs end-to-end: **channel ingress → Agent Loop → Provider adapter**.
+
+- Incoming images (e.g. from QQ Bot) are extracted and built into a `ContentPart[]` user message, downloaded with the proper auth token and converted to base64.
+- The `view_image` tool fetches and analyzes an image URL on demand; `browser` screenshots return a full base64 PNG.
+- The Anthropic adapter supports image blocks in both user messages and `tool_result`.
+
 ---
 
 ## Multi-Model Routing
@@ -111,7 +147,7 @@ Layer 3  Full detail                       ~2K tokens    loaded on explicit requ
   <img src="https://github.com/user-attachments/assets/5b8f7ea7-a391-4771-995a-3b4b763ba112" alt="Multi-Model Routing" width="600" />
 </p>
 
-Configure multiple providers. GeminiClaw routes with ordered fallback — if the primary fails, it tries the next automatically.
+Configure multiple providers. GeminiClaw routes with ordered fallback — if the primary fails, it tries the next automatically. When a non-primary model answers, the reply is annotated with a `[fallback:route]` footnote.
 
 ```yaml
 routing:
@@ -124,7 +160,7 @@ routing:
 Supported providers:
 - **mcli** — Meituan internal LLM gateway (Anthropic-compatible, custom headers)
 - **Friday** — Meituan AIGC platform (OpenAI-compatible, SSE streaming)
-- **Anthropic** — Direct Claude API
+- **Anthropic** — Direct Claude API (with prompt caching)
 - *Any OpenAI-compatible endpoint via config*
 
 ---
@@ -152,14 +188,33 @@ pnpm dev
 ## API
 
 ```
-POST /v1/agent/chat          — Chat (non-streaming or SSE streaming)
-GET  /v1/health              — Health check
+POST /v1/chat/completions        — Chat (OpenAI-compatible, non-streaming or SSE streaming)
+GET  /v1/models                  — List available models
+GET  /v1/health                  — Health check + evolution observability
 
-GET  /v1/evolution/status    — Evolution engine state
-POST /v1/evolution/run       — Trigger one evolution cycle manually
-POST /v1/evolution/switch    — Manually approve and switch
-POST /v1/evolution/approve/:id — Approve a high-risk intent
-GET  /v1/evolution/history   — View past evolutions
+# Sessions & messages
+GET  /v1/sessions                — List sessions
+GET  /v1/sessions/:id            — Session detail
+GET  /v1/sessions/:id/messages   — Session messages
+
+# Multi-agent
+GET  /v1/agents                  — List agents
+GET  /v1/agents/:id              — Agent detail
+GET  /v1/agents/:id/tasks        — Agent tasks
+POST /v1/agents/:id/tasks        — Dispatch a task to an agent
+POST /v1/sessions/:id/agents     — Create an agent in a session
+
+# Evolution
+GET  /v1/evolution/status        — Evolution engine state
+POST /v1/evolution/run           — Trigger one evolution cycle manually
+POST /v1/evolution/intents       — Add a user intent
+GET  /v1/evolution/candidates    — Peek at the intent queue
+GET  /v1/evolution/approvals     — List pending approvals
+POST /v1/evolution/approvals/:id/approve — Approve an intent
+POST /v1/evolution/approvals/:id/reject  — Reject an intent
+
+# Trace
+GET  /v1/trace/live              — Live conversation trace (SSE)
 ```
 
 ### Chat
@@ -167,21 +222,13 @@ GET  /v1/evolution/history   — View past evolutions
 ```json
 // Request
 {
-  "message": "Hello!",
-  "sessionId": "optional-session-id",
   "model": "mcli/claude-sonnet-4-6",
+  "messages": [{ "role": "user", "content": "Hello!" }],
   "stream": false
-}
-
-// Response
-{
-  "response": "Hello! How can I help?",
-  "sessionId": "abc-123",
-  "model": "mcli/claude-sonnet-4-6"
 }
 ```
 
-Streaming: set `"stream": true` → `text/event-stream`, each event: `data: {"delta": "...", "done": false}`
+Streaming: set `"stream": true` → `text/event-stream`.
 
 ---
 
@@ -189,8 +236,8 @@ Streaming: set `"stream": true` → `text/event-stream`, each event: `data: {"de
 
 ```yaml
 server:
-  port: 18888
-  host: "127.0.0.1"
+  port: 18790
+  host: "0.0.0.0"
   authToken: "your-secret-token"
 
 providers:
@@ -209,44 +256,49 @@ routing:
 memory:
   strategy: layered   # buffer (dev) or layered (production)
   dataDir: ".data"
+
+evolution:
+  enabled: false      # set true in production with monitoring
+  autoApproveRiskLevels: ["low"]
+  maxCyclesPerDay: 5
+  dryRun: false
 ```
 
 Full configuration reference: [docs/CONFIGURATION.md](docs/CONFIGURATION.md) *(coming soon)*
 
 ---
 
-## Roadmap
-
-| Phase | Feature | Status |
-|-------|---------|--------|
-| A | Types · DB · TraceCollector · Engine skeleton | ✅ Done |
-| B | Mutator (LLM loop) · Validator L1 · Switcher | ✅ Done |
-| C | Validator L2 (behavior) · CircuitBreaker · Evolution API | 🔄 In progress |
-| D | IntentEngine → memory topics · UpstreamSync | 🔜 Next |
-| E | CLI · Human review flow · Notifications | 🔜 Planned |
-
----
-
 ## Current Status
+
+> **Phase: Unified Architecture.** The old evolution engine has been fully removed; Twin-System is the single evolution implementation.
 
 | Feature | Status |
 |---------|--------|
 | Multi-provider routing (mcli / Friday / Anthropic) | ✅ |
-| Ordered fallback | ✅ |
+| Ordered fallback + `[fallback:route]` footnote | ✅ |
+| Anthropic prompt caching | ✅ |
 | Bearer auth | ✅ |
 | Non-streaming + SSE streaming | ✅ |
 | Buffer memory (sliding window) | ✅ |
 | Layered memory (SQLite, 4-layer topics) | ✅ |
-| 125 unit tests, 0 failures | ✅ |
-| Evolution Engine: TraceCollector + IntentStore + DB | ✅ |
-| Evolution Engine: Mutator (LLM agentic loop, unified diff) | ✅ |
-| Evolution Engine: Validator Level 1 (build + test) | ✅ |
-| Evolution Engine: Switcher (git branch flow + SIGUSR1) | ✅ |
-| Evolution Engine: Validator Level 2 (behavior comparison) | 🔄 |
-| Evolution Engine: CircuitBreaker + auto-rollback | 🔄 |
-| Evolution HTTP API | 🔄 |
-| IntentEngine → memory topics integration | 🔜 |
-| UpstreamSync (learn from openclaw / hermes) | 🔜 |
+| `memory_search` across daily / private / public / chat history | ✅ |
+| Auto-persistence (MemoryWriter → daily files) | ✅ |
+| `memory_edit` / `memory_inspect` / `/mem` command | ✅ |
+| Multi-agent system + Agent Gate (queue / interrupt / new) | ✅ |
+| Agent selection: all agents, topic summary, pagination | ✅ |
+| Interruptible tasks (AbortController + memory flush) | ✅ |
+| Multimodal image pipeline (ingress → loop → provider) | ✅ |
+| Twin-System: SlotManager + SafetyGuard + EvolutionPipeline | ✅ |
+| Twin-System: Mutator / Validator / Persistence / Aggregator | ✅ |
+| Twin-System: PostSwitchMonitor + auto-rollback | ✅ |
+| Twin-System: Intent Sources (trace / memory / upstream) | ✅ |
+| Twin-System: production enablement (metrics / maxCyclesPerDay / dryRun) | ✅ |
+| Twin-System: auto-approval workflow (Approval Gate) | ✅ |
+| Async runs + SSE events | ✅ |
+| Upstream tracker (cron-driven diff detection) | ✅ |
+| 553 unit tests, 0 failures | ✅ |
+| Production evolution enabled (`evolution.enabled: true`) | 🔜 |
+| Intent source expansion (auto-generate from trace / memory / upstream) | 🔜 |
 
 ---
 
