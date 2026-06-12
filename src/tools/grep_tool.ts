@@ -47,7 +47,13 @@ async function grepHandler(params, ctx) {
         const cmd = useRg ? 'rg' : 'grep';
         let stdout = '';
         let stderr = '';
+        let killed = false;
+        const TIMEOUT_MS = 30_000; // 30 seconds
         const proc = spawn(cmd, args, { env: process.env });
+        const timer = setTimeout(() => {
+            killed = true;
+            proc.kill('SIGTERM');
+        }, TIMEOUT_MS);
         proc.stdout.on('data', (chunk) => {
             stdout += chunk.toString();
         });
@@ -55,6 +61,12 @@ async function grepHandler(params, ctx) {
             stderr += chunk.toString();
         });
         proc.on('close', (code) => {
+            clearTimeout(timer);
+            if (killed) {
+                const partial = stdout.split('\n').filter(l => l.trim()).slice(0, maxResults).join('\n');
+                resolve({ type: 'error', error: `Search timed out after ${TIMEOUT_MS / 1000}s.\n${partial ? 'Partial results:\n' + partial : ''}` });
+                return;
+            }
             // rg: exit 1 = no match (not an error), exit 2 = real error
             // grep: exit 1 = no match, exit 2 = real error
             if (code === 1) {
@@ -80,6 +92,7 @@ async function grepHandler(params, ctx) {
             resolve({ type: 'text', text: output + suffix });
         });
         proc.on('error', (err) => {
+            clearTimeout(timer);
             resolve({ type: 'error', error: `Failed to spawn ${cmd}: ${err.message}` });
         });
     });

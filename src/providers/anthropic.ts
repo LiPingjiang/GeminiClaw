@@ -150,6 +150,8 @@ export class AnthropicProvider implements Provider {
       new Anthropic({
         apiKey: config.apiKey,
         ...(config.baseUrl ? { baseURL: config.baseUrl } : {}),
+        timeout: 120_000,   // 2 minutes (SDK default is 10min, way too long)
+        maxRetries: 1,      // 1 retry (SDK default is 2, total wait would be 30min)
       })
     // mcli and other non-official proxies may not support tool_choice
     // detect by checking if baseUrl is the official Anthropic API

@@ -368,6 +368,19 @@ export class AgentLoop {
       };
 
       if (!response.tool_calls || response.tool_calls.length === 0) {
+        // ── 空 content 兜底：模型返回 end_turn 但无文字，追加一次要求 ────────
+        if (!response.content && budget.remaining > 0) {
+          this.logger.error("empty-content final turn detected, requesting text reply");
+          messages = [
+            ...messages,
+            {
+              role: "user" as const,
+              content: "你的上一条回复为空。请用文字简要回复用户，总结你已完成的工作或回答用户的问题。",
+            },
+          ];
+          continue;
+        }
+
         // ── 空转检测：第一轮"我来…/让我…"但无工具调用 ─────────────────────
         if (toolSchemas.length > 0 && response.content) {
           const idlePattern = /^(好的[，,\s]|我(来|将|会|要|先|正在|立即)|让我|开始|首先|稍等|马上|接下来|现在|正在为你)/;
