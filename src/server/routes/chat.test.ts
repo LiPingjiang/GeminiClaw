@@ -190,6 +190,35 @@ it("calls getContext with the user message", async () => {
   expect(strategy.getContext).toHaveBeenCalledWith("s99", "test message")
 })
 
+// ── 斜杠命令拦截 ──────────────────────────────────────────────
+
+it("intercepts slash commands and bypasses the LLM router", async () => {
+  const router = makeRouter()
+  const app = await buildServer(makeConfig(), router, makeStrategy())
+  const res = await app.inject({
+    method: "POST",
+    url: "/v1/agent/chat",
+    payload: { message: "/help" },
+  })
+  expect(res.statusCode).toBe(200)
+  const body = JSON.parse(res.body)
+  // 命令直接走工具，不调用 LLM
+  expect(router.chat).not.toHaveBeenCalled()
+  expect(body.model).toBe("command")
+  expect(body.response).toContain("/技能")
+})
+
+it("does not call getContext for slash commands", async () => {
+  const strategy = makeStrategy()
+  const app = await buildServer(makeConfig(), makeRouter(), strategy)
+  await app.inject({
+    method: "POST",
+    url: "/v1/agent/chat",
+    payload: { message: "/help" },
+  })
+  expect(strategy.getContext).not.toHaveBeenCalled()
+})
+
 // ── sessionId 自动生成 ────────────────────────────────────────
 
 it("generates sessionId when not provided", async () => {

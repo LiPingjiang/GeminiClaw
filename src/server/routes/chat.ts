@@ -42,6 +42,51 @@ export async function chatRoute(
 
     await opts.strategy.ensureSession(sid)
 
+    // 0. 斜杠命令拦截 —— /进化、/状态、/技能 等命令直接走工具，不经过 LLM
+    const { CommandParser } = await import("../../agent/command-parser.js")
+    if (CommandParser.isCommand(message)) {
+      const commandArgs = CommandParser.toToolCallArgs(message)
+      if (commandArgs) {
+        const { registry } = await import("../../tools/registry.js")
+        // 确保 evolution_command 工具已注册（side-effect import）
+        await import("../../tools/evolution_command.js")
+        const toolEntry = registry.get("evolution_command")
+        if (toolEntry) {
+          const result = (await toolEntry.handler(commandArgs, {
+            sessionId: sid,
+            workdir: process.cwd(),
+            logger: { info: () => undefined, warn: () => undefined, error: () => undefined },
+          })) as { type: string; text?: string; error?: string }
+          const resultText =
+            result.type === "text"
+              ? result.text ?? "命令执行失败"
+              : result.type === "error"
+                ? `❌ ${result.error}`
+                : "命令执行失败"
+
+          opts.twinSystem?.activityTracker.recordActivity()
+
+          if (wantStream) {
+            reply.hijack()
+            const raw = reply.raw
+            raw.writeHead(200, {
+              "Content-Type": "text/event-stream",
+              "Cache-Control": "no-cache",
+              "Connection": "keep-alive",
+            })
+            const data = JSON.stringify({ choices: [{ delta: { content: resultText } }] })
+            raw.write(`data: ${data}\n\n`)
+            raw.write(`data: ${JSON.stringify({ type: "done" })}\n\n`)
+            raw.write("data: [DONE]\n\n")
+            raw.end()
+            return
+          }
+
+          return reply.send({ response: resultText, sessionId: sid, model: "command" })
+        }
+      }
+    }
+
     // 1. 获取 context（含 system + 事项索引 + 历史）
     const { messages: contextMessages } = await opts.strategy.getContext(sid, message)
 
