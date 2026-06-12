@@ -50,3 +50,6 @@ coverage/
 .pid
 package-lock.json
 .pnpm-approved-builds.json
+
+# local config backups
+config.yaml.bak.*

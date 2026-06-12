@@ -103,6 +103,10 @@ export async function skillEvolutionRoute(
           maxCandidates: body.maxCandidates,
           maxSampleMessages: body.maxSampleMessages,
         },
+        // Pass the shared LLM client so long sessions are decomposed into
+        // per-task candidates (SCHEME 2). Without it the source falls back to
+        // lossy whole-session compression and rarely yields a reusable skill.
+        evo.skillLlm,
       )
       const result = await evo.skill.runWithSource(source, "manual")
       return reply.send(result)

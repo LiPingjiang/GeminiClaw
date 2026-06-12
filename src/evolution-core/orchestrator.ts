@@ -148,6 +148,13 @@ export interface EvolutionSystem {
   readonly skill: SkillEvolutionEngine
   /** All engines, for uniform iteration. */
   readonly engines: EvolutionEngine[]
+  /**
+   * Shared LLM client used by the skill engine + candidate source. Exposed so
+   * ad-hoc paths (e.g. the manual /scan route) can build a candidate source
+   * that ALSO performs long-session task decomposition instead of falling back
+   * to whole-session compression.
+   */
+  readonly skillLlm: LlmClient
   /** Underlying twin-system instance (existing routes depend on it). */
   readonly twin: TwinSystemInstance
   /** Record an HTTP request so both engines' idle timers reset. */
@@ -214,6 +221,7 @@ export function createEvolutionSystem(
     code,
     skill,
     engines,
+    skillLlm,
     twin,
     recordActivity() {
       code.recordActivity()
