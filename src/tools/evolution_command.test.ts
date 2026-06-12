@@ -3,7 +3,8 @@
  *
  * Focuses on the user-initiated skill-evolution path:
  *   /技能          → list crystallised skills
- *   /技能 运行     → trigger one manual reflection cycle (runOnce("manual"))
+ *   /技能 进化     → trigger one manual reflection cycle (runOnce("manual"))
+ *                   aliases: 结晶/迭代/evolve/crystallize/refine (运行/run kept for compat)
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import { registry } from "./registry.js"
@@ -76,7 +77,7 @@ describe("evolution_command — /技能 (skill engine)", () => {
     expect(res.text).toContain("git-rebase-flow")
   })
 
-  it("triggers a manual run via the 运行 subcommand and reports success", async () => {
+  it("triggers a manual run via the 进化 subcommand and reports success", async () => {
     const runOnce = vi.fn().mockResolvedValue({
       success: true,
       summary: "Created skill 'foo'",
@@ -85,12 +86,26 @@ describe("evolution_command — /技能 (skill engine)", () => {
     })
     g.__evolutionSystem = { skill: { getStore: () => ({ listAll: () => [] }), runOnce } }
 
-    const res = await invoke({ command: "技能", args: ["运行"] })
+    const res = await invoke({ command: "技能", args: ["进化"] })
     expect(runOnce).toHaveBeenCalledWith("manual")
     expect(res.type).toBe("text")
     expect(res.text).toContain("技能进化完成")
     expect(res.text).toContain("Created skill 'foo'")
     expect(res.text).toContain("1234ms")
+  })
+
+  it("accepts 结晶 / 迭代 / crystallize / refine / 运行 as evolve aliases", async () => {
+    for (const alias of ["结晶", "迭代", "crystallize", "refine", "运行", "run"]) {
+      const runOnce = vi.fn().mockResolvedValue({
+        success: true,
+        summary: "ok",
+        durationMs: 1,
+      })
+      g.__evolutionSystem = { skill: { getStore: () => ({ listAll: () => [] }), runOnce } }
+      const res = await invoke({ command: "技能", args: [alias] })
+      expect(runOnce, `alias ${alias} should trigger runOnce`).toHaveBeenCalledWith("manual")
+      expect(res.text).toContain("技能进化完成")
+    }
   })
 
   it("reports a no-op run", async () => {
@@ -125,6 +140,6 @@ describe("evolution_command — /技能 (skill engine)", () => {
   it("help text mentions the skill command", async () => {
     const res = await invoke({ command: "help", args: [] })
     expect(res.text).toContain("/技能")
-    expect(res.text).toContain("/技能 运行")
+    expect(res.text).toContain("/技能 进化")
   })
 })

@@ -18,7 +18,7 @@ async function evolutionCommandHandler(params, _ctx) {
                 '`/进化` — 查看待确认的代码进化候选项',
                 '`/进化 运行` — 手动触发一次代码进化循环',
                 '`/技能` — 查看已结晶的技能库',
-                '`/技能 运行` — 立即触发一次技能反思进化（不必等到凌晨 3 点）',
+                '`/技能 进化` — 立即反思对话历史，迭代或结晶技能（不必等到凌晨 3 点）',
                 '`/状态` — 查看系统状态',
                 '`/help` — 显示此帮助信息',
             ].join('\n'),
@@ -32,7 +32,8 @@ async function evolutionCommandHandler(params, _ctx) {
 
     try {
         // ── 技能引擎命令（用户主动发起技能进化）────────────────────────
-        // 别名：/技能 /skill；子命令：运行/run/进化/evolve = 立即扫描进化
+        // 别名：/技能 /skill
+        // 子命令：进化/结晶/迭代/evolve/crystallize/refine（运行/run 保留兼容）= 立即反思进化
         if (command === '技能' || command === 'skill') {
             const skill = evolutionSystem && evolutionSystem.skill;
             if (!skill) {
@@ -40,9 +41,13 @@ async function evolutionCommandHandler(params, _ctx) {
             }
 
             const sub = args[0];
-            const runAliases = ['运行', 'run', '进化', 'evolve'];
-            if (sub && runAliases.includes(sub)) {
-                // 立即触发一次技能反思进化（复用引擎自带的候选源 / lookback / minScore）
+            const evolveAliases = [
+                '进化', '结晶', '迭代', 'evolve', 'crystallize', 'refine',
+                '运行', 'run', // 向后兼容旧别名
+            ];
+            if (sub && evolveAliases.includes(sub)) {
+                // 立即触发一次技能反思进化：引擎内部会迭代已有技能或结晶新技能
+                // （复用引擎自带的候选源 / lookback / minScore）
                 const result = await skill.runOnce('manual');
                 if (result.success) {
                     const action = result.details && (result.details.action || result.details.skillName)
@@ -65,7 +70,7 @@ async function evolutionCommandHandler(params, _ctx) {
             if (skills.length === 0) {
                 return {
                     type: 'text',
-                    text: '📚 **技能库为空**\n\n还没有结晶出技能。输入 `/技能 运行` 立即从对话历史中提炼一次。',
+                    text: '📚 **技能库为空**\n\n还没有结晶出技能。输入 `/技能 进化` 立即从对话历史中提炼一次。',
                 };
             }
             const lines = [`📚 **技能库（${skills.length} 个）**`, ''];
@@ -73,7 +78,7 @@ async function evolutionCommandHandler(params, _ctx) {
                 lines.push(`${i + 1}. **${m.name}**${m.version ? ` v${m.version}` : ''}`);
                 if (m.description) lines.push(`   ${m.description}`);
             });
-            lines.push('', '输入 `/技能 运行` 立即触发一次技能反思进化。');
+            lines.push('', '输入 `/技能 进化` 立即反思对话历史，迭代或结晶技能。');
             return { type: 'text', text: lines.join('\n') };
         }
 
