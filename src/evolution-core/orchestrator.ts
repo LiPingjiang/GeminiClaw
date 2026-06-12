@@ -178,13 +178,18 @@ export function createEvolutionSystem(
   const skillCfg = evo.skill
   const skillsRoot = skillCfg.skillsRoot ?? join(homedir(), ".geminiclaw", "skills")
 
+  // One shared LLM client: the candidate source uses it to summarise long
+  // conversation middles; the engine/reflector use it to judge + draft skills.
+  const skillLlm = new RouterLlmClient(router)
+
   const candidateSource = new ConversationCandidateSource(
     db,
     {
       lookbackMs: skillCfg.lookbackMs,
       maxCandidates: skillCfg.maxCandidates,
-      minScore: skillCfg.minScore,
     },
+    {},
+    skillLlm,
   )
 
   const skill = new SkillEvolutionEngine({
@@ -197,7 +202,7 @@ export function createEvolutionSystem(
       cooldownMs: skillCfg.cooldownMs,
       maxActionsPerCycle: skillCfg.maxActionsPerCycle,
     },
-    llm: new RouterLlmClient(router),
+    llm: skillLlm,
     candidateSource,
     activityTracker: { getIdleMs: () => twin.activityTracker.getIdleMs() },
     logger: orchestratorLogger,

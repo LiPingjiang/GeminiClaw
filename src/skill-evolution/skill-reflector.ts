@@ -98,6 +98,11 @@ export class SkillReflector {
       "actionable Markdown playbook the agent can load next time it faces a",
       "similar task.",
       "",
+      "DEFAULT TO 'skip'. Crystallising a bad or over-specific skill is WORSE",
+      "than crystallising nothing: it pollutes the library and misleads future",
+      "runs. Only create/refine when the lesson is genuinely reusable AND",
+      "clears every guardrail below.",
+      "",
       "You must choose exactly one action:",
       "  - create : a genuinely new, reusable lesson not covered by existing skills.",
       "  - refine : an existing skill is relevant but should be improved/corrected",
@@ -108,6 +113,31 @@ export class SkillReflector {
       "(steps, gotchas, commands, checklists), and has clear trigger conditions.",
       "Prefer 'refine' over creating near-duplicates. Prefer 'skip' over saving",
       "low-value or one-off trivia.",
+      "",
+      "DO NOT CRYSTALLISE (these MUST be 'skip') — reverse guardrails:",
+      "  - Environment-specific or transient failures (a flaky network call, a",
+      "    missing local file, a one-off permission error) — they will not",
+      "    reproduce and are not a general lesson.",
+      "  - Errors that self-healed on retry without any real technique change —",
+      "    'I tried again and it worked' is not a skill.",
+      "  - Negative tool assertions ('tool X does not support Y', 'this API is",
+      "    broken') — these go stale fast and may simply be wrong; do not encode",
+      "    them as durable knowledge.",
+      "  - Anything that depends on THIS specific user, session, repo path,",
+      "    secret, ticket number, or one-time data — strip or skip; never bake",
+      "    session-specific identifiers into a skill.",
+      "  - Single-use trivia, restating the obvious, or summarising what any",
+      "    competent agent already knows.",
+      "  - A conversation that never actually succeeded at anything reusable —",
+      "    if there is no working approach to teach, skip.",
+      "",
+      "DO CRYSTALLISE when you see genuine signal:",
+      "  - The user corrected the agent's style, workflow, or approach in a way",
+      "    that should persist next time.",
+      "  - A non-trivial technique, sequence, command set, or gotcha emerged that",
+      "    a fresh agent would plausibly get wrong.",
+      "  - An existing loaded skill turned out to be wrong/incomplete and this",
+      "    conversation reveals the correct patch (prefer 'refine').",
       "",
       "Respond with ONLY a JSON object, no prose, no markdown fences:",
       "{",
@@ -127,14 +157,19 @@ export class SkillReflector {
       "For action=skip, only 'action' and 'rationale' are required.",
     ].join("\n")
 
+    const problemsBlock =
+      input.problems.length > 0
+        ? ["## Pre-flagged signals (hints only — make your own judgement)", ...input.problems.map((p) => `- ${p}`), ""]
+        : []
+
     const user = [
       `# Conversation under review: "${input.title}"`,
       "",
-      "## Detected quality problems",
-      ...(input.problems.length > 0
-        ? input.problems.map((p) => `- ${p}`)
-        : ["- (none specifically flagged; evaluate for reusable knowledge)"]),
+      "Read the WHOLE conversation below (long middles may be summarised).",
+      "First decide if it clears the guardrails for crystallisation; if not,",
+      "return action=skip. Only then draft a skill.",
       "",
+      ...problemsBlock,
       "## Existing skills (candidates for refine)",
       existingList,
       "",

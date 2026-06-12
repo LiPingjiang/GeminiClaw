@@ -49,3 +49,4 @@ coverage/
 .worktrees/
 .pid
 package-lock.json
+.pnpm-approved-builds.json
