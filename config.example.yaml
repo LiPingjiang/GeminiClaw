@@ -44,7 +44,7 @@ memory:
   triageAfterTurns: 3             # 累计几轮后触发立项判断
 
 agent:
-  maxTurns: 20
+  maxTurns: 50  # Safety net, not primary control. Model decides when to stop via no_tool_calls.
   timeoutSeconds: 60
 
 # ── Twin-System 自进化引擎 ────────────────────────────────────────────────────

@@ -120,7 +120,7 @@ export class AgentLoop {
     this.chatFn = params.chatFn;
     this.toolRegistry = params.toolRegistry;
     this.config = {
-      maxTurns: params.config?.maxTurns ?? 10,
+      maxTurns: params.config?.maxTurns ?? 50,
       toolExecutionMode: params.config?.toolExecutionMode ?? "parallel",
       maxToolOutputChars: params.config?.maxToolOutputChars ?? 12000,
       systemPrompt: params.config?.systemPrompt ?? "",

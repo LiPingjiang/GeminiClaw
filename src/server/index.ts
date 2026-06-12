@@ -180,7 +180,7 @@ export async function buildServer(
     chatFn: chatFn as any,
     toolRegistry: makeRegistryAdapter() as any,
     config: {
-      maxTurns: (config.agent as { maxTurns?: number } | undefined)?.maxTurns ?? 20,
+      maxTurns: (config.agent as { maxTurns?: number } | undefined)?.maxTurns ?? 50,
       systemPrompt: (config.agent as { systemPrompt?: string } | undefined)?.systemPrompt,
       // 工具调用守护：同一工具连续失败/无进展时 warn/halt
       guardrails: {
