@@ -7,13 +7,13 @@ import type { MemoryStrategy } from "../memory/strategy.js";
 import type { TwinSystemInstance } from "../twin-system/factory.js";
 import { healthRoute } from "./routes/health.js";
 import { evolutionRoute } from "./routes/evolution.js";
+import { skillEvolutionRoute } from "./routes/skill-evolution.js";
 import { approvalRoute } from "./routes/approvals.js";
 import { chatRoute } from "./routes/chat.js";
 import { streamRoute } from "./routes/stream.js"
 import { traceRoute } from "./routes/trace.js";
 import { AgentLoop } from "../agent/index.js";
 import { registry as toolRegistry } from "../tools/index.js";
-import { setMultiAgentRuntime } from "../multi-agent/runtime-context.js";
 import { ChannelRegistry } from "../channels/registry.js";
 import type { IChannel } from "../channels/types.js"
 import { QQBotChannel } from "../channels/qqbot/index.js";
@@ -193,19 +193,16 @@ export async function buildServer(
     logger: { debug: () => undefined, error: console.error },
   });
 
-  // Wire the multi-agent runtime so the `delegate_tasks` tool can spawn
-  // isolated sub-agents reusing the same chatFn + tool registry.
-  setMultiAgentRuntime({
-    chatFn: chatFn as any,
-    toolRegistry: makeRegistryAdapter() as any,
-  });
-
   await fastify.register(healthRoute, { twinSystem });
 
-  // Evolution routes (twin-system based)
+  // Evolution routes (twin-system based / code engine)
   if (twinSystem) {
     await fastify.register(evolutionRoute, { twinSystem });
     await fastify.register(approvalRoute, { approvalGate: twinSystem.approvalGate });
+  }
+  // Skill evolution routes (Hermes-style skill engine)
+  if (db) {
+    await fastify.register(skillEvolutionRoute, { db });
   }
   await fastify.register(chatRoute, {
     router,

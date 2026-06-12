@@ -9,7 +9,7 @@ import { buildStrategy } from "./memory/strategy.js"
 import { buildServer } from "./server/index.js"
 import { openDb } from "./db/client.js"
 import { migrate } from "./db/schema.js"
-import { createTwinSystem } from "./twin-system/factory.js"
+import { createEvolutionSystem } from "./evolution-core/orchestrator.js"
 import { join } from "path"
 import type { Provider } from "./providers/types.js"
 import type { ProviderConfig } from "./config/schema.js"
@@ -40,16 +40,18 @@ async function main(): Promise<void> {
   const defaultProviderName = config.routing.default.split("/")[0]
   const routerProvider = providers.find(p => p.name === defaultProviderName) ?? providers[0] ?? null
   const strategy = buildStrategy(config, db, routerProvider)
-  // ── Twin-System (optional, based on config.evolution.enabled) ──────────
-  const twinSystem = createTwinSystem(
-    config.evolution,
+  // ── Evolution system (dual engine: code + skill, each toggled separately) ──
+  const evolution = createEvolutionSystem(
+    config,
     router,
     db,
     config.server.port,
   )
+  const twinSystem = evolution.twin
 
-  // Expose twin-system globally for tool commands (e.g. /进化)
+  // Expose globally for tool commands (e.g. /进化) and routes.
   ;(globalThis as any).__twinSystem = twinSystem
+  ;(globalThis as any).__evolutionSystem = evolution
 
   const server = await buildServer(config, router, strategy, db, twinSystem)
 
@@ -57,12 +59,12 @@ async function main(): Promise<void> {
   console.log(`GeminiClaw listening on ${config.server.host}:${config.server.port}`)
   console.log(`Memory strategy: ${strategy.name}`)
 
-  // Start twin-system scheduler after server is up
-  twinSystem.start()
+  // Start enabled evolution engines after server is up.
+  evolution.start()
 
   // Graceful shutdown
   const shutdown = () => {
-    twinSystem.stop()
+    evolution.stop()
     server.close()
   }
   process.on("SIGINT", shutdown)

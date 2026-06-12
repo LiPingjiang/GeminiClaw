@@ -54,8 +54,43 @@ export const channelsConfigSchema = z.object({
   qqbot: qqbotConfigSchema.optional(),
 }).optional()
 
+/**
+ * Skill-evolution (Hermes-style) engine config. Independent from the code
+ * engine — can be toggled on its own.
+ */
+export const skillEvolutionConfigSchema = z.object({
+  /** Master switch for the skill engine. */
+  enabled: z.boolean().default(false),
+  /** Root dir for skill files. Defaults to ~/.geminiclaw/skills if omitted. */
+  skillsRoot: z.string().optional(),
+  /** Scheduler: idle threshold (ms). */
+  idleThresholdMs: z.number().int().positive().default(5 * 60 * 1000),
+  /** Scheduler: cron interval (ms). 0 disables cron. */
+  cronIntervalMs: z.number().int().min(0).default(30 * 60 * 1000),
+  /** Scheduler: cooldown between triggers (ms). */
+  cooldownMs: z.number().int().positive().default(10 * 60 * 1000),
+  /** Max create/refine actions per cycle. */
+  maxActionsPerCycle: z.number().int().min(1).max(10).default(2),
+  /** Default lookback window (ms) for automatic conversation scans. */
+  lookbackMs: z.number().int().positive().default(24 * 60 * 60 * 1000),
+  /** Max candidate conversations turned into reflections per scan. */
+  maxCandidates: z.number().int().min(1).default(3),
+}).default({})
+
+/** Code-evolution (twin-system) engine switch. */
+export const codeEvolutionToggleSchema = z.object({
+  /**
+   * Master switch for the code engine. If omitted, falls back to the legacy
+   * top-level `evolution.enabled` for backward compatibility.
+   */
+  enabled: z.boolean().optional(),
+}).default({})
+
 export const evolutionConfigSchema = z.object({
   enabled: z.boolean().default(false),
+  /** Per-engine toggles (dual-engine architecture). */
+  code: codeEvolutionToggleSchema,
+  skill: skillEvolutionConfigSchema,
   dataDir: z.string().default(".gemini-data"),
   /** Scheduler: idle detection threshold (ms) */
   idleThresholdMs: z.number().int().positive().default(5 * 60 * 1000),

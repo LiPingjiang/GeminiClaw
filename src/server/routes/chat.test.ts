@@ -23,6 +23,16 @@ function makeConfig(authToken?: string): Config {
     agent: { maxTurns: 10, timeoutSeconds: 30 },
     evolution: {
       enabled: false,
+      code: { enabled: false },
+      skill: {
+        enabled: false,
+        idleThresholdMs: 300000,
+        cronIntervalMs: 1800000,
+        cooldownMs: 600000,
+        maxActionsPerCycle: 2,
+        lookbackMs: 86400000,
+        maxCandidates: 3,
+      },
       dataDir: ".gemini-data",
       idleThresholdMs: 300000,
       cronIntervalMs: 1800000,
