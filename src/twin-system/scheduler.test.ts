@@ -276,4 +276,136 @@ describe("SchedulerRunner", () => {
     expect(scheduler.isRunning()).toBe(true)
     scheduler.stop()
   })
+
+  describe("daily-at-hour scheduling", () => {
+    function makeScheduler() {
+      return new SchedulerRunner(
+        makeDeps({
+          activityTracker: { getIdleMs: vi.fn().mockReturnValue(0) },
+          config: {
+            idleThresholdMs: 100,
+            cronIntervalMs: 200,
+            dailyAtHour: 3,
+            pollIntervalMs: 50,
+            cooldownMs: 50,
+            idleEnabled: false,
+            cronEnabled: true,
+          },
+        }),
+      )
+    }
+
+    it("computes ms until the next occurrence later today", () => {
+      const scheduler = makeScheduler()
+      const now = new Date(2026, 5, 12, 1, 0, 0, 0) // 01:00 → 3:00 today
+      const ms = scheduler.computeMsUntilNextDaily(3, now)
+      expect(ms).toBe(2 * 60 * 60 * 1000)
+    })
+
+    it("rolls over to tomorrow when the hour already passed", () => {
+      const scheduler = makeScheduler()
+      const now = new Date(2026, 5, 12, 5, 0, 0, 0) // 05:00 → 3:00 tomorrow
+      const ms = scheduler.computeMsUntilNextDaily(3, now)
+      expect(ms).toBe(22 * 60 * 60 * 1000)
+    })
+
+    it("rolls over when exactly at the target hour boundary", () => {
+      const scheduler = makeScheduler()
+      const now = new Date(2026, 5, 12, 3, 0, 0, 0) // exactly 03:00 → tomorrow
+      const ms = scheduler.computeMsUntilNextDaily(3, now)
+      expect(ms).toBe(24 * 60 * 60 * 1000)
+    })
+
+    it("always returns a strictly positive delay", () => {
+      const scheduler = makeScheduler()
+      for (let h = 0; h < 24; h++) {
+        const now = new Date(2026, 5, 12, h, 30, 0, 0)
+        expect(scheduler.computeMsUntilNextDaily(3, now)).toBeGreaterThan(0)
+      }
+    })
+
+    it("triggers via cron reason when the daily timer fires", async () => {
+      vi.useFakeTimers()
+      vi.setSystemTime(new Date(2026, 5, 12, 1, 0, 0, 0)) // 01:00 → fires at 03:00
+      const deps = makeDeps({
+        activityTracker: { getIdleMs: vi.fn().mockReturnValue(0) },
+        config: {
+          idleThresholdMs: 100,
+          cronIntervalMs: 0,
+          dailyAtHour: 3,
+          pollIntervalMs: 50,
+          cooldownMs: 50,
+          idleEnabled: false,
+          cronEnabled: true,
+        },
+      })
+      const scheduler = new SchedulerRunner(deps)
+
+      scheduler.start()
+      expect(deps.onTrigger).not.toHaveBeenCalled()
+
+      // Advance to 03:00 (2h later).
+      await vi.advanceTimersByTimeAsync(2 * 60 * 60 * 1000 + 10)
+      expect(deps.onTrigger).toHaveBeenCalledWith("cron")
+
+      scheduler.stop()
+      vi.useRealTimers()
+    })
+
+    it("re-arms for the next day after firing", async () => {
+      vi.useFakeTimers()
+      vi.setSystemTime(new Date(2026, 5, 12, 1, 0, 0, 0))
+      const deps = makeDeps({
+        activityTracker: { getIdleMs: vi.fn().mockReturnValue(0) },
+        config: {
+          idleThresholdMs: 100,
+          cronIntervalMs: 0,
+          dailyAtHour: 3,
+          pollIntervalMs: 50,
+          cooldownMs: 50,
+          idleEnabled: false,
+          cronEnabled: true,
+        },
+      })
+      const scheduler = new SchedulerRunner(deps)
+
+      scheduler.start()
+      // Day 1 at 03:00
+      await vi.advanceTimersByTimeAsync(2 * 60 * 60 * 1000 + 10)
+      expect(deps.onTrigger).toHaveBeenCalledTimes(1)
+
+      // Day 2 at 03:00 (24h later)
+      await vi.advanceTimersByTimeAsync(24 * 60 * 60 * 1000)
+      expect(deps.onTrigger).toHaveBeenCalledTimes(2)
+
+      scheduler.stop()
+      vi.useRealTimers()
+    })
+
+    it("does not start the fixed cron interval when dailyAtHour is set", async () => {
+      vi.useFakeTimers()
+      vi.setSystemTime(new Date(2026, 5, 12, 12, 0, 0, 0)) // far from 03:00
+      const deps = makeDeps({
+        activityTracker: { getIdleMs: vi.fn().mockReturnValue(0) },
+        config: {
+          idleThresholdMs: 100,
+          cronIntervalMs: 200, // would fire quickly if interval mode were used
+          dailyAtHour: 3,
+          pollIntervalMs: 50,
+          cooldownMs: 50,
+          idleEnabled: false,
+          cronEnabled: true,
+        },
+      })
+      const scheduler = new SchedulerRunner(deps)
+
+      scheduler.start()
+      // Far more than cronIntervalMs, but nowhere near 03:00.
+      await vi.advanceTimersByTimeAsync(5000)
+      expect(deps.onTrigger).not.toHaveBeenCalled()
+
+      scheduler.stop()
+      vi.useRealTimers()
+    })
+  })
 })

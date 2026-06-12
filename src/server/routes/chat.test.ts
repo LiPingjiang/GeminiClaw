@@ -32,6 +32,7 @@ function makeConfig(authToken?: string): Config {
         maxActionsPerCycle: 2,
         lookbackMs: 86400000,
         maxCandidates: 3,
+        minScore: 1,
       },
       dataDir: ".gemini-data",
       idleThresholdMs: 300000,

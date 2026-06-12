@@ -3,7 +3,8 @@
  *
  * Determines WHEN to trigger evolution cycles:
  * 1. Idle detection: trigger when system has been idle for X seconds
- * 2. Cron-based: trigger on a regular interval (e.g., every 30 min)
+ * 2. Cron-based: trigger on a regular interval (e.g., every 30 min) OR at a
+ *    fixed daily hour (e.g., every day at 03:00 server-local time)
  * 3. Manual: explicit trigger API
  *
  * The scheduler does NOT run evolution itself — it calls a callback
@@ -32,6 +33,12 @@ export interface SchedulerConfig {
   idleThresholdMs: number
   /** Cron interval (ms). Set to 0 to disable cron triggers. */
   cronIntervalMs: number
+  /**
+   * Fixed daily trigger hour (0-23, server-local time). When set, the cron
+   * trigger fires once per day at this hour instead of on a fixed interval.
+   * Takes precedence over cronIntervalMs. Leave undefined for interval mode.
+   */
+  dailyAtHour?: number
   /** Poll interval for checking idle state (ms) */
   pollIntervalMs: number
   /** Minimum time between any two triggers (ms) — cooldown */
@@ -85,6 +92,7 @@ export class SchedulerRunner {
   private paused = false
   private pollTimer: ReturnType<typeof setInterval> | null = null
   private cronTimer: ReturnType<typeof setInterval> | null = null
+  private dailyTimer: ReturnType<typeof setTimeout> | null = null
   private lastTriggerAt = 0
 
   constructor(deps: SchedulerRunnerDeps) {
@@ -104,8 +112,15 @@ export class SchedulerRunner {
     this.running = true
     this.paused = false
 
+    const dailyMode =
+      this.config.cronEnabled && this.config.dailyAtHour !== undefined
     this.emit({ type: "started", timestamp: Date.now() })
-    this.logger.info("Scheduler started (idle=%s, cron=%s)", this.config.idleEnabled, this.config.cronEnabled)
+    this.logger.info(
+      "Scheduler started (idle=%s, cron=%s, mode=%s)",
+      this.config.idleEnabled,
+      this.config.cronEnabled,
+      dailyMode ? `daily@${this.config.dailyAtHour}:00` : "interval",
+    )
 
     // Idle polling
     if (this.config.idleEnabled) {
@@ -115,12 +130,16 @@ export class SchedulerRunner {
       )
     }
 
-    // Cron interval
-    if (this.config.cronEnabled && this.config.cronIntervalMs > 0) {
-      this.cronTimer = setInterval(
-        () => this.cronTick(),
-        this.config.cronIntervalMs,
-      )
+    // Cron: daily-at-hour takes precedence over fixed interval.
+    if (this.config.cronEnabled) {
+      if (dailyMode) {
+        this.scheduleNextDaily()
+      } else if (this.config.cronIntervalMs > 0) {
+        this.cronTimer = setInterval(
+          () => this.cronTick(),
+          this.config.cronIntervalMs,
+        )
+      }
     }
   }
 
@@ -197,6 +216,41 @@ export class SchedulerRunner {
     }
   }
 
+  /**
+   * Compute ms until the next occurrence of dailyAtHour (server-local time)
+   * and arm a one-shot timer. After it fires, it re-arms itself for the
+   * following day. Exposed via computeMsUntilNextDaily for testability.
+   */
+  private scheduleNextDaily(): void {
+    const hour = this.config.dailyAtHour
+    if (hour === undefined) return
+    const delay = this.computeMsUntilNextDaily(hour, new Date())
+    this.logger.info(
+      "Next daily trigger in %s min (at %s:00 local)",
+      Math.round(delay / 60000),
+      hour,
+    )
+    this.dailyTimer = setTimeout(async () => {
+      await this.cronTick()
+      // Re-arm for the next day if still running.
+      if (this.running) this.scheduleNextDaily()
+    }, delay)
+  }
+
+  /**
+   * Pure helper: ms from `now` until the next time the local clock reads
+   * `hour:00:00`. If it's already past that hour today, returns the delay to
+   * tomorrow's occurrence. Always returns a strictly positive value.
+   */
+  computeMsUntilNextDaily(hour: number, now: Date): number {
+    const target = new Date(now)
+    target.setHours(hour, 0, 0, 0)
+    if (target.getTime() <= now.getTime()) {
+      target.setDate(target.getDate() + 1)
+    }
+    return target.getTime() - now.getTime()
+  }
+
   private async trigger(reason: SchedulerTriggerReason): Promise<boolean> {
     if (this.isInCooldown()) {
       this.logger.info("Trigger skipped (cooldown active)")
@@ -232,6 +286,10 @@ export class SchedulerRunner {
     if (this.cronTimer) {
       clearInterval(this.cronTimer)
       this.cronTimer = null
+    }
+    if (this.dailyTimer) {
+      clearTimeout(this.dailyTimer)
+      this.dailyTimer = null
     }
   }
 

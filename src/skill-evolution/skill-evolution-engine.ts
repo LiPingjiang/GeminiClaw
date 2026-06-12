@@ -39,6 +39,12 @@ export interface SkillEvolutionConfig {
   idleThresholdMs: number
   /** Scheduler: cron interval (ms). 0 disables cron. */
   cronIntervalMs: number
+  /**
+   * Scheduler: fixed daily trigger hour (0-23, server-local time). When set,
+   * the engine reflects once per day at this hour instead of on a fixed
+   * interval, and the idle trigger is disabled.
+   */
+  dailyAtHour?: number
   /** Scheduler: cooldown between triggers (ms). */
   cooldownMs: number
   /** Max skills to create/refine per cycle. */
@@ -104,9 +110,14 @@ export class SkillEvolutionEngine implements EvolutionEngine {
       config: {
         idleThresholdMs: this.config.idleThresholdMs,
         cronIntervalMs: this.config.cronIntervalMs,
+        dailyAtHour: this.config.dailyAtHour,
         cooldownMs: this.config.cooldownMs,
-        idleEnabled: true,
-        cronEnabled: this.config.cronIntervalMs > 0,
+        // Idle trigger disabled: reflection runs on a daily fixed schedule
+        // (or cron interval) to avoid churning on every quiet moment.
+        idleEnabled: false,
+        cronEnabled:
+          this.config.dailyAtHour !== undefined ||
+          this.config.cronIntervalMs > 0,
       },
       logger: {
         info: (m, ...a) => this.logger.info(`[skill] ${m}`, ...a),

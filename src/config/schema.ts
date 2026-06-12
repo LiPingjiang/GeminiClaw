@@ -67,6 +67,12 @@ export const skillEvolutionConfigSchema = z.object({
   idleThresholdMs: z.number().int().positive().default(5 * 60 * 1000),
   /** Scheduler: cron interval (ms). 0 disables cron. */
   cronIntervalMs: z.number().int().min(0).default(30 * 60 * 1000),
+  /**
+   * Scheduler: fixed daily trigger hour (0-23, server-local time). When set,
+   * the engine reflects once per day at this hour instead of on a fixed
+   * interval, and takes precedence over cronIntervalMs.
+   */
+  dailyAtHour: z.number().int().min(0).max(23).optional(),
   /** Scheduler: cooldown between triggers (ms). */
   cooldownMs: z.number().int().positive().default(10 * 60 * 1000),
   /** Max create/refine actions per cycle. */
@@ -75,6 +81,11 @@ export const skillEvolutionConfigSchema = z.object({
   lookbackMs: z.number().int().positive().default(24 * 60 * 60 * 1000),
   /** Max candidate conversations turned into reflections per scan. */
   maxCandidates: z.number().int().min(1).default(3),
+  /**
+   * Minimum candidate score required to become a reflection. Higher = more
+   * selective (fewer, higher-signal skills). Default 1 keeps prior behavior.
+   */
+  minScore: z.number().int().min(1).default(1),
 }).default({})
 
 /** Code-evolution (twin-system) engine switch. */

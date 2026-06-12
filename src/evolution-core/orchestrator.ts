@@ -183,6 +183,7 @@ export function createEvolutionSystem(
     {
       lookbackMs: skillCfg.lookbackMs,
       maxCandidates: skillCfg.maxCandidates,
+      minScore: skillCfg.minScore,
     },
   )
 
@@ -192,6 +193,7 @@ export function createEvolutionSystem(
       skillsRoot,
       idleThresholdMs: skillCfg.idleThresholdMs,
       cronIntervalMs: skillCfg.cronIntervalMs,
+      dailyAtHour: skillCfg.dailyAtHour,
       cooldownMs: skillCfg.cooldownMs,
       maxActionsPerCycle: skillCfg.maxActionsPerCycle,
     },
