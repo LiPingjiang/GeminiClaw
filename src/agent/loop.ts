@@ -13,10 +13,17 @@ import type {
 } from "./types.js";
 import type { ContentPart } from "../providers/types.js";
 import { GuardrailController } from "./guardrails.js";
+import { IterationBudget } from "./iteration-budget.js";
+import { decideParallelization } from "./parallel-decision.js";
+import { truncateToolResult, enforceTurnBudget } from "./tool-result-truncation.js";
+import { EXECUTION_BIAS } from "./execution-bias.js";
 import { hookBus } from "../hooks/index.js";
 
-const SEQUENTIAL_TOOLS = new Set(["exec", "write", "edit"]);
-const MUTATING_TOOLS = new Set(["exec", "write", "edit", "file_write"]);
+// ── Tools that are known to mutate state ────────────────────────────────────
+const MUTATING_TOOLS = new Set(["exec", "write", "edit", "file_write", "execute_script"]);
+
+// ── Tools whose execution earns a budget refund (batch tools) ───────────────
+const REFUNDABLE_TOOLS = new Set(["execute_script"]);
 
 type UserOrSystemMessage = { role: "user" | "system"; content: string | ContentPart[] };
 type AssistantMessage = {
@@ -115,7 +122,7 @@ export class AgentLoop {
     this.config = {
       maxTurns: params.config?.maxTurns ?? 10,
       toolExecutionMode: params.config?.toolExecutionMode ?? "parallel",
-      maxToolOutputChars: params.config?.maxToolOutputChars ?? 8000,
+      maxToolOutputChars: params.config?.maxToolOutputChars ?? 12000,
       systemPrompt: params.config?.systemPrompt ?? "",
       maxToolCallsPerTurn: params.config?.maxToolCallsPerTurn,
       guardrails: params.config?.guardrails,
@@ -165,6 +172,11 @@ export class AgentLoop {
     let messages = [...params.messages];
     let turn = 0;
     const maxTurns = this.config.maxTurns;
+
+    // ── Build system prompt with Execution Bias ──────────────────────────────
+    const fullSystemPrompt = this.config.systemPrompt
+      ? `${this.config.systemPrompt}\n\n${EXECUTION_BIAS}`
+      : "";
 
     // ── Command handling ────────────────────────────────────────────────────
     const lastMessage = messages[messages.length - 1];
@@ -225,12 +237,45 @@ export class AgentLoop {
         ? new GuardrailController(this.config.guardrails)
         : null;
 
+    // ── Iteration budget (replaces simple maxTurns counter) ─────────────────
+    const budget = new IterationBudget(maxTurns, /* graceAllowed */ true);
+
     let consecutiveIdleTurns = 0;
-    while (turn < maxTurns) {
+    while (budget.remaining > 0 || budget.canGrace) {
       if (params.signal?.aborted) {
         yield { type: "agent_end", totalTurns: turn, stopReason: "aborted" };
         return;
       }
+
+      // ── Grace call: budget exhausted, produce summary without tools ────────
+      if (budget.exhausted && budget.canGrace) {
+        budget.useGrace();
+        turn++;
+        yield { type: "turn_start", turn };
+
+        const summaryPrompt =
+          "你已达到本次执行的迭代上限。请简要总结你已完成的工作、当前状态和剩余待办，不要再调用任何工具。";
+        messages = [...messages, { role: "user" as const, content: summaryPrompt }];
+
+        // Ensure system prompt is present
+        if (fullSystemPrompt && messages[0]?.role !== "system") {
+          messages = [{ role: "system" as const, content: fullSystemPrompt }, ...messages];
+        }
+
+        try {
+          const response = await this.chatFn(messages, { model: params.model });
+          if (response.content) {
+            yield { type: "message_delta", delta: response.content };
+          }
+        } catch (err) {
+          this.logger.error("Grace call failed", err);
+        }
+
+        yield { type: "agent_end", totalTurns: turn, stopReason: "max_turns" };
+        return;
+      }
+
+      budget.consume();
       yield { type: "turn_start", turn };
       turn++;
 
@@ -241,8 +286,8 @@ export class AgentLoop {
       }));
 
       // Guard: ensure system message is always present at position 0
-      if (this.config.systemPrompt && messages.length > 0 && messages[0].role !== "system") {
-        messages = [{ role: "system" as const, content: this.config.systemPrompt }, ...messages];
+      if (fullSystemPrompt && messages.length > 0 && messages[0].role !== "system") {
+        messages = [{ role: "system" as const, content: fullSystemPrompt }, ...messages];
       }
 
       let response: { content: string; tool_calls?: ToolCall[] };
@@ -324,7 +369,6 @@ export class AgentLoop {
 
       if (!response.tool_calls || response.tool_calls.length === 0) {
         // ── 空转检测：第一轮"我来…/让我…"但无工具调用 ─────────────────────
-        // 模型承诺要做某事却没有行动，给一次补救机会
         if (toolSchemas.length > 0 && response.content) {
           const idlePattern = /^(好的[，,\s]|我(来|将|会|要|先|正在|立即)|让我|开始|首先|稍等|马上|接下来|现在|正在为你)/;
           const isPromise =
@@ -333,7 +377,6 @@ export class AgentLoop {
           if (isPromise) {
             consecutiveIdleTurns++;
             if (consecutiveIdleTurns >= 2) {
-              // 连续两次空转，强制终止，防止无限循环
               this.logger.error("idle-loop detected: model promised action " + consecutiveIdleTurns + " times without tool calls, aborting");
               yield { type: "message_delta", delta: "（检测到空转：模型连续承诺但不执行，已终止。）" };
               yield { type: "agent_end", totalTurns: turn, stopReason: "aborted" };
@@ -341,16 +384,14 @@ export class AgentLoop {
             }
             messages = [
               ...messages,
-              assistantMsg,
               {
                 role: "user" as const,
                 content: "请直接调用工具开始执行，不要只描述计划。如果无法执行，请直接回复最终答案。",
               },
             ];
-            continue; // 重跑一轮，强制执行
+            continue;
           }
         }
-        // Reset idle counter on successful non-idle response
         consecutiveIdleTurns = 0;
         yield {
           type: "agent_end",
@@ -366,7 +407,6 @@ export class AgentLoop {
 
       // ── Guardrails: dedup + pre-check ────────────────────────────────────
       if (guardrails) {
-        // Deduplicate identical tool calls within same turn
         const { unique, blocked } = guardrails.deduplicateToolCalls(toolCallsToRun);
         for (const [tcId, reason] of blocked) {
           const tcName = toolCallsToRun.find(tc => tc.id === tcId)?.name ?? "unknown";
@@ -376,7 +416,6 @@ export class AgentLoop {
         }
         toolCallsToRun = unique;
 
-        // Pre-check: block tool calls that we already know are futile
         const preBlocked: typeof toolCallsToRun = [];
         const preAllowed: typeof toolCallsToRun = [];
         for (const tc of toolCallsToRun) {
@@ -392,7 +431,6 @@ export class AgentLoop {
         }
         toolCallsToRun = preAllowed;
 
-        // If all tool calls were blocked, continue to next turn (model will see block messages)
         if (toolCallsToRun.length === 0) {
           continue;
         }
@@ -477,6 +515,13 @@ export class AgentLoop {
         yield event;
       }
 
+      // ── Budget refund for batch tools ───────────────────────────────────────
+      for (const tc of toolCallsToRun) {
+        if (REFUNDABLE_TOOLS.has(tc.name)) {
+          budget.refund();
+        }
+      }
+
       // ── Guardrails: check results ─────────────────────────────────────────
       if (guardrails) {
         let anySuccess = false;
@@ -485,7 +530,6 @@ export class AgentLoop {
           const tc = toolCallsToRun.find((tc) => tc.id === result.toolCallId);
           const toolName = tc?.name ?? "unknown";
 
-          // Check failure-based guardrail
           const decision = guardrails.record(toolName, result.isError);
           if (decision.action === "warn") {
             yield { type: "guardrail_warn", toolName, message: decision.message };
@@ -495,7 +539,6 @@ export class AgentLoop {
             break;
           }
 
-          // [NEW] Check result-based "no-progress" guardrail for successful calls
           if (!result.isError && tc) {
             const resultDecision = guardrails.recordResult(toolName, tc.args, result.content);
             if (resultDecision.action === "warn") {
@@ -544,19 +587,30 @@ export class AgentLoop {
         }
       }
 
-      for (const tr of results) {
+      // ── Apply turn budget enforcement (Layer 3) ────────────────────────────
+      const truncationResults = results.map((r) => ({
+        content: r.content,
+        originalLength: r.content.length,
+        wasTruncated: false,
+      }));
+      const budgetedResults = enforceTurnBudget(truncationResults, params.sessionId);
+
+      for (let i = 0; i < results.length; i++) {
+        const tr = results[i];
+        const budgeted = budgetedResults[i];
         messages = [
           ...messages,
           {
             role: "tool",
             tool_call_id: tr.toolCallId,
-            content: tr.content,
+            content: budgeted.content,
             ...(tr.multimodal ? { multimodal: tr.multimodal } : {}),
           },
         ];
       }
     }
-    // max_turns 达到上限时告知用户（防止"无回复"）
+
+    // Budget fully exhausted (should not reach here due to grace handling above)
     yield {
       type: "message_delta",
       delta: `（任务已执行 ${turn} 轮，达到上限。如需继续请回复「继续」。）`,
@@ -592,15 +646,12 @@ export class AgentLoop {
   // ── Tool execution ────────────────────────────────────────────────────────
   private shouldParallelize(toolCalls: ToolCall[]): boolean {
     if (this.config.toolExecutionMode === "sequential") return false;
-    return toolCalls.every((tc) => !SEQUENTIAL_TOOLS.has(tc.name));
+    return decideParallelization(toolCalls).canParallelize;
   }
 
-  private truncate(content: string): string {
-    const max = this.config.maxToolOutputChars;
-    if (content.length <= max) return content;
-    return (
-      content.slice(0, max) + `...[truncated ${content.length - max} chars]`
-    );
+  private truncate(content: string, toolName: string, sessionId: string): string {
+    const result = truncateToolResult(content, toolName, sessionId);
+    return result.content;
   }
 
   private async executeSingleTool(
@@ -754,16 +805,24 @@ export class AgentLoop {
       };
       const rawResult = await entry.handler(tc.args, toolContext);
 
-      // ── Multimodal envelope handling (Hermes-style) ─────────────────────
-      // Tools can return { type: "multimodal", content: [...], textSummary }
-      // We extract the image parts and store them separately so they bypass truncation.
-      if (rawResult && (rawResult as any).type === "multimodal") {
-        const mm = rawResult as { content: Array<{ type: string; text?: string; image_url?: { url: string; detail?: string } }>; textSummary: string };
-        multimodal = mm.content as ContentPart[];
-        // The text content for guardrails/logging is the textSummary
-        toolResult = { content: mm.textSummary, isError: false };
+      // ── Normalize tool result format ─────────────────────────────────────
+      // Tool handlers may return either:
+      //   { type: "text", text: "..." }
+      //   { type: "error", error: "..." }
+      //   { type: "multimodal", content: [...], textSummary: "..." }
+      //   { content: "...", isError?: boolean }  (internal format)
+      const raw = rawResult as any;
+      if (raw && raw.type === "multimodal") {
+        multimodal = raw.content as ContentPart[];
+        toolResult = { content: raw.textSummary ?? "", isError: false };
+      } else if (raw && raw.type === "text") {
+        toolResult = { content: raw.text ?? "", isError: false };
+      } else if (raw && raw.type === "error") {
+        toolResult = { content: raw.error ?? "Unknown error", isError: true };
+      } else if (raw && typeof raw.content === "string") {
+        toolResult = { content: raw.content, isError: raw.isError ?? false };
       } else {
-        toolResult = rawResult as ToolResult;
+        toolResult = { content: String(raw ?? ""), isError: false };
       }
       isError = toolResult.isError ?? false;
     } catch (err) {
@@ -775,8 +834,9 @@ export class AgentLoop {
     }
 
     const durationMs = Date.now() - startMs;
-    // Only truncate text content; multimodal image data is preserved in full
-    toolResult = { ...toolResult, content: this.truncate(toolResult.content) };
+    // Smart truncation (Layer 1 + Layer 2)
+    const truncationResult = truncateToolResult(toolResult.content, tc.name, sessionId);
+    toolResult = { ...toolResult, content: truncationResult.content };
     if (multimodal) {
       toolResult = { ...toolResult, multimodal };
     }
