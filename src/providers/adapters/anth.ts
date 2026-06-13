@@ -9,6 +9,8 @@ function createClient(config) {
         apiKey: config.apiKey ?? "dummy",
         ...(config.baseUrl ? { baseURL: config.baseUrl } : {}),
         ...(config.headers ? { defaultHeaders: config.headers } : {}),
+        timeout: 120_000,   // 2 minutes (prevent 10min+ hangs)
+        maxRetries: 1,      // 1 retry only
     });
 }
 /**
