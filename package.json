@@ -20,6 +20,7 @@
     "@anthropic-ai/sdk": "^0.39.0",
     "better-sqlite3": "^12.9.0",
     "commander": "^15.0.0",
+    "e2b": "^2.29.1",
     "fastify": "^5.3.2",
     "js-yaml": "^4.1.0",
     "puppeteer-core": "^25.1.0",
