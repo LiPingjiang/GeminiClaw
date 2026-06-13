@@ -39,10 +39,12 @@ export const EXECUTION_BIAS = `
 
 ### 耗时工具委派（MUST）
 - 浏览器操作（browser 工具）是重型任务：涉及多轮 navigate/evaluate/click，单次可能耗时 30s~3min。
-- 当用户请求涉及浏览器爬取、网页操作时，MUST 使用 delegate_tasks 将其委派给子 Agent 执行。
-- 子 Agent 拥有独立上下文，浏览器返回的大量页面内容不会污染你的主对话。
-- 示例：用户说"帮我爬取XX网站的数据" → 调用 delegate_tasks，description 中写清楚目标 URL 和要提取的数据。
-- 唯一例外：如果用户明确要求你"一步步展示浏览器操作过程"，才在主 Agent 直接执行。
+- 当用户请求涉及浏览器爬取、网页操作时，MUST 使用 delegate_tasks 工具将浏览器任务委派给子 Agent。
+- 具体做法：调用 delegate_tasks 工具，tasks 数组中包含一个子任务，description 写清目标 URL 和要提取的数据，allowed_tools 设为 ["browser"]。
+- 这样做的好处：子 Agent 有独立上下文，浏览器返回的大量页面内容不会灌入你的主对话。
+- 示例：用户说"帮我爬取XX网站的数据" → 你调用 delegate_tasks(tasks=[{title:"爬取XX数据", description:"用 browser 工具打开 URL，提取...", allowed_tools:["browser"]}])
+- 唯一例外：如果用户明确要求你"一步步展示浏览器操作过程"，才直接调用 browser 工具。
+- 注意：你自己不要直接调用 browser 工具，除非是上述例外情况。
 
 ### 验证与收尾
 - 最终答案需要证据：工具输出、测试结果、文件内容。
