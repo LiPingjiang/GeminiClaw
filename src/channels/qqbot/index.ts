@@ -28,6 +28,7 @@ import { resolveMemIntent } from "../../guidance/mem-intent.js";
 import { homedir } from "node:os";
 import { join as pathJoin } from "node:path";
 import { traceHub } from "../../trace/hub.js";
+import { registerPushFn, initResultInjector } from "../../multi-agent/result-injector.js";
 
 export interface QQBotChannelConfig {
   enabled: boolean;
@@ -495,6 +496,7 @@ export class QQBotChannel implements IChannel {
           clientSecret,
           memoryRoot,
           targetAgentId: agentId,
+          ...(signal ? { signal } : {}),
         },
       })) {
         // 发布到 TraceHub（fire-and-forget，不阻塞主流程）
@@ -551,7 +553,7 @@ export class QQBotChannel implements IChannel {
             partialMessages as Parameters<typeof memory.appendMessages>[1],
           );
         }
-        return ""; // 调用方感知到打断，不发送回复
+        return ""; // ws-client 会判空不发送，这里返回空即可
       }
 
       // 兜底：若最终轮为空，使用上一轮的有效回复
@@ -843,6 +845,18 @@ export class QQBotChannel implements IChannel {
     };
 
     // -----------------------------------------------------------------------
+    // ResultInjector: register push function for async sub-task results
+    // -----------------------------------------------------------------------
+    initResultInjector();
+    const apiRef = this.api;
+    registerPushFn(async (userId: string, content: string) => {
+      if (!apiRef) return;
+      // In QQ bot, userId IS the openid
+      const target = { type: "c2c" as const, openid: userId };
+      await apiRef.sendLongMessage(target, content);
+    });
+
+    // -----------------------------------------------------------------------
     // Start mode
     // -----------------------------------------------------------------------
     if (mode === "websocket") {
@@ -857,6 +871,14 @@ export class QQBotChannel implements IChannel {
       await this.wsClient.connect();
       // Expose the shared api instance from ws client
       this.api = this.wsClient.getApi();
+      // Re-register pushFn with the ws client's api (which may differ from initial)
+      const wsApi = this.api;
+      if (wsApi) {
+        registerPushFn(async (userId: string, content: string) => {
+          const target = { type: "c2c" as const, openid: userId };
+          await wsApi.sendLongMessage(target, content);
+        });
+      }
       console.log("[QQBotChannel] WebSocket mode started (intents=0x%s)", intents.toString(16));
     } else {
       if (!this.fastify) {

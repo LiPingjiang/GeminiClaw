@@ -286,7 +286,79 @@ evolution:
 
 ---
 
-## 八、实施路线
+## 八、非阻塞子任务委派（OpenClaw-style Async Delegation）
+
+### 8.1 问题背景
+
+旧的 `delegate_tasks` 工具采用同步阻塞模式：父 Agent 调用后 `await orchestrator.execute()` 直到所有子任务完成才返回。这导致：
+
+- 主 Agent 被阻塞数分钟，无法响应用户新消息
+- QQ Bot 的"打断任务"按钮无法中止已启动的子任务
+- 打断后 `processWithAgent` 返回空字符串，ws-client 不判空直接发送 → 空回复
+
+### 8.2 新架构（v2）
+
+采用 OpenClaw 的 fire-and-forget + 事件总线 + 结果注入模式：
+
+```
+用户消息 → AgentLoop → 模型调 delegate_tasks
+                              │
+                              ▼
+                    asyncExecute() ← 立即返回 "accepted"（≤10ms）
+                              │
+                              ├─→ 注册到 SubagentRegistry
+                              ├─→ 发布 lifecycle:start 事件
+                              └─→ void executeInBackground()  ← fire-and-forget
+                                        │
+                                        ▼
+                              Orchestrator.execute()（后台异步）
+                                        │
+                                        ▼ 完成
+                              completeRun() → emitLifecycle(phase: "end")
+                                        │
+                                        ▼
+                              ResultInjector 监听到事件
+                                        │
+                                        ▼
+                              pushFn(userId, result) → QQ Bot 主动推送
+```
+
+### 8.3 核心组件
+
+| 组件 | 文件 | 职责 |
+|------|------|------|
+| LifecycleBus | `src/multi-agent/lifecycle-bus.ts` | 进程内事件总线，发布/订阅子任务生命周期事件 |
+| SubagentRegistry | `src/multi-agent/subagent-registry.ts` | 子任务注册表，跟踪状态，内置超时 sweeper |
+| AsyncExecutor | `src/multi-agent/async-executor.ts` | fire-and-forget 执行器，后台运行 Orchestrator |
+| ResultInjector | `src/multi-agent/result-injector.ts` | 监听完成事件，通过渠道推送结果给用户 |
+| delegate_tasks (v2) | `src/tools/delegate_tasks.ts` | 非阻塞工具，调用 asyncExecute 后立即返回 |
+
+### 8.4 用户体验
+
+```
+用户: "帮我爬取板块数据"
+Bot:  "好的，我来启动浏览器爬取任务。"
+Bot:  [delegate_tasks 返回] "✅ 已接受 1 个子任务，后台执行中。"
+Bot:  "你可以继续问我其他问题。"
+
+用户: "今天天气怎么样？"        ← 不被阻塞！
+Bot:  "今天北京晴，25°C..."
+
+[30s 后，子任务完成]
+Bot:  "📋 后台任务完成（耗时 32s）     ← 主动推送
+       任务：爬取板块数据
+       ✅ 获取到 28 个板块..."
+```
+
+### 8.5 止血修复（同步完成）
+
+- `ws-client.ts`：空回复判空，不发送空消息
+- `index.ts`：signal 透传给 toolContextExtra，打断可传递到子任务
+- abort 后返回空字符串由 ws-client 判空拦截，不再发送
+
+---
+
+## 九、实施路线
 
 - [x] **Step 1**：基础运行时（2026-05-05）
   - TypeScript + Fastify 5 + Vitest

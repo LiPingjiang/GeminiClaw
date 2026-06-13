@@ -24,7 +24,8 @@ Read `docs/ARCHITECTURE.md` for the full design philosophy before touching any c
 - Upstream Tracker：cron-driven diff detection
 - E2E smoke test：13 个端到端集成测试
 - Old engine cleanup：`src/evolution/` 目录已完全删除，所有消费者已迁移到 twin-system
-- Multi-agent 子委派：`delegate_tasks` 工具（借鉴 Hermes 批量并行 + OpenClaw 边界隔离）接入既有 Orchestrator，经 runtime-context 单例复用 server 的 chatFn + toolRegistry；支持 parallel 策略、leaf 角色工具裁剪、maxConcurrent 并发；已端到端实测跑通（真实 provider 并行子 agent）
+- Multi-agent 子委派：`delegate_tasks` 工具（OpenClaw 式非阻塞 fire-and-forget）；LifecycleBus 事件总线 + SubagentRegistry 注册表 + AsyncExecutor 后台执行 + ResultInjector 结果推送；父 Agent 不阻塞，子任务完成后自动推送结果给用户
+- QQ Bot 空回复修复：ws-client 判空拦截 + signal 透传给工具 + abort 路径不再发送空消息
 
 待实现：
 - 生产环境启用进化（`evolution.enabled: true` + 配套监控）
@@ -106,3 +107,4 @@ pnpm test         # vitest（569 tests，54 files，全绿）
 8. ~~Production enablement: EvolutionMetrics + maxCyclesPerDay + dryRun + /v1/health 可观测性~~ ✅
 9. ~~Auto-approval workflow: ApprovalGate + autoApproveRiskLevels + timeout + API~~ ✅
 10. ~~Multi-agent 子委派：delegate_tasks 工具 + runtime-context 单例 + Orchestrator 接入（E2E 实测通过）~~ ✅
+11. ~~非阻塞委派改造：OpenClaw 式 fire-and-forget + LifecycleBus + ResultInjector + QQ Bot 空回复修复~~ ✅

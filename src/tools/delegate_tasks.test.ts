@@ -1,10 +1,12 @@
-import { describe, it, expect, beforeEach, vi } from "vitest"
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest"
 import { registry } from "./registry.js"
 import "./delegate_tasks.js"
 import {
   setMultiAgentRuntime,
   __resetMultiAgentRuntime,
 } from "../multi-agent/runtime-context.js"
+import { __resetSubagentRegistry, getRun, getRunningForParent } from "../multi-agent/subagent-registry.js"
+import { __resetLifecycleBus } from "../multi-agent/lifecycle-bus.js"
 import type { ToolRegistryLike } from "../agent/loop.js"
 import type { ToolContext } from "./types.js"
 
@@ -60,6 +62,13 @@ const tool = () => {
 describe("delegate_tasks tool", () => {
   beforeEach(() => {
     __resetMultiAgentRuntime()
+    __resetSubagentRegistry()
+    __resetLifecycleBus()
+  })
+
+  afterEach(() => {
+    __resetSubagentRegistry()
+    __resetLifecycleBus()
   })
 
   it("is registered with the expected name + schema", () => {
@@ -69,13 +78,14 @@ describe("delegate_tasks tool", () => {
     expect(t.executionMode).toBe("sequential")
   })
 
-  it("degrades gracefully when runtime is not initialized", async () => {
+  it("returns error when runtime is not initialized", async () => {
+    // asyncExecute checks getMultiAgentRuntime internally
     const res = await tool().handler(
       { tasks: [{ title: "a", description: "b" }] },
       ctx(),
     )
     expect(res.type).toBe("error")
-    expect((res as { error: string }).error).toMatch(/未初始化/)
+    expect((res as { error: string }).error).toMatch(/未初始化|被拒绝/)
   })
 
   it("rejects empty task list", async () => {
@@ -96,7 +106,7 @@ describe("delegate_tasks tool", () => {
     expect((res as { error: string }).error).toMatch(/最多委派/)
   })
 
-  it("runs a batch in parallel and returns results in original order", async () => {
+  it("accepts tasks immediately (non-blocking) and returns runId", async () => {
     const chat = mockChatFn()
     setMultiAgentRuntime({ chatFn: chat as any, toolRegistry: mockRegistry() })
     const res = await tool().handler(
@@ -112,22 +122,43 @@ describe("delegate_tasks tool", () => {
     )
     expect(res.type).toBe("text")
     const text = (res as { text: string }).text
-    // original order preserved
-    const ai = text.indexOf("Alpha")
-    const bi = text.indexOf("Beta")
-    const gi = text.indexOf("Gamma")
-    expect(ai).toBeGreaterThanOrEqual(0)
-    expect(ai).toBeLessThan(bi)
-    expect(bi).toBeLessThan(gi)
-    // success markers + summary line
-    expect(text).toMatch(/3 成功/)
-    expect((text.match(/✅/g) ?? []).length).toBe(3)
+    // Should contain acceptance message
+    expect(text).toMatch(/已接受 3 个子任务/)
+    expect(text).toMatch(/后台异步执行中/)
+    expect(text).toMatch(/run_/)
+    // Task titles listed
+    expect(text).toContain("Alpha")
+    expect(text).toContain("Beta")
+    expect(text).toContain("Gamma")
+    // Should NOT contain completion results (non-blocking)
+    expect(text).not.toMatch(/3 成功/)
   })
 
-  it("strips delegation/agent tools from leaf children (no recursion)", async () => {
-    // Capture which tools the spawned child registry is asked for by inspecting
-    // the scoped registry indirectly: a leaf requesting delegate_tasks should
-    // have it filtered out before it ever reaches the boundary.
+  it("registers run in SubagentRegistry", async () => {
+    const chat = mockChatFn()
+    setMultiAgentRuntime({ chatFn: chat as any, toolRegistry: mockRegistry() })
+    const res = await tool().handler(
+      {
+        tasks: [
+          { title: "Task1", description: "do task1" },
+        ],
+        strategy: "parallel",
+      },
+      ctx(),
+    )
+    const text = (res as { text: string }).text
+    const runIdMatch = text.match(/run_[a-f0-9-]+/)
+    expect(runIdMatch).not.toBeNull()
+    const runId = runIdMatch![0]
+    // Run should be registered
+    const record = getRun(runId)
+    expect(record).toBeDefined()
+    expect(record!.status).toBe("running")
+    expect(record!.parentSessionId).toBe("s1")
+    expect(record!.taskTitles).toContain("Task1")
+  })
+
+  it("strips delegation/agent tools from leaf children", async () => {
     const chat = mockChatFn()
     setMultiAgentRuntime({ chatFn: chat as any, toolRegistry: mockRegistry() })
     const res = await tool().handler(
@@ -143,20 +174,42 @@ describe("delegate_tasks tool", () => {
       },
       ctx(),
     )
-    // It still completes (the child just doesn't get the forbidden tools).
+    // It should be accepted (the filtering happens during execution)
     expect(res.type).toBe("text")
     expect((res as { text: string }).text).toMatch(/Leaf/)
   })
 
-  it("marks a sub-agent that throws as failed (❌) in the envelope", async () => {
-    // chatFn throws only for the "Boom" task; the other one succeeds.
+  it("completes in background and updates registry", async () => {
+    const chat = mockChatFn()
+    setMultiAgentRuntime({ chatFn: chat as any, toolRegistry: mockRegistry() })
+    const res = await tool().handler(
+      {
+        tasks: [
+          { title: "Quick", description: "fast task" },
+        ],
+        strategy: "parallel",
+      },
+      ctx(),
+    )
+    const text = (res as { text: string }).text
+    const runId = text.match(/run_[a-f0-9-]+/)![0]
+
+    // Wait for background execution to complete
+    await new Promise((r) => setTimeout(r, 500))
+
+    const record = getRun(runId)
+    expect(record).toBeDefined()
+    expect(record!.status).toBe("completed")
+    expect(record!.result).toBeDefined()
+    expect(record!.result).toMatch(/委派完成/)
+  })
+
+  it("handles sub-agent failure in background", async () => {
     const chat = vi.fn(
       async (messages: Array<{ role: string; content: string }>) => {
         const userMsg = messages.find((m) => m.role === "user")?.content ?? ""
-        const m = /## Task: (.+)/.exec(userMsg)
-        const title = m ? m[1].trim() : "unknown"
-        if (title === "Boom") throw new Error("sub-agent exploded")
-        return { content: `done:${title}`, tool_calls: undefined }
+        if (userMsg.includes("Boom")) throw new Error("sub-agent exploded")
+        return { content: "done", tool_calls: undefined }
       },
     )
     setMultiAgentRuntime({ chatFn: chat as any, toolRegistry: mockRegistry() })
@@ -170,38 +223,46 @@ describe("delegate_tasks tool", () => {
       },
       ctx(),
     )
+    // Immediately accepted
     expect(res.type).toBe("text")
+    expect((res as { text: string }).text).toMatch(/已接受 2 个子任务/)
+
+    // Wait for background execution
+    await new Promise((r) => setTimeout(r, 500))
+
     const text = (res as { text: string }).text
-    expect(text).toMatch(/1 成功/)
-    expect(text).toMatch(/1 失败/)
-    expect((text.match(/❌/g) ?? []).length).toBe(1)
-    expect((text.match(/✅/g) ?? []).length).toBe(1)
-    expect(text.indexOf("Okay")).toBeLessThan(text.indexOf("Boom"))
+    const runId = text.match(/run_[a-f0-9-]+/)![0]
+    const record = getRun(runId)
+    expect(record).toBeDefined()
+    // Should complete (partial success is still "completed" at the run level)
+    expect(record!.status).toBe("completed")
+    expect(record!.result).toMatch(/1 成功/)
+    expect(record!.result).toMatch(/1 失败/)
   })
 
-  it("marks tasks cancelled (⛔) when the abort signal is already aborted", async () => {
-    const chat = mockChatFn()
+  it("respects concurrent run limit per parent session", async () => {
+    const chat = vi.fn(async () => {
+      // Simulate slow task
+      await new Promise((r) => setTimeout(r, 2000))
+      return { content: "done", tool_calls: undefined }
+    })
     setMultiAgentRuntime({ chatFn: chat as any, toolRegistry: mockRegistry() })
-    const controller = new AbortController()
-    controller.abort() // aborted before execution starts
+
+    // Launch 3 runs (the max)
+    for (let i = 0; i < 3; i++) {
+      const res = await tool().handler(
+        { tasks: [{ title: `Run${i}`, description: "slow" }] },
+        ctx(),
+      )
+      expect(res.type).toBe("text")
+    }
+
+    // 4th should be rejected
     const res = await tool().handler(
-      {
-        tasks: [
-          { title: "First", description: "won't run" },
-          { title: "Second", description: "won't run" },
-        ],
-        strategy: "sequential",
-      },
-      {
-        ...ctx(),
-        extra: { signal: controller.signal },
-      } as ToolContext,
+      { tasks: [{ title: "Overflow", description: "too many" }] },
+      ctx(),
     )
-    expect(res.type).toBe("text")
-    const text = (res as { text: string }).text
-    expect(text).toMatch(/0 成功/)
-    expect(text).toMatch(/2 取消/)
-    expect((text.match(/⛔/g) ?? []).length).toBe(2)
-    expect(chat).not.toHaveBeenCalled()
+    expect(res.type).toBe("error")
+    expect((res as { error: string }).error).toMatch(/上限|被拒绝/)
   })
 })

@@ -438,6 +438,12 @@ export class QQBotWSClient {
     }
     clearTimeout(keepAliveTimer);
 
+    // Guard: never send empty replies to QQ (would show as blank message)
+    if (!reply || !reply.trim()) {
+      console.log("[QQBotWSClient] empty reply, skipping send");
+      return;
+    }
+
     // Auto-chunk long messages
     const elapsed = Date.now() - taskStart;
     if (elapsed > PASSIVE_REPLY_WINDOW_MS) {
