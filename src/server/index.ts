@@ -4,6 +4,7 @@ import type { Db } from "../db/client.js";
 import type { Config } from "../config/schema.js";
 import type { ProviderRouter } from "../providers/router.js";
 import type { MemoryStrategy } from "../memory/strategy.js";
+import { loadSystemPrompt } from "../memory/strategy.js";
 import type { TwinSystemInstance } from "../twin-system/factory.js";
 import { healthRoute } from "./routes/health.js";
 import { evolutionRoute } from "./routes/evolution.js";
@@ -181,7 +182,7 @@ export async function buildServer(
     toolRegistry: makeRegistryAdapter() as any,
     config: {
       maxTurns: (config.agent as { maxTurns?: number } | undefined)?.maxTurns ?? 50,
-      systemPrompt: (config.agent as { systemPrompt?: string } | undefined)?.systemPrompt,
+      systemPrompt: loadSystemPrompt(),
       // 工具调用守护：同一工具连续失败/无进展时 warn/halt
       guardrails: {
         sameToolFailureWarnAfter: 3,

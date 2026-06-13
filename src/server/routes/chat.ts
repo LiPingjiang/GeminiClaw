@@ -3,6 +3,7 @@ import type { FastifyInstance } from "fastify"
 import type { ProviderRouter } from "../../providers/router.js"
 import type { MemoryStrategy } from "../../memory/strategy.js"
 import type { TwinSystemInstance } from "../../twin-system/factory.js"
+import type { AgentLoop } from "../../agent/index.js"
 
 interface ChatBody {
   message: string
@@ -15,7 +16,7 @@ interface ChatRouteOpts {
   router: ProviderRouter
   strategy: MemoryStrategy
   authToken?: string
-  agentLoop?: unknown
+  agentLoop?: AgentLoop
   twinSystem?: TwinSystemInstance
 }
 
@@ -93,8 +94,84 @@ export async function chatRoute(
     // 2. 追加当前用户消息
     const allMessages = [...contextMessages, { role: "user" as const, content: message }]
 
+    // ─── 使用 AgentLoop 执行（带工具调用能力） ───
+    if (opts.agentLoop) {
+      if (wantStream) {
+        // SSE 流式 + AgentLoop
+        reply.hijack()
+        const raw = reply.raw
+        raw.writeHead(200, {
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache",
+          "Connection": "keep-alive",
+        })
+
+        let fullContent = ""
+
+        try {
+          const eventStream = opts.agentLoop.run({
+            messages: allMessages as any,
+            sessionId: sid,
+            model,
+          })
+
+          for await (const event of eventStream) {
+            if (event.type === "message_delta") {
+              fullContent += event.delta
+              const data = JSON.stringify({ choices: [{ delta: { content: event.delta } }] })
+              raw.write(`data: ${data}\n\n`)
+            }
+          }
+
+          raw.write(`data: ${JSON.stringify({ type: "done" })}\n\n`)
+          raw.write("data: [DONE]\n\n")
+
+          if (fullContent) {
+            await opts.strategy.appendTurn(
+              sid,
+              { role: "user", content: message },
+              { role: "assistant", content: fullContent },
+            )
+            opts.twinSystem?.activityTracker.recordActivity()
+          }
+        } catch (err) {
+          raw.write(`data: ${JSON.stringify({ error: String(err) })}\n\n`)
+        } finally {
+          raw.end()
+        }
+        return
+      }
+
+      // 非流式 + AgentLoop：收集所有 message_delta 事件
+      let fullContent = ""
+      const eventStream = opts.agentLoop.run({
+        messages: allMessages as any,
+        sessionId: sid,
+        model,
+      })
+
+      for await (const event of eventStream) {
+        if (event.type === "message_delta") {
+          fullContent += event.delta
+        }
+      }
+
+      await opts.strategy.appendTurn(
+        sid,
+        { role: "user", content: message },
+        { role: "assistant", content: fullContent },
+      )
+      opts.twinSystem?.activityTracker.recordActivity()
+
+      return reply.send({
+        response: fullContent,
+        sessionId: sid,
+        model: model ?? "unknown",
+      })
+    }
+
+    // ─── Fallback：无 AgentLoop 时直接调用 router（无工具能力） ───
     if (wantStream) {
-      // SSE 流式：hijack 接管原始 socket，绕过 Fastify 自动 Content-Length
       reply.hijack()
       const raw = reply.raw
       raw.writeHead(200, {
@@ -123,21 +200,19 @@ export async function chatRoute(
         raw.end()
       }
 
-      // 后台追加 + 通知 twin-system activity tracker
       if (fullContent) {
         await opts.strategy.appendTurn(
           sid,
           { role: "user", content: message },
           { role: "assistant", content: fullContent },
         )
-        // Notify twin-system of activity (for idle detection)
         opts.twinSystem?.activityTracker.recordActivity()
       }
 
       return
     }
 
-    // 非流式
+    // 非流式 fallback
     const chatResponse = await opts.router.chat(allMessages, model ? { model } : undefined)
 
     await opts.strategy.appendTurn(
@@ -146,7 +221,6 @@ export async function chatRoute(
       { role: "assistant", content: chatResponse.content },
     )
 
-    // Notify twin-system of activity (for idle detection)
     opts.twinSystem?.activityTracker.recordActivity()
 
     return reply.send({

@@ -34,6 +34,7 @@ async function submitTask(input: {
   language: string;
   timeout: number;
   key_preference: string;
+  require_backtest_template?: boolean;
 }): Promise<{ taskId: string }> {
   const res = await fetch(`${QUEUE_URL}/tasks`, {
     method: 'POST',
@@ -86,6 +87,7 @@ async function sandboxExecHandler(params: any, _ctx: any) {
   const language: string = params.language ?? 'python';
   const timeout: number = params.timeout ?? DEFAULT_TIMEOUT;
   const keyPreference: string = params.key_preference ?? 'any';
+  const requireBacktestTemplate: boolean = params.require_backtest_template ?? false;
 
   if (!code || !code.trim()) {
     return { type: 'error', error: '需要提供 code 参数' };
@@ -94,7 +96,7 @@ async function sandboxExecHandler(params: any, _ctx: any) {
   // 1. Submit task to queue
   let taskId: string;
   try {
-    const resp = await submitTask({ code, language, timeout, key_preference: keyPreference });
+    const resp = await submitTask({ code, language, timeout, key_preference: keyPreference, require_backtest_template: requireBacktestTemplate });
     taskId = resp.taskId;
   } catch (err: any) {
     return { type: 'error', error: `提交任务失败: ${err.message}` };
@@ -176,6 +178,10 @@ registry.register({
         type: 'string',
         description: '指定使用哪个 Sandbox key（key1/key2/key3/any），默认 any（自动选择负载最低的）',
         enum: ['key1', 'key2', 'key3', 'any'],
+      },
+      require_backtest_template: {
+        type: 'boolean',
+        description: '是否要求使用回测模板（策略回测场景必须为 true，确保代码包含完整的回测框架）',
       },
     },
     required: ['code'],
