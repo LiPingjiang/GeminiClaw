@@ -21,7 +21,7 @@ import { registry } from './registry.js';
 
 // ─── Config ──────────────────────────────────────────────────────────────────
 
-const QUEUE_URL = process.env.SANDBOX_QUEUE_URL ?? 'http://49.232.173.252:3200';
+const QUEUE_URL = process.env.SANDBOX_QUEUE_URL ?? 'http://127.0.0.1:3200';
 const AUTH_TOKEN = 'gc-sandbox-2026';
 const DEFAULT_TIMEOUT = 300; // 5 minutes
 const POLL_INTERVAL_MS = 2000; // 2 seconds between polls
