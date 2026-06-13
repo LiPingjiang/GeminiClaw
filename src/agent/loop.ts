@@ -816,7 +816,10 @@ export class AgentLoop {
         },
         extra: this._toolContextExtra,
       };
-      const rawResult = await entry.handler(tc.args, toolContext);
+      const rawResult = await this.withStallGuard(
+        entry.handler(tc.args, toolContext),
+        tc.name,
+      );
 
       // ── Normalize tool result format ─────────────────────────────────────
       // Tool handlers may return either:
@@ -937,5 +940,114 @@ export class AgentLoop {
       }
     }
     return { events: allEvents, results: allResults };
+  }
+
+  // ── Stall guard: detect stuck tools via child process activity ─────────────
+  // Unlike a simple timeout, this checks whether the Node.js process has active
+  // child processes doing work. If the tool's promise hasn't resolved AND there
+  // are no active children (CPU-wise) for a sustained period, it's stuck.
+  //
+  // Tools that are actively working (browser fetching data, script computing)
+  // will keep resetting the idle counter and are allowed to run indefinitely.
+
+  private static readonly STALL_CHECK_INTERVAL_MS = 10_000; // check every 10s
+  private static readonly STALL_MAX_IDLE_CHECKS = 6;        // 6 × 10s = 60s of consecutive idleness → abort
+  private static readonly STALL_MIN_RUNTIME_MS = 30_000;    // don't even start checking until 30s elapsed
+
+  private async withStallGuard<T>(promise: Promise<T>, toolName: string): Promise<T> {
+    let resolved = false;
+    const startTime = Date.now();
+
+    return new Promise<T>((resolve, reject) => {
+      let consecutiveIdleChecks = 0;
+
+      const timer = setInterval(() => {
+        if (resolved) return;
+
+        // Don't check until minimum runtime elapsed (give tool time to start)
+        const elapsed = Date.now() - startTime;
+        if (elapsed < AgentLoop.STALL_MIN_RUNTIME_MS) return;
+
+        // Check if there are active child processes
+        const hasActivity = this.checkChildProcessActivity();
+
+        if (hasActivity) {
+          // Something is working — reset idle counter
+          consecutiveIdleChecks = 0;
+        } else {
+          consecutiveIdleChecks++;
+          const stallSec = consecutiveIdleChecks * (AgentLoop.STALL_CHECK_INTERVAL_MS / 1000);
+          this.logger.error(
+            `[stall-guard] Tool "${toolName}" idle check ${consecutiveIdleChecks}/${AgentLoop.STALL_MAX_IDLE_CHECKS} (${stallSec}s idle, ${Math.round(elapsed / 1000)}s total)`
+          );
+
+          if (consecutiveIdleChecks >= AgentLoop.STALL_MAX_IDLE_CHECKS) {
+            resolved = true;
+            clearInterval(timer);
+            reject(new Error(
+              `[stall-guard] Tool "${toolName}" appears stuck: no child process activity ` +
+              `for ${stallSec}s (total runtime: ${Math.round(elapsed / 1000)}s). Aborting.`
+            ));
+          }
+        }
+      }, AgentLoop.STALL_CHECK_INTERVAL_MS);
+
+      promise.then(
+        (val) => { resolved = true; clearInterval(timer); resolve(val); },
+        (err) => { resolved = true; clearInterval(timer); reject(err); },
+      );
+    });
+  }
+
+  /**
+   * Check if the current process has any child processes with meaningful CPU activity.
+   * Returns true if at least one child is consuming > 1% CPU, or if we can't determine
+   * (fail-open: don't kill what we can't measure).
+   */
+  private checkChildProcessActivity(): boolean {
+    try {
+      const { execSync } = require("child_process");
+      const pid = process.pid;
+      // Get all child process CPU usage
+      const output = execSync(
+        `pgrep -P ${pid} | xargs -I{} ps -p {} -o %cpu= 2>/dev/null`,
+        { timeout: 3000, encoding: "utf-8" },
+      ).trim();
+
+      if (!output) {
+        // No child processes at all — tool is running in-process (e.g. pure async/await)
+        // Can't determine activity from child processes, so check if there are open
+        // network sockets that might indicate active work
+        return this.checkNetworkActivity(pid);
+      }
+
+      // Check if any child has CPU > 1%
+      const cpuValues = output.split("\n").map((l) => parseFloat(l.trim())).filter((v) => !isNaN(v));
+      return cpuValues.some((cpu) => cpu > 1.0);
+    } catch {
+      // Can't determine — fail open (assume active, don't kill)
+      return true;
+    }
+  }
+
+  /**
+   * Check if the process has network connections beyond the baseline
+   * (WebSocket to QQ, listening port). If there are extra TCP connections
+   * in ESTABLISHED state, something is actively fetching.
+   */
+  private checkNetworkActivity(pid: number): boolean {
+    try {
+      const { execSync } = require("child_process");
+      // Count ESTABLISHED TCP connections (excluding our known ones: listen port + QQ WebSocket)
+      const output = execSync(
+        `lsof -p ${pid} -i TCP -sTCP:ESTABLISHED 2>/dev/null | grep -v "LISTEN" | wc -l`,
+        { timeout: 3000, encoding: "utf-8" },
+      ).trim();
+      const count = parseInt(output, 10) || 0;
+      // Baseline: 1 connection (QQ WebSocket). If more, something is active.
+      return count > 2;
+    } catch {
+      return true; // fail open
+    }
   }
 }

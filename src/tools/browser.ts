@@ -4,6 +4,7 @@
 // No Chromium download needed — uses the system browser.
 import { registry } from './registry.js';
 import { existsSync } from 'fs';
+import { execSync } from 'child_process';
 let _browser = null;
 const _pages = new Map(); // sessionId → Page
 let _defaultSession = 'default';
@@ -61,6 +62,94 @@ async function getPageText(page, maxChars = 8000) {
         return text.replace(/\s{3,}/g, '\n\n').trim().slice(0, max);
     }, maxChars);
 }
+
+// ── Liveness watchdog for browser operations ─────────────────────────────────
+// Instead of a simple timeout, we check if Chrome is actually doing work.
+// If the Chrome process is idle (CPU ≈ 0%) for too long, it's stuck.
+
+/**
+ * Get the CPU usage percentage of the Chrome browser process.
+ * Returns -1 if unable to determine (process not found, etc).
+ */
+function getChromeCpuUsage(): number {
+    if (!_browser) return -1;
+    try {
+        const pid = _browser.process()?.pid;
+        if (!pid) return -1;
+        // Get CPU% of the process tree (main + children)
+        const output = execSync(
+            `ps -p ${pid} -o %cpu= 2>/dev/null || echo "-1"`,
+            { timeout: 2000, encoding: 'utf-8' },
+        ).trim();
+        return parseFloat(output) || 0;
+    } catch {
+        return -1;
+    }
+}
+
+/**
+ * Wrap a Puppeteer promise with a liveness watchdog.
+ * 
+ * Instead of a hard timeout, this periodically checks Chrome's CPU usage.
+ * The operation is considered "stuck" only if Chrome has been idle
+ * (CPU < threshold) for `stallSeconds` consecutive checks.
+ * 
+ * If Chrome is actively working (CPU > threshold), the watchdog resets
+ * and lets the operation continue indefinitely.
+ * 
+ * @param promise - The Puppeteer operation to monitor
+ * @param label - Description for error messages
+ * @param stallSeconds - How many seconds of consecutive idleness before aborting (default: 30)
+ * @param checkIntervalMs - How often to check CPU (default: 5000ms)
+ * @param cpuThreshold - CPU% below which Chrome is considered idle (default: 2%)
+ */
+async function withLivenessGuard<T>(
+    promise: Promise<T>,
+    label: string,
+    {
+        stallSeconds = 30,
+        checkIntervalMs = 5000,
+        cpuThreshold = 2,
+    } = {},
+): Promise<T> {
+    let consecutiveIdleChecks = 0;
+    const maxIdleChecks = Math.ceil(stallSeconds / (checkIntervalMs / 1000));
+    let resolved = false;
+
+    return new Promise<T>((resolve, reject) => {
+        const timer = setInterval(() => {
+            if (resolved) return;
+
+            const cpu = getChromeCpuUsage();
+            if (cpu < 0) {
+                // Can't determine CPU — don't kill, just skip this check
+                return;
+            }
+
+            if (cpu < cpuThreshold) {
+                consecutiveIdleChecks++;
+                if (consecutiveIdleChecks >= maxIdleChecks) {
+                    resolved = true;
+                    clearInterval(timer);
+                    reject(new Error(
+                        `[liveness-guard] Browser appears stuck during "${label}": ` +
+                        `Chrome CPU < ${cpuThreshold}% for ${stallSeconds}s consecutively. ` +
+                        `Aborting to prevent infinite hang.`
+                    ));
+                }
+            } else {
+                // Chrome is working — reset the idle counter
+                consecutiveIdleChecks = 0;
+            }
+        }, checkIntervalMs);
+
+        promise.then(
+            (val) => { resolved = true; clearInterval(timer); resolve(val); },
+            (err) => { resolved = true; clearInterval(timer); reject(err); },
+        );
+    });
+}
+
 // ── Tool handler ─────────────────────────────────────────────────────────────
 registry.register({
     name: 'browser',
@@ -147,13 +236,19 @@ registry.register({
                     await page.waitForSelector(waitFor, { timeout: 5000 }).catch(() => { });
                 }
                 const title = await page.title();
-                const text = await getPageText(page, maxChars);
+                const text = await withLivenessGuard(
+                    getPageText(page, maxChars),
+                    `getPageText after navigate to ${url}`,
+                );
                 return { type: 'text', text: `[${title}]\n\n${text}` };
             }
             // ── content ────────────────────────────────────────────────────────────
             if (action === 'content') {
                 const title = await page.title();
-                const text = await getPageText(page, maxChars);
+                const text = await withLivenessGuard(
+                    getPageText(page, maxChars),
+                    'getPageText (content action)',
+                );
                 return { type: 'text', text: `[${title}]\n\n${text}` };
             }
             // ── click ──────────────────────────────────────────────────────────────
@@ -165,7 +260,10 @@ registry.register({
                 await page.click(selector);
                 await page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 5000 }).catch(() => { });
                 const title = await page.title();
-                const text = await getPageText(page, maxChars);
+                const text = await withLivenessGuard(
+                    getPageText(page, maxChars),
+                    `getPageText after click ${selector}`,
+                );
                 return { type: 'text', text: `[Clicked: ${selector}]\n[${title}]\n\n${text}` };
             }
             // ── type ───────────────────────────────────────────────────────────────
@@ -184,8 +282,11 @@ registry.register({
                 const js = params['js'];
                 if (!js)
                     return { type: 'error', error: 'js is required for eval' };
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                const result = await page.evaluate((code) => eval(code), js);
+                const result = await withLivenessGuard(
+                    page.evaluate((code) => eval(code), js),
+                    `eval: ${js.slice(0, 80)}`,
+                    { stallSeconds: 45 }, // eval may do complex work, give more time
+                );
                 const output = typeof result === 'object' ? JSON.stringify(result, null, 2) : String(result ?? '');
                 return { type: 'text', text: output };
             }
@@ -207,7 +308,10 @@ registry.register({
             if (action === 'back') {
                 await page.goBack({ waitUntil: 'domcontentloaded', timeout: 10000 });
                 const title = await page.title();
-                const text = await getPageText(page, maxChars);
+                const text = await withLivenessGuard(
+                    getPageText(page, maxChars),
+                    'getPageText after back',
+                );
                 return { type: 'text', text: `[Back → ${title}]\n\n${text}` };
             }
             return { type: 'error', error: `Unknown action: ${action}` };
