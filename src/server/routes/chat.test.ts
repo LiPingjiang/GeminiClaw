@@ -52,6 +52,7 @@ function makeConfig(authToken?: string): Config {
       autoApproveRiskLevels: ["low"],
       approvalTimeoutMs: 3600000,
     },
+    agents: [],
   }
 }
 
