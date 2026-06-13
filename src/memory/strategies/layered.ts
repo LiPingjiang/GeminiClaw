@@ -158,11 +158,31 @@ export class LayeredStrategy implements MemoryStrategy {
   }
 
   private getRecentHistory(sessionId: string): Message[] {
-    return this.db.prepare(`
+    // 只加载 user/assistant 消息，跳过 tool 角色（中间工具结果）
+    // 原因：tool 消息缺少 tool_call_id 结构，LLM 无法理解；
+    // 且会占用 recentMessageLimit 配额，导致真正的对话上下文过少
+    const raw = this.db.prepare(`
       SELECT role, content FROM chat_messages
-      WHERE session_id = ?
+      WHERE session_id = ? AND role IN ('user', 'assistant')
       ORDER BY id DESC LIMIT ?
     `).all(sessionId, this.config.recentMessageLimit) as Message[]
+
+    // 去重：去除重复的 assistant 内容（防止 LLM 复制模式）
+    // 场景：旧数据中同一 tool-call 循环存储了多条相同 assistant 回复
+    const deduped: Message[] = []
+    const seenAssistantContent = new Set<string>()
+    for (const msg of raw) {
+      if (msg.role === "assistant") {
+        const text = typeof msg.content === "string" ? msg.content : ""
+        // 跳过完全空的 assistant 消息
+        if (!text) continue
+        // 跳过已出现过的相同 assistant 内容（去重，仅对较长内容生效）
+        if (text.length > 50 && seenAssistantContent.has(text)) continue
+        if (text.length > 50) seenAssistantContent.add(text)
+      }
+      deduped.push(msg)
+    }
+    return deduped
   }
 
   async appendMessages(sessionId: string, messages: Message[]): Promise<void> {

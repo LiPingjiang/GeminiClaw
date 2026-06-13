@@ -266,9 +266,13 @@ export class AgentLoop {
           const response = await this.chatFn(messages, { model: params.model });
           if (response.content) {
             yield { type: "message_delta", delta: response.content };
+          } else {
+            // Grace call returned empty content — emit a fallback summary
+            yield { type: "message_delta", delta: `已执行 ${turn} 轮操作，达到迭代上限。如需继续请再次发送指令。` };
           }
         } catch (err) {
           this.logger.error("Grace call failed", err);
+          yield { type: "message_delta", delta: `已执行 ${turn} 轮操作，处理过程中出现异常。如需继续请再次发送指令。` };
         }
 
         yield { type: "agent_end", totalTurns: turn, stopReason: "max_turns" };
@@ -284,6 +288,12 @@ export class AgentLoop {
         description: t.description,
         input_schema: t.schema,
       }));
+
+      // DEBUG: log tool count and delegate_to presence (remove after verification)
+      if (turn === 1) {
+        const toolNames = toolSchemas.map((t) => t.name);
+        console.log(`[AgentLoop] Turn 1: ${toolSchemas.length} tools passed to LLM. delegate_to present: ${toolNames.includes("delegate_to")}. All: ${toolNames.join(", ")}`);
+      }
 
       // Guard: ensure system message is always present at position 0
       if (fullSystemPrompt && messages.length > 0 && messages[0].role !== "system") {

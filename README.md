@@ -6,7 +6,7 @@
 
 <p align="center">
   <strong>The first self-evolving agent runtime.</strong><br/>
-  Twin-System architecture · Layered memory · Multi-model routing · Zero vendor lock-in
+  Twin-System architecture · Layered memory · Multi-model routing · Multi-agent delegation · Zero vendor lock-in
 </p>
 
 <p align="center">
@@ -14,7 +14,7 @@
     <img src="https://img.shields.io/badge/license-BSL%201.1-blue" alt="License: BSL 1.1" />
   </a>
   <img src="https://img.shields.io/badge/node-%3E%3D20-green" alt="Node >= 20" />
-  <img src="https://img.shields.io/badge/tests-644%20passing-brightgreen" alt="644 tests passing" />
+  <img src="https://img.shields.io/badge/tests-680%20passing-brightgreen" alt="680 tests passing" />
 </p>
 
 ---
@@ -28,19 +28,20 @@ It takes the best of both [OpenClaw](https://github.com/openclaw/openclaw) and [
 | | OpenClaw | Hermes | **GeminiClaw** |
 |---|---|---|---|
 | **Language** | TypeScript | Python | TypeScript |
-| **Agent loop + tools** | ✅ 30+ tools | ✅ 69 tools | 🔜 Phase G |
+| **Agent loop + tools** | ✅ 30+ tools | ✅ 69 tools | ✅ 25 tools |
 | **Multi-model routing** | ✅ | ✅ | ✅ |
 | **Automatic fallback** | ⚠️ config-only | ✅ | ✅ |
+| **Multi-agent delegation** | ❌ | ❌ | ✅ delegate_tasks + delegate_to |
 | **Multi-channel** | ✅ 20+ channels | ✅ Telegram/Discord/Slack/WhatsApp/Signal | ✅ QQBot built-in · plugin system |
 | **Plugin system** | ✅ heavy (40+ APIs) | ✅ lightweight (dir convention) | ✅ lightweight (hermes-style) |
 | **Session persistence** | ✅ JSONL ⚠️ corruption risk | ✅ SQLite WAL | ✅ SQLite WAL |
 | **Cross-session search** | ❌ | ✅ FTS5 + CJK trigram | ✅ FTS5 + CJK trigram |
 | **Memory hierarchy** | ❌ flat file | ❌ flat curator | ✅ 4-layer L0-L3 topics |
 | **Self-evolution** | ❌ | ❌ | ✅ **Twin-System** |
+| **Skill evolution** | ❌ | ❌ | ✅ conversation → skill distillation |
 | **Hot-swap without downtime** | ❌ | ❌ | ✅ git branch flow |
 | **Rollback on regression** | ❌ | ❌ | ✅ circuit breaker |
 | **Zero vendor lock-in** | ⚠️ | ✅ | ✅ |
-| **Codebase size (core)** | ~100K+ lines | ~20K lines | ~5K lines (target) |
 
 ---
 
@@ -64,6 +65,35 @@ GeminiClaw is named after the Gemini twins — because it always runs in two sta
 **Safety:** the Circuit Breaker monitors failure rate after every switch. If it spikes, the system reverts automatically and notifies you.
 
 **Slot model (v2):** no file copying, no symlinks. `main` = live runtime. `evolution/xxx` = work-in-progress. Switching is just a git merge + process restart.
+
+---
+
+## Multi-Agent Delegation
+
+GeminiClaw supports two forms of cross-agent delegation, both non-blocking (fire-and-forget):
+
+**`delegate_tasks`** — spawn anonymous sub-agents for parallel background work. Ideal for browser scraping, multi-file processing, or independent research tasks. The parent agent continues immediately; results are pushed to the user when ready.
+
+**`delegate_to`** — delegate to a **named specialist agent** defined in config. Each named agent has its own system prompt, model preference, and capabilities. Results are automatically pushed back to the user and injected into the session context.
+
+```yaml
+agents:
+  - name: translator
+    displayName: "翻译助手"
+    capabilities: "中英互译，保持原文风格"
+    model: "mcli/claude-sonnet-4-20250514"
+    systemPrompt: "你是一个专业翻译..."
+
+  - name: summarizer
+    displayName: "摘要助手"
+    capabilities: "长文摘要，提取关键信息"
+
+  - name: coder
+    displayName: "编程助手"
+    capabilities: "代码生成、调试、重构"
+```
+
+The architecture: LifecycleBus event bus → SubagentRegistry tracking → AsyncExecutor background execution → ResultInjector push + context injection.
 
 ---
 
@@ -169,10 +199,10 @@ Configure multiple providers. GeminiClaw routes with ordered fallback — if the
 
 ```yaml
 routing:
-  default: "mcli/claude-opus-4-6"
+  default: "mcli/claude-opus-4-20250514"
   fallback:
-    - "mcli/claude-sonnet-4-6"
-    - "friday/gemini-3-flash-preview"
+    - "mcli/claude-sonnet-4-20250514"
+    - "friday/gemini-2.5-flash"
 ```
 
 Supported providers:
@@ -198,7 +228,8 @@ cp config.example.yaml config.yaml
 # Fill in your API keys and provider settings
 
 # 4. Run
-pnpm dev
+pnpm dev          # development (tsx watch)
+pnpm build && pnpm start   # production
 ```
 
 ---
@@ -206,36 +237,53 @@ pnpm dev
 ## API
 
 ```
-POST /v1/agent/chat          — Chat (non-streaming or SSE streaming)
-GET  /v1/health              — Health check
+POST /v1/agent/chat             — Chat (non-streaming)
+POST /v1/agent/stream           — Chat (SSE streaming with tool events)
+GET  /v1/health                 — Health check
 
-GET  /v1/evolution/status    — Evolution engine state
-POST /v1/evolution/run       — Trigger one evolution cycle manually
-POST /v1/evolution/switch    — Manually approve and switch
-POST /v1/evolution/approve/:id — Approve a high-risk intent
-GET  /v1/evolution/history   — View past evolutions
+GET  /v1/evolution/status       — Twin-system evolution state
+POST /v1/evolution/run          — Trigger one evolution cycle manually
+POST /v1/evolution/intents      — Add user intent
+GET  /v1/evolution/candidates   — Peek at intent queue
+
+GET  /v1/evolution/approvals    — List pending approvals
+POST /v1/evolution/approvals/:id/approve  — Approve a high-risk intent
+POST /v1/evolution/approvals/:id/reject   — Reject an intent
+
+GET  /v1/skill-evolution/status — Skill evolution engine state
+POST /v1/skill-evolution/scan   — Trigger skill extraction from conversations
+GET  /v1/skills                 — List extracted skills
+GET  /v1/skills/:name           — Get skill detail
+
+GET  /v1/trace/live             — SSE live trace stream (for gc watch TUI)
 ```
 
-### Chat
+### Chat (non-streaming)
 
 ```json
 // Request
 {
   "message": "Hello!",
   "sessionId": "optional-session-id",
-  "model": "mcli/claude-sonnet-4-6",
-  "stream": false
+  "model": "mcli/claude-sonnet-4-20250514"
 }
 
 // Response
 {
   "response": "Hello! How can I help?",
   "sessionId": "abc-123",
-  "model": "mcli/claude-sonnet-4-6"
+  "model": "mcli/claude-sonnet-4-20250514"
 }
 ```
 
-Streaming: set `"stream": true` → `text/event-stream`, each event: `data: {"delta": "...", "done": false}`
+### Stream (SSE)
+
+```json
+// Request
+{ "message": "Translate this to English", "sessionId": "optional" }
+```
+
+Response is `text/event-stream` with typed events: `turn_start`, `message_delta`, `tool_start`, `tool_end`, `turn_end`, `agent_end`.
 
 ---
 
@@ -243,41 +291,66 @@ Streaming: set `"stream": true` → `text/event-stream`, each event: `data: {"de
 
 ```yaml
 server:
-  port: 18888
-  host: "127.0.0.1"
+  port: 3000
+  host: "0.0.0.0"
   authToken: "your-secret-token"
 
 providers:
   - name: mcli
     type: mcli
     apiKey: "your-key"
-    baseUrl: "https://mcli.sankuai.com"   # no /v1 suffix
+    baseUrl: "https://mcli.sankuai.com"
     extraHeaders:
       X-Working-Dir: "/your/project"
-    models: [claude-opus-4-6, claude-sonnet-4-6]
+    models: [claude-opus-4-20250514, claude-sonnet-4-20250514]
 
 routing:
-  default: "mcli/claude-opus-4-6"
-  fallback: ["mcli/claude-sonnet-4-6"]
+  default: "mcli/claude-opus-4-20250514"
+  fallback: ["mcli/claude-sonnet-4-20250514"]
 
 memory:
   strategy: layered   # buffer (dev) or layered (production)
-  dataDir: ".data"
-```
 
-Full configuration reference: [docs/CONFIGURATION.md](docs/CONFIGURATION.md) *(coming soon)*
+agents:
+  - name: translator
+    displayName: "翻译助手"
+    capabilities: "中英互译"
+    systemPrompt: "你是专业翻译..."
+  - name: summarizer
+    displayName: "摘要助手"
+    capabilities: "长文摘要"
+
+channels:
+  qqbot:
+    enabled: true
+    appId: "your-app-id"
+    clientSecret: "your-secret"
+    mode: "websocket"   # or "webhook"
+```
 
 ---
 
-## Roadmap
+## Directory Layout
 
-| Phase | Feature | Status |
-|-------|---------|--------|
-| A | Types · DB · TraceCollector · Engine skeleton | ✅ Done |
-| B | Mutator (LLM loop) · Validator L1 · Switcher | ✅ Done |
-| C | Validator L2 (behavior) · CircuitBreaker · Evolution API | 🔄 In progress |
-| D | IntentEngine → memory topics · UpstreamSync | 🔜 Next |
-| E | CLI · Human review flow · Notifications | 🔜 Planned |
+```
+src/
+├── index.ts              ← entry point (config load + server start)
+├── agent/                ← AgentLoop (tool orchestration, parallel calls, budget)
+├── server/               ← Fastify HTTP server + routes
+├── providers/            ← LLM provider adapters (Anthropic, mcli, Friday)
+├── memory/               ← session + layered long-term memory (SQLite)
+├── tools/                ← 25 built-in tools (exec, read, write, browser, delegate_to...)
+├── multi-agent/          ← cross-agent delegation (mailbox, lifecycle-bus, result-injector)
+├── agents/               ← named agent templates (config-driven)
+├── channels/             ← channel adapters (QQBot WebSocket/Webhook)
+├── twin-system/          ← self-evolution engine (factory DI + all components)
+├── skill-evolution/      ← conversation → skill distillation engine
+├── evolution-core/       ← evolution orchestrator + engine
+├── mesh/                 ← agent mesh (bus, pool, receptionist)
+├── guidance/             ← agent gate + guidance layer
+├── cli/                  ← TUI client (gc watch)
+└── config/               ← config loader (Zod schema, reads config.yaml)
+```
 
 ---
 
@@ -286,23 +359,37 @@ Full configuration reference: [docs/CONFIGURATION.md](docs/CONFIGURATION.md) *(c
 | Feature | Status |
 |---------|--------|
 | Multi-provider routing (mcli / Friday / Anthropic) | ✅ |
-| Ordered fallback | ✅ |
+| Ordered fallback with automatic retry | ✅ |
 | Bearer auth | ✅ |
 | Non-streaming + SSE streaming | ✅ |
+| AgentLoop with parallel tool calls + iteration budget | ✅ |
+| 25 built-in tools (exec, read, write, edit, browser, web_search, delegate_to...) | ✅ |
 | Buffer memory (sliding window) | ✅ |
 | Layered memory (SQLite, 4-layer topics) | ✅ |
-| 644 unit tests, 0 failures | ✅ |
-| Skill Evolution: conversation → ReflectionCandidate source | ✅ |
-| Skill Evolution: long-session task decomposition (distill + rolling LLM segment) | ✅ |
-| Evolution Engine: TraceCollector + IntentStore + DB | ✅ |
-| Evolution Engine: Mutator (LLM agentic loop, unified diff) | ✅ |
-| Evolution Engine: Validator Level 1 (build + test) | ✅ |
-| Evolution Engine: Switcher (git branch flow + SIGUSR1) | ✅ |
-| Evolution Engine: Validator Level 2 (behavior comparison) | 🔄 |
-| Evolution Engine: CircuitBreaker + auto-rollback | 🔄 |
-| Evolution HTTP API | 🔄 |
-| IntentEngine → memory topics integration | 🔜 |
-| UpstreamSync (learn from openclaw / hermes) | 🔜 |
+| Multi-agent delegation: delegate_tasks (anonymous, parallel) | ✅ |
+| Multi-agent delegation: delegate_to (named agents, config-driven) | ✅ |
+| Named agent templates with dynamic tool description injection | ✅ |
+| Result push + session context injection (ResultInjector) | ✅ |
+| QQ Bot channel (WebSocket + Webhook modes) | ✅ |
+| Twin-System: SlotManager + SafetyGuard + EvolutionPipeline | ✅ |
+| Evolution: Mutator + Validator + Persistence + IntentAggregator | ✅ |
+| Evolution: SchedulerRunner + PostSwitchMonitor | ✅ |
+| Evolution: ApprovalGate + auto-approve by risk level | ✅ |
+| Skill Evolution: conversation → ReflectionCandidate | ✅ |
+| Skill Evolution: long-session task decomposition (distill + rolling segment) | ✅ |
+| 680 tests across 66 files, all passing | ✅ |
+
+---
+
+## Build & Test
+
+```bash
+pnpm install        # install dependencies
+pnpm dev            # development mode (tsx watch)
+pnpm build          # compile TypeScript
+pnpm test           # run all tests (vitest, 680 tests, 66 files)
+pnpm start          # production (node dist/index.js)
+```
 
 ---
 

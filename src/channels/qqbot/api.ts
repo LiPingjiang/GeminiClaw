@@ -577,6 +577,16 @@ export function buildBusyKeyboard(requestId: string): InlineKeyboard {
             ),
           ],
         },
+        {
+          buttons: [
+            buildKeyboardButton(
+              "busy-background",
+              "🌙 转入后台",
+              `busy:${requestId}:background`,
+              { visitedLabel: "已转后台", style: 0, groupId: "busy-choice" },
+            ),
+          ],
+        },
       ],
     },
   };

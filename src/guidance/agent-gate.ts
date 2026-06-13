@@ -37,6 +37,10 @@ export interface AgentInfo {
 const busyMap = new Map<string, boolean>();
 /** Map of agentId -> current work description */
 const workMap = new Map<string, string>();
+/** Map of agentId -> backgrounded flag (task still running but user freed) */
+const backgroundedMap = new Map<string, boolean>();
+/** Map of agentId -> callback to invoke when backgrounded task completes */
+const backgroundCallbacks = new Map<string, (reply: string) => void>();
 /** Queue: messages waiting for a busy agent to become idle */
 const waitQueue = new Map<
   string, // agentId
@@ -167,6 +171,7 @@ export class AgentGate {
   markIdle(agentId: string): void {
     busyMap.set(agentId, false);
     workMap.delete(agentId);
+    backgroundedMap.delete(agentId);
     abortMap.delete(agentId); // clean up any leftover controller
     this._drainQueue(agentId);
   }
@@ -174,6 +179,34 @@ export class AgentGate {
   /** Update the current work description for a busy agent */
   updateWork(agentId: string, work: string): void {
     workMap.set(agentId, work);
+  }
+
+  /**
+   * Mark an agent as "backgrounded": the task continues running but the user
+   * is freed to interact with other agents. When the task completes, the
+   * onComplete callback is invoked with the final reply.
+   */
+  markBackgrounded(agentId: string, onComplete: (reply: string) => void): void {
+    backgroundedMap.set(agentId, true);
+    backgroundCallbacks.set(agentId, onComplete);
+  }
+
+  /** Check if an agent is currently running in background mode */
+  isBackgrounded(agentId: string): boolean {
+    return backgroundedMap.get(agentId) || false;
+  }
+
+  /**
+   * Called when a backgrounded task finishes. Invokes the completion callback
+   * and cleans up state. Returns true if the agent was backgrounded.
+   */
+  completeBackground(agentId: string, reply: string): boolean {
+    const cb = backgroundCallbacks.get(agentId);
+    if (!cb) return false;
+    backgroundCallbacks.delete(agentId);
+    backgroundedMap.delete(agentId);
+    cb(reply);
+    return true;
   }
 
   /** Clear user's sticky session (for /new command) */

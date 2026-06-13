@@ -117,7 +117,6 @@ export class QQBotChannel implements IChannel {
       ];
       const modelOverride = modelOverrides.get(userId);
       let finalReply = "";
-      let _lastNonEmptyReply = "";
       for await (const event of agentLoop.run({
         messages,
         sessionId: memSessionId,
@@ -131,13 +130,9 @@ export class QQBotChannel implements IChannel {
       })) {
         if (event.type === "message_delta") {
           finalReply += event.delta;
-        } else if (event.type === "turn_start") {
-          if (finalReply) _lastNonEmptyReply = finalReply;
-          finalReply = "";
         }
       }
-      if (!finalReply && _lastNonEmptyReply) finalReply = _lastNonEmptyReply;
-      if (!finalReply) finalReply = "（无回复）";
+      if (!finalReply) finalReply = "（处理完成但未生成回复）";
       return "🧠 记忆管家\n" + stripToolXml(finalReply);
     };
 
@@ -232,6 +227,27 @@ export class QQBotChannel implements IChannel {
         const busyInfo = gate.checkBusy(userId);
         console.log(`[AgentGate] checkBusy(${userId.slice(0, 8)}…) → ${busyInfo ? `BUSY: ${busyInfo.currentWork}` : "idle"}`);
         if (busyInfo) {
+          // ── Shortcut: if user says "放到后台" / "转后台" etc., directly background ──
+          const bgPattern = /^(放到?后台|转入?后台|后台(运行|执行)?|background|go\s*background)$/i;
+          if (bgPattern.test(content.trim())) {
+            const bgAgentId = gate.getUserAgentId(userId);
+            if (bgAgentId && !gate.isBackgrounded(bgAgentId)) {
+              const target = source.type === "c2c"
+                ? { type: "c2c" as const, openid: source.openid }
+                : { type: "group" as const, groupOpenid: (source as any).groupOpenid };
+              gate.markBackgrounded(bgAgentId, async (reply: string) => {
+                if (this.api && reply) {
+                  const header = "🌙 **后台任务完成**\n\n";
+                  await this.api.sendLongMessage(target, header + reply);
+                }
+              });
+              if (this.api) {
+                await this.api.sendActive(target, "✅ 已转入后台运行，任务完成后会主动通知你。\n\n你现在可以继续发消息。");
+              }
+              return "";
+            }
+          }
+
           // Agent is busy — send keyboard prompt and return early
           const requestId = randomUUID().slice(0, 8);
           pendingBusy.set(requestId, {
@@ -265,6 +281,12 @@ export class QQBotChannel implements IChannel {
         : { type: "group" as const, groupOpenid: (source as any).groupOpenid };
       try {
         const reply = await processWithAgent(sessionId, currentAgentId, content, _msgId, userId, runSignal, attachments, progressTarget);
+        // If agent was backgrounded mid-flight, push result via callback instead of returning
+        if (gate && currentAgentId && gate.isBackgrounded(currentAgentId)) {
+          gate.completeBackground(currentAgentId, reply);
+          gate.markIdle(currentAgentId);
+          return ""; // empty — ws-client won't send empty messages
+        }
         return reply;
       } finally {
         // ALWAYS mark idle, even if processWithAgent throws or agent loop hangs
@@ -430,9 +452,17 @@ export class QQBotChannel implements IChannel {
         { role: "user" as const, content: userContent },
       ];
 
+      // DEBUG: log last 3 messages sent to LLM to verify user message is at the end
+      const _dbgLast3 = messages.slice(-3).map((m) => ({
+        role: (m as any).role,
+        content: typeof (m as any).content === "string"
+          ? (m as any).content.slice(0, 80)
+          : "[multimodal]",
+      }));
+      console.log(`[QQBot:DEBUG] session=${sessionId.slice(0, 12)}… msgs=${messages.length} last3=${JSON.stringify(_dbgLast3)}`);
+
       const modelOverride = modelOverrides.get(userId);
       let finalReply = "";
-      let _lastNonEmptyReply = "";
 
       const turnMessages: Array<Record<string, unknown>> = [];
       let pendingAssistant: Record<string, unknown> | null = null;
@@ -455,27 +485,77 @@ export class QQBotChannel implements IChannel {
       // ── TraceHub 埋点：把每个 AgentEvent 推给 gc watch ──────────────
       const _traceUserId = userId.length > 8 ? userId.slice(0, 8) + "..." : userId;
 
-      // ── Progress heartbeat: 长任务期间穿插简要进度汇报（参考 Hermes/OpenClaw heartbeat）─
-      // 避免用户在工具执行期间长时间收不到任何反馈而不停追问。
+      // ── Progress heartbeat: 长任务期间穿插简要进度汇报 ─────────────────
       const HEARTBEAT_INTERVAL_MS = 25_000;
       const HEARTBEAT_FIRST_DELAY_MS = 20_000;
-      let lastUserVisibleAt = Date.now();
+      const taskStartMs = Date.now();
+      let lastHeartbeatAt = Date.now();
       let lastToolName: string | null = null;
+      let lastToolArgs: Record<string, unknown> = {};
       let toolRunCount = 0;
       let heartbeatsSent = 0;
       let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+
+      /** 根据工具名+参数生成人话描述 */
+      const describeCurrentTool = (): string => {
+        if (!lastToolName) return "";
+        const a = lastToolArgs;
+        switch (lastToolName) {
+          case "exec":
+          case "execute_script": {
+            const cmd = String(a.command ?? a.script ?? "").slice(0, 60);
+            return cmd ? `执行 \`${cmd}\`` : "执行命令";
+          }
+          case "write":
+          case "edit": {
+            const p = String(a.path ?? a.file ?? "").split("/").slice(-2).join("/");
+            return p ? `写入 ${p}` : "写入文件";
+          }
+          case "read": {
+            const p = String(a.path ?? a.file ?? "").split("/").slice(-2).join("/");
+            return p ? `读取 ${p}` : "读取文件";
+          }
+          case "web_search": return `搜索「${String(a.query ?? "").slice(0, 30)}」`;
+          case "web_fetch": return `抓取网页`;
+          case "memory_search": return `查记忆「${String(a.query ?? "").slice(0, 20)}」`;
+          case "memory_inspect": return "查看记忆";
+          case "memory_edit": return "编辑记忆";
+          case "delegate_to": return `委派给${String(a.agent ?? "助手")}`;
+          case "delegate_tasks": return "分派子任务";
+          case "dragon_api": {
+            const ep = String(a.endpoint ?? a.path ?? "").slice(0, 30);
+            return ep ? `调用 API ${ep}` : "调用 API";
+          }
+          case "cloud_query": return `查询数据库`;
+          case "browser": return "操作浏览器";
+          case "send_image": return "发送图片";
+          case "view_image": return "查看图片";
+          case "repo_map": return "分析代码结构";
+          default: return lastToolName;
+        }
+      };
+
+      const BACKGROUND_HINT_AFTER_MS = 3 * 60 * 1000; // suggest background after 3 min
+      let backgroundHintSent = false;
+
       const sendHeartbeat = async () => {
         if (!this.api || !progressTarget) return;
         if (signal?.aborted) return;
-        const idleMs = Date.now() - lastUserVisibleAt;
+        const sinceLastHb = Date.now() - lastHeartbeatAt;
         const threshold = heartbeatsSent === 0 ? HEARTBEAT_FIRST_DELAY_MS : HEARTBEAT_INTERVAL_MS;
-        // 仅在“有工具在跑 + 超过阈值未向用户输出”时才汇报
         if (lastToolName === null) return;
-        if (idleMs < threshold) return;
-        const elapsedSec = Math.round((Date.now() - lastUserVisibleAt) / 1000);
-        const note = `⏳ 正在处理中（已执行 ${toolRunCount} 个步骤，当前：${lastToolName}，耗时 ~${elapsedSec}s）…`;
+        if (sinceLastHb < threshold) return;
+        const totalSec = Math.round((Date.now() - taskStartMs) / 1000);
+        const desc = describeCurrentTool();
+        let note = `⏳ (${toolRunCount}步/${totalSec}s) ${desc}`;
+        // After 3 minutes, append a one-time hint about background mode
+        const elapsed = Date.now() - taskStartMs;
+        if (elapsed >= BACKGROUND_HINT_AFTER_MS && !backgroundHintSent) {
+          note += `\n💡 任务耗时较长，发送「转后台」可将任务移至后台运行`;
+          backgroundHintSent = true;
+        }
         heartbeatsSent += 1;
-        lastUserVisibleAt = Date.now();
+        lastHeartbeatAt = Date.now();
         try {
           await this.api.sendActive(progressTarget, note);
         } catch (e) {
@@ -512,16 +592,14 @@ export class QQBotChannel implements IChannel {
 
         if (event.type === "message_delta") {
           finalReply += event.delta;
-          // 有实质文本输出，重置空闲计时
-          if (event.delta && event.delta.trim()) lastUserVisibleAt = Date.now();
         } else if (event.type === "turn_start") {
           flushPendingTurn();
-          if (finalReply) _lastNonEmptyReply = finalReply;
           finalReply = "";
         } else if (event.type === "turn_end") {
           pendingAssistant = { ...event.message };
         } else if (event.type === "tool_start") {
           lastToolName = event.toolName;
+          lastToolArgs = event.args ?? {};
           toolRunCount += 1;
           pendingToolCalls.push({
             id: event.toolCallId,
@@ -542,27 +620,34 @@ export class QQBotChannel implements IChannel {
       if (heartbeatTimer) { clearInterval(heartbeatTimer); heartbeatTimer = null; }
       flushPendingTurn();
 
-      // ── 打断退出：把已完成的部分 flush 进 memory，保留上下文 ──────────
+      // ── 打断退出：只存 user + 已有的 finalReply（如有） ──────────
       if (signal?.aborted) {
-        const userMsg = { role: "user" as const, content };
-        const partialMessages: Array<Record<string, unknown>> = [userMsg];
-        if (turnMessages.length > 0) {
-          partialMessages.push(...turnMessages);
-        }
-        // 只有有实质内容时才持久化（避免写入空记录）
-        if (partialMessages.length > 1) {
-          await memory.appendMessages(
-            sessionId,
-            partialMessages as Parameters<typeof memory.appendMessages>[1],
-          );
+        if (finalReply) {
+          // 有部分回复，存 user + partial assistant
+          await memory.appendMessages(sessionId, [
+            { role: "user" as const, content },
+            { role: "assistant" as const, content: finalReply },
+          ] as Parameters<typeof memory.appendMessages>[1]);
+        } else {
+          // 完全没回复，只存 user（下次能看到上下文）
+          await memory.appendMessages(sessionId, [
+            { role: "user" as const, content },
+          ] as Parameters<typeof memory.appendMessages>[1]);
         }
         return ""; // ws-client 会判空不发送，这里返回空即可
       }
 
-      // 兜底：若最终轮为空，使用上一轮的有效回复
-      if (!finalReply && _lastNonEmptyReply) finalReply = _lastNonEmptyReply;
-      if (!finalReply) finalReply = "（无回复）";
+      // DEBUG: log turn summary
+      console.log(`[QQBot:DEBUG] session=${sessionId.slice(0, 12)}… agentLoop done. finalReply=${finalReply.length}chars, turnMessages=${turnMessages.length} items`);
+
+      // 不再 fallback 到 _lastNonEmptyReply（会导致重复上次回复）
+      // AgentLoop 已保证最终一定 emit message_delta，若仍为空则报错
+      if (!finalReply) {
+        console.error(`[QQBot:BUG] finalReply is empty after agentLoop completed. This should not happen.`);
+        finalReply = "（处理完成但未生成回复，请重试）";
+      }
       finalReply = stripToolXml(finalReply);
+      console.log(`[QQBot:DEBUG] session=${sessionId.slice(0, 12)}… FINAL reply (${finalReply.length} chars): "${finalReply.slice(0, 150)}…"`);
 
       // ── Fallback 注脚：当使用了非主模型时提示用户 ──────────────────────
       const fallbackRoute = consumeFallbackRoute?.();
@@ -570,18 +655,18 @@ export class QQBotChannel implements IChannel {
         finalReply += `\n\n[fallback:${fallbackRoute}]`;
       }
 
+      // ── 持久化策略：只存 user + 最终 assistant 回复 ──────────────────
+      // 不再存储中间 tool-call 轮次（assistant+tool 交替消息），原因：
+      // 1. getRecentHistory 只取 role+content，丢失 tool_calls/tool_call_id 结构
+      //    → LLM 看到的是无结构的 assistant/tool 交替文本，无法理解
+      // 2. 一次 tool-call 循环可能产生 10+ 条中间消息，recentMessageLimit=20
+      //    只能覆盖不到 2 轮对话，LLM 缺乏足够的对话上下文
+      // 3. 中间 assistant 消息的重复内容会被 LLM 当作"正确模式"复制
       const userMsg = { role: "user" as const, content };
-      const messagesToPersist: Array<Record<string, unknown>> = [userMsg];
-      if (turnMessages.length > 0) {
-        const lastIdx = turnMessages.length - 1;
-        const last = turnMessages[lastIdx];
-        if (last.role === "assistant") {
-          turnMessages[lastIdx] = { ...last, content: finalReply };
-        }
-        messagesToPersist.push(...turnMessages);
-      } else {
-        messagesToPersist.push({ role: "assistant", content: finalReply });
-      }
+      const messagesToPersist: Array<Record<string, unknown>> = [
+        userMsg,
+        { role: "assistant" as const, content: finalReply },
+      ];
       await memory.appendMessages(
         sessionId,
         messagesToPersist as Parameters<typeof memory.appendMessages>[1],
@@ -715,6 +800,46 @@ export class QQBotChannel implements IChannel {
             ? { type: "c2c" as const, openid: (pending.source as any).openid }
             : { type: "group" as const, groupOpenid: (pending.source as any).groupOpenid };
           await this.api.sendLongMessage(target, reply);
+        }
+      } else if (choice === "background" && gate) {
+        // Move the current running task to background — user is freed immediately.
+        // The task continues running; when it finishes, the result is pushed to user.
+        const currentAgentId = gate.getUserAgentId(pending.userId);
+        if (currentAgentId) {
+          const target = pending.source.type === "c2c"
+            ? { type: "c2c" as const, openid: (pending.source as any).openid }
+            : { type: "group" as const, groupOpenid: (pending.source as any).groupOpenid };
+
+          // Register completion callback — will be invoked when processWithAgent finishes
+          gate.markBackgrounded(currentAgentId, async (reply: string) => {
+            if (this.api && reply) {
+              const header = "🌙 **后台任务完成**\n\n";
+              await this.api.sendLongMessage(target, header + reply);
+            }
+          });
+
+          // Acknowledge to user
+          if (this.api) {
+            await this.api.sendActive(target, "✅ 已转入后台运行，任务完成后会主动通知你。\n\n你现在可以继续发消息，我会用新助手处理。");
+          }
+
+          // Now process the pending message on a NEW agent (so user isn't blocked)
+          const gateResult = await gate.createNewAgent(pending.userId);
+          gate.markBusy(gateResult.agentId, pending.message.slice(0, 30));
+          const bgSignal = gate.getSignal(gateResult.agentId);
+          let reply: string;
+          try {
+            reply = await processWithAgent(
+              gateResult.sessionId, gateResult.agentId,
+              pending.message, pending.msgId, pending.userId, bgSignal,
+            );
+          } finally {
+            gate.markIdle(gateResult.agentId);
+          }
+          // Send the reply for the NEW message
+          if (reply && this.api) {
+            await this.api.sendLongMessage(target, reply);
+          }
         }
       } else if (choice === "select" && gate) {
         // Show agent selection keyboard listing ALL active agents (idle AND busy).

@@ -418,25 +418,16 @@ export class QQBotWSClient {
     const PASSIVE_REPLY_WINDOW_MS = 4 * 60 * 1000;
     const taskStart = Date.now();
 
-    // Keep-alive: send typing / "processing" after 30s
-    const keepAliveTimer = setTimeout(() => {
-      this.api.sendActive(target, "⏳ 正在处理中，请稍候…").catch((e) =>
-        console.error("[QQBotWSClient] keepAlive error:", e),
-      );
-    }, 30_000);
-
     let reply = "";
     try {
       reply = await this.opts.onMessage(source, content, msgId, attachments?.length ? attachments : undefined);
     } catch (err) {
-      clearTimeout(keepAliveTimer);
       console.error("[QQBotWSClient] onMessage error:", err);
       await this.api.sendActive(target, "❌ 处理出错：" + String(err)).catch((e) =>
         console.error("[QQBotWSClient] error notify failed:", e),
       );
       return;
     }
-    clearTimeout(keepAliveTimer);
 
     // Guard: never send empty replies to QQ (would show as blank message)
     if (!reply || !reply.trim()) {
