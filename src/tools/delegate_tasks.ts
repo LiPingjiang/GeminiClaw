@@ -133,9 +133,32 @@ registry.register({
     })
 
     // Extract parent context from tool context
-    const parentSessionId = ctx.sessionId ?? "unknown"
+    // IMPORTANT: If current session is a temporary one (mem-* for memory manager),
+    // resolve the user's real agent session so results are injected correctly.
+    let parentSessionId = ctx.sessionId ?? "unknown"
     const parentAgentId = ctx.extra?.["targetAgentId"] as string | undefined
     const parentUserId = ctx.extra?.["userId"] as string | undefined
+
+    if (parentSessionId.startsWith("mem-") || parentSessionId.startsWith("subagent:")) {
+      // We're inside a temporary session (memory manager or sub-agent).
+      // Look up the user's real agent session from the database.
+      const db = ctx.extra?.["db"] as { prepare(sql: string): { get(...args: unknown[]): unknown } } | undefined
+      if (db && parentUserId) {
+        try {
+          const row = db.prepare(
+            "SELECT session_id FROM user_sessions WHERE openid = ?"
+          ).get(parentUserId) as { session_id: string } | undefined
+          if (row?.session_id) {
+            console.log(
+              `[delegate_tasks] Resolved real session: ${parentSessionId.slice(0, 12)}… → ${row.session_id.slice(0, 12)}…`
+            )
+            parentSessionId = row.session_id
+          }
+        } catch (err) {
+          console.warn(`[delegate_tasks] Failed to resolve real session for user=${parentUserId?.slice(0, 8)}…:`, err)
+        }
+      }
+    }
 
     // Fire-and-forget: launch async execution
     const result = asyncExecute(taskSpecs, {

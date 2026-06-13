@@ -30,6 +30,7 @@ import { join as pathJoin } from "node:path";
 import { traceHub } from "../../trace/hub.js";
 import { registerPushFn, registerContextInjector, initResultInjector } from "../../multi-agent/result-injector.js";
 import { setMultiAgentRuntime } from "../../multi-agent/runtime-context.js";
+import { initRegistry } from "../../multi-agent/subagent-registry.js";
 import { loadAgentTemplates } from "../../agents/templates.js";
 import { updateDelegateToDescription } from "../../tools/delegate_to.js";
 
@@ -105,6 +106,16 @@ export class QQBotChannel implements IChannel {
 
     // Drive the agent loop for a memory-management turn. Isolated: never
     // persists to the target agent's history (no appendMessages).
+    // Tools allowed in memory manager mode (strict whitelist to prevent
+    // accidental delegation, code execution, or other side effects).
+    const MEM_MANAGER_ALLOWED_TOOLS = new Set([
+      "memory_inspect",
+      "memory_edit",
+      "read",       // read files (e.g. MEMORY.md)
+      "write",      // write memory files
+      "edit",       // edit memory files
+    ]);
+
     const runMemoryManager = async (
       memSessionId: string,
       targetAgentId: string,
@@ -121,6 +132,16 @@ export class QQBotChannel implements IChannel {
         messages,
         sessionId: memSessionId,
         ...(modelOverride ? { model: modelOverride } : {}),
+        beforeToolCall: async (ctx) => {
+          // Block any tool not in the whitelist
+          if (!MEM_MANAGER_ALLOWED_TOOLS.has(ctx.toolName)) {
+            return {
+              block: true,
+              reason: `记忆管家模式下不允许使用 ${ctx.toolName} 工具。请退出记忆管理后再操作。`,
+            };
+          }
+          return {};
+        },
         toolContextExtra: {
           ...(this.db ? { db: this.db } : {}),
           userId,
@@ -971,6 +992,13 @@ export class QQBotChannel implements IChannel {
       }
       console.log("[QQBotChannel] Unhandled interaction:", event.buttonData);
     };
+
+    // -----------------------------------------------------------------------
+    // SubagentRegistry: persist run records to SQLite
+    // -----------------------------------------------------------------------
+    if (this.db) {
+      initRegistry(this.db);
+    }
 
     // -----------------------------------------------------------------------
     // ResultInjector: register push function for async sub-task results
