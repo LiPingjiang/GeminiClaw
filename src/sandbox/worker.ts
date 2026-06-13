@@ -251,13 +251,15 @@ async function runViaSdk(
   templateId: string,
   timeoutSec: number,
 ): Promise<ExecOutput> {
-  // SDK 形态在不同版本间有差异，这里用宽松类型处理。
+  // E2B SDK v2.x: Sandbox.create(template, opts) 或 Sandbox.create(opts)
   const sandbox = (await sdk.Sandbox.create({
     template: templateId,
     apiKey: key.apiKey,
     domain: E2B_DOMAIN,
     timeoutMs: timeoutSec * 1000,
   })) as any;
+
+  log(`sandbox created: ${sandbox.sandboxId ?? 'unknown'} on ${key.id}`);
 
   try {
     // 先安装依赖（仅 base 模板需要）
@@ -267,23 +269,25 @@ async function runViaSdk(
     }
 
     const code = task.code ?? '';
-    // 优先用 SDK 的 runCode（若存在），否则把代码写文件再用 python 跑
-    if (typeof sandbox.runCode === 'function') {
-      const exec = await sandbox.runCode(code, { language: task.language ?? 'python' });
-      const stdout = collectSdkStream(exec?.logs?.stdout) || (exec?.text ?? '');
-      const stderr = collectSdkStream(exec?.logs?.stderr) || (exec?.error?.value ?? '');
-      const exitCode = exec?.error ? 1 : 0;
-      return { exitCode, stdout, stderr };
+    const lang = task.language ?? 'python';
+
+    // 对于 Python 代码，写入文件再执行（避免 shell 转义问题）
+    if (lang === 'python' && sandbox.files && typeof sandbox.files.write === 'function') {
+      await sandbox.files.write('/tmp/task_code.py', code);
+      return await runCommandViaSdk(sandbox, 'python3 /tmp/task_code.py', timeoutSec);
     }
 
-    // 退化路径：写文件 + python 执行
-    if (sandbox.files && typeof sandbox.files.write === 'function') {
-      await sandbox.files.write('/tmp/main.py', code);
-      return runCommandViaSdk(sandbox, 'python3 /tmp/main.py', timeoutSec);
+    // 对于 bash 代码，写入文件再执行
+    if (lang === 'bash' && sandbox.files && typeof sandbox.files.write === 'function') {
+      await sandbox.files.write('/tmp/task_code.sh', code);
+      return await runCommandViaSdk(sandbox, 'bash /tmp/task_code.sh', timeoutSec);
     }
 
-    // 最后退化：直接通过 stdin 喂给 python
-    return runCommandViaSdk(sandbox, `python3 -c ${shellQuote(code)}`, timeoutSec);
+    // 退化路径：直接通过 -c 参数执行
+    if (lang === 'python') {
+      return await runCommandViaSdk(sandbox, `python3 -c ${shellQuote(code)}`, timeoutSec);
+    }
+    return await runCommandViaSdk(sandbox, `bash -c ${shellQuote(code)}`, timeoutSec);
   } finally {
     try {
       if (typeof sandbox.kill === 'function') await sandbox.kill();
@@ -462,6 +466,10 @@ async function pollTask(): Promise<Task | null> {
   if (!parsed) return null;
   // 兼容 { task: {...} } 包装或裸 task
   const task = (parsed as { task?: Task }).task ?? (parsed as Task);
+  // queue-server 用 taskId 字段，worker 内部用 id，做兼容映射
+  if ((task as any).taskId && !task.id) {
+    task.id = (task as any).taskId;
+  }
   if (!task || !task.id) return null;
   return task;
 }
@@ -700,6 +708,14 @@ function installSignalHandlers(): void {
 
   process.on('SIGINT', () => onSignal('SIGINT'));
   process.on('SIGTERM', () => onSignal('SIGTERM'));
+
+  // 防止未捕获的 rejection 导致进程崩溃
+  process.on('unhandledRejection', (reason) => {
+    logErr(`unhandled rejection: ${errMsg(reason)}`);
+  });
+  process.on('uncaughtException', (err) => {
+    logErr(`uncaught exception: ${errMsg(err)}`);
+  });
 }
 
 async function main(): Promise<void> {
