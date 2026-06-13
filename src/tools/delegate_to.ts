@@ -13,7 +13,7 @@
 
 import { registry } from "./registry.js"
 import { getMultiAgentRuntime } from "../multi-agent/runtime-context.js"
-import { getTemplateByName, listTemplateNames } from "../agents/templates.js"
+import { getTemplateByName, listTemplateNames, getAllTemplates } from "../agents/templates.js"
 import { sendTask, markExecuting, reportResult } from "../multi-agent/mailbox.js"
 import { emitLifecycle } from "../multi-agent/lifecycle-bus.js"
 import { registerRun, completeRun, failRun } from "../multi-agent/subagent-registry.js"
@@ -174,4 +174,42 @@ async function executeNamedAgent(
     failRun(runId, errorMsg)
     reportResult(messageId, { success: false, output: errorMsg })
   }
+}
+
+// ── Dynamic description update ─────────────────────────────────────────────────
+
+/**
+ * Update delegate_to tool description and schema to include available agent names.
+ * Call this AFTER loadAgentTemplates() so the LLM knows which agents exist.
+ */
+export function updateDelegateToDescription(): void {
+  const templates = listTemplateNames()
+  if (templates.length === 0) return
+
+  const tool = registry.get("delegate_to")
+  if (!tool) return
+
+  const allTemplates = getAllTemplates()
+
+  // Build rich description with agent capabilities
+  const agentList = allTemplates
+    .map((t) => `• ${t.name}（${t.displayName}）: ${t.capabilities || "通用助手"}`)
+    .join("\n")
+
+  tool.description =
+    "委派任务给指定的命名助手（Agent）。目标助手有自己的专业能力和工具集。" +
+    "调用后立即返回（不阻塞），目标助手在后台执行，完成后结果自动推送。\n\n" +
+    "可用的助手：\n" +
+    agentList
+
+  // Also update the target property enum so LLM knows valid values
+  if (tool.schema.properties && typeof tool.schema.properties === "object") {
+    const targetProp = (tool.schema.properties as Record<string, any>)["target"]
+    if (targetProp) {
+      targetProp.enum = templates
+      targetProp.description = `目标助手的名称。可选值：${templates.join("、")}`
+    }
+  }
+
+  console.log(`[delegate_to] Updated description with ${templates.length} agent templates: ${templates.join(", ")}`)
 }

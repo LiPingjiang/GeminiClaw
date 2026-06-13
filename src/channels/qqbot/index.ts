@@ -31,6 +31,7 @@ import { traceHub } from "../../trace/hub.js";
 import { registerPushFn, registerContextInjector, initResultInjector } from "../../multi-agent/result-injector.js";
 import { setMultiAgentRuntime } from "../../multi-agent/runtime-context.js";
 import { loadAgentTemplates } from "../../agents/templates.js";
+import { updateDelegateToDescription } from "../../tools/delegate_to.js";
 
 export interface QQBotChannelConfig {
   enabled: boolean;
@@ -871,6 +872,7 @@ export class QQBotChannel implements IChannel {
     // -----------------------------------------------------------------------
     // Load named agent templates from config
     loadAgentTemplates(config as any);
+    updateDelegateToDescription();
 
     // Build a chatFn adapter that wraps agentLoop for sub-agent use
     const subAgentChatFn = async (
