@@ -28,7 +28,9 @@ import { resolveMemIntent } from "../../guidance/mem-intent.js";
 import { homedir } from "node:os";
 import { join as pathJoin } from "node:path";
 import { traceHub } from "../../trace/hub.js";
-import { registerPushFn, initResultInjector } from "../../multi-agent/result-injector.js";
+import { registerPushFn, registerContextInjector, initResultInjector } from "../../multi-agent/result-injector.js";
+import { setMultiAgentRuntime } from "../../multi-agent/runtime-context.js";
+import { loadAgentTemplates } from "../../agents/templates.js";
 
 export interface QQBotChannelConfig {
   enabled: boolean;
@@ -855,6 +857,54 @@ export class QQBotChannel implements IChannel {
       const target = { type: "c2c" as const, openid: userId };
       await apiRef.sendLongMessage(target, content);
     });
+
+    // Register context injector: writes sub-task results into parent session memory
+    // so the parent agent sees them on next turn (Wake mechanism).
+    registerContextInjector(async (sessionId: string, content: string) => {
+      await memory.appendMessages(sessionId, [
+        { role: "system" as const, content: `[子任务结果回报]\n${content}` },
+      ] as any);
+    });
+
+    // -----------------------------------------------------------------------
+    // Multi-Agent Runtime: wire chatFn + toolRegistry for delegate_tasks/delegate_to
+    // -----------------------------------------------------------------------
+    // Load named agent templates from config
+    loadAgentTemplates(config as any);
+
+    // Build a chatFn adapter that wraps agentLoop for sub-agent use
+    const subAgentChatFn = async (
+      messages: any[],
+      options?: { model?: string; tools?: unknown[] },
+    ) => {
+      let content = "";
+      let toolCalls: any[] | undefined;
+      for await (const event of agentLoop.run({
+        messages,
+        sessionId: `subagent:${randomUUID().slice(0, 8)}`,
+        ...(options?.model ? { model: options.model } : {}),
+      })) {
+        if (event.type === "message_delta") {
+          content += event.delta;
+        } else if (event.type === "turn_end" && (event as any).message?.tool_calls) {
+          toolCalls = (event as any).message.tool_calls;
+        }
+      }
+      return { content, tool_calls: toolCalls };
+    };
+
+    // Build a minimal ToolRegistryLike adapter
+    const { registry: toolRegistry } = await import("../../tools/registry.js");
+    const toolRegistryAdapter = {
+      get: (name: string) => toolRegistry.get(name),
+      list: () => toolRegistry.list(),
+    };
+
+    setMultiAgentRuntime({
+      chatFn: subAgentChatFn,
+      toolRegistry: toolRegistryAdapter,
+    });
+    console.log("[QQBotChannel] Multi-agent runtime wired (delegate_tasks/delegate_to enabled)");
 
     // -----------------------------------------------------------------------
     // Start mode

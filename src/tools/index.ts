@@ -23,5 +23,6 @@ import './memory_inspect.js';
 import './memory_search.js';
 import './memory_edit.js';
 import './delegate_tasks.js';
+import './delegate_to.js';
 import './execute_script.js';
 export { registry } from './registry.js';

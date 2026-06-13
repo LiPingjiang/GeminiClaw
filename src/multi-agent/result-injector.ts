@@ -1,15 +1,17 @@
 /**
  * Result Injector — 子任务结果注入/唤醒机制
  *
- * 监听 LifecycleBus 的 end/error 事件，将子任务结果推送给用户。
+ * 监听 LifecycleBus 的 end/error 事件，将子任务结果推送给用户，
+ * 并注入回父 Agent 的 session memory（使父 Agent 下次被唤醒时能看到结果）。
  * 
  * 注入方式：
  * 1. QQ Bot 渠道：通过注册的 pushFn 主动发消息给用户
- * 2. HTTP API 渠道：写入 session memory，下次 chat 时 agent 可见
+ * 2. Context Injection：通过 contextInjector 写入父 session memory
+ * 3. HTTP API 渠道：写入 session memory，下次 chat 时 agent 可见
  *
  * 参考 OpenClaw 的 subagent-announce-delivery.ts，但简化为：
  * - 我们不需要 steer 活跃 run（因为父 Agent 已经结束了本轮）
- * - 直接通过渠道推送即可
+ * - 直接通过渠道推送 + session 注入即可
  */
 
 import { onLifecycle, type LifecycleEvent } from "./lifecycle-bus.js"
@@ -38,6 +40,32 @@ export function registerPushFn(fn: PushFn): void {
  */
 export function getPushFn(): PushFn | null {
   return _pushFn
+}
+
+// ── Context Injector 注册 ─────────────────────────────────────────────────────
+
+/**
+ * Context Injector: writes result into parent session memory so the parent
+ * agent sees it on next turn (Wake mechanism).
+ */
+export type ContextInjectorFn = (sessionId: string, content: string) => Promise<void>
+
+let _contextInjector: ContextInjectorFn | null = null
+
+/**
+ * Register a function that injects messages into a session's memory.
+ * Called by QQBotChannel at startup.
+ */
+export function registerContextInjector(fn: ContextInjectorFn): void {
+  _contextInjector = fn
+  console.log("[ResultInjector] contextInjector registered")
+}
+
+/**
+ * Get current context injector (for testing).
+ */
+export function getContextInjector(): ContextInjectorFn | null {
+  return _contextInjector
 }
 
 // ── 监听器初始化 ──────────────────────────────────────────────────────────────
@@ -76,7 +104,7 @@ async function handleCompletion(evt: LifecycleEvent): Promise<void> {
   // 构造通知消息
   const message = formatCompletionMessage(evt, record)
 
-  // 推送给用户
+  // 1. 推送给用户（实时通知）
   if (_pushFn && record.parentUserId) {
     try {
       await _pushFn(record.parentUserId, message)
@@ -93,6 +121,21 @@ async function handleCompletion(evt: LifecycleEvent): Promise<void> {
     console.log(
       `[ResultInjector] no pushFn or userId for run=${evt.runId}, result stored in registry only`,
     )
+  }
+
+  // 2. 注入父 session memory（使父 Agent 下次能看到结果）
+  if (_contextInjector && record.parentSessionId) {
+    try {
+      await _contextInjector(record.parentSessionId, message)
+      console.log(
+        `[ResultInjector] injected result into session=${record.parentSessionId.slice(0, 8)}…, run=${evt.runId}`,
+      )
+    } catch (err) {
+      console.error(
+        `[ResultInjector] context injection failed for session=${record.parentSessionId.slice(0, 8)}…:`,
+        err,
+      )
+    }
   }
 }
 
@@ -133,5 +176,6 @@ function formatCompletionMessage(
 /** Test helper */
 export function __resetResultInjector(): void {
   _pushFn = null
+  _contextInjector = null
   _initialized = false
 }

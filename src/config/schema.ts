@@ -141,6 +141,30 @@ export const evolutionConfigSchema = z.object({
   approvalTimeoutMs: z.number().int().positive().default(60 * 60 * 1000),
 }).default({})
 
+/**
+ * Named agent template schema — defines agents available for cross-agent delegation.
+ */
+export const agentTemplateConfigSchema = z.object({
+  /** Unique name for routing (e.g. "translator", "researcher") */
+  name: z.string().min(1),
+  /** Display name shown to users */
+  displayName: z.string().min(1),
+  /** System prompt for this agent type */
+  systemPrompt: z.string().default(""),
+  /** Tool whitelist (empty = all tools) */
+  tools: z.array(z.string()).default([]),
+  /** Tool denylist */
+  deniedTools: z.array(z.string()).default([]),
+  /** Preferred model override */
+  model: z.string().optional(),
+  /** Max turns per task */
+  maxTurns: z.number().int().positive().default(12),
+  /** Description for other agents to understand capabilities */
+  capabilities: z.string().default(""),
+})
+
+export type AgentTemplateConfig = z.infer<typeof agentTemplateConfigSchema>
+
 export const configSchema = z.object({
   server: serverConfigSchema,
   providers: z.array(providerConfigSchema).min(1),
@@ -149,6 +173,8 @@ export const configSchema = z.object({
   agent: agentConfigSchema,
   channels: channelsConfigSchema,
   evolution: evolutionConfigSchema,
+  /** Named agent templates for cross-agent delegation */
+  agents: z.array(agentTemplateConfigSchema).default([]),
 })
 
 export type ServerConfig = z.infer<typeof serverConfigSchema>
