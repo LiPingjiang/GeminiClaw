@@ -25,4 +25,5 @@ import './memory_edit.js';
 import './delegate_tasks.js';
 import './delegate_to.js';
 import './execute_script.js';
+import './sandbox_exec.js';
 export { registry } from './registry.js';
