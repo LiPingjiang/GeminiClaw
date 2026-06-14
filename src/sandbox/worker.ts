@@ -218,75 +218,14 @@ function loadE2bSdk(): Promise<SandboxSdk | null> {
 }
 
 // ---------------------------------------------------------------------------
-// 本地执行模式（LOCAL_EXEC=true 时启用）
-// ---------------------------------------------------------------------------
-
-const LOCAL_EXEC = process.env.LOCAL_EXEC === 'true' || process.env.LOCAL_EXEC === '1';
-
-/**
- * 在本机直接用 python3/bash 执行代码。
- * 适用于 E2B 不可达的环境（如无内网访问的 Mac）。
- */
-async function runLocally(task: Task): Promise<ExecOutput> {
-  const { spawn } = await import('child_process');
-  const { writeFile, unlink, mkdtemp } = await import('fs/promises');
-  const { tmpdir } = await import('os');
-  const path = await import('path');
-
-  const code = task.code ?? '';
-  const lang = task.language ?? 'python';
-  const timeoutSec = normalizeTimeout(task.timeout);
-
-  // 创建临时文件
-  const tmpDir = await mkdtemp(path.join(tmpdir(), 'gc-sandbox-'));
-  const ext = lang === 'python' ? '.py' : '.sh';
-  const tmpFile = path.join(tmpDir, `task${ext}`);
-  await writeFile(tmpFile, code, 'utf-8');
-
-  const cmd = lang === 'python' ? 'python3' : 'bash';
-
-  return new Promise<ExecOutput>((resolve) => {
-    const proc = spawn(cmd, [tmpFile], {
-      timeout: timeoutSec * 1000,
-      env: { ...process.env, PYTHONUNBUFFERED: '1' },
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
-
-    let stdout = '';
-    let stderr = '';
-
-    proc.stdout.on('data', (chunk: Buffer) => { stdout += chunk.toString(); });
-    proc.stderr.on('data', (chunk: Buffer) => { stderr += chunk.toString(); });
-
-    proc.on('close', async (exitCode) => {
-      // 清理临时文件
-      try { await unlink(tmpFile); } catch {}
-      try { const { rmdir } = await import('fs/promises'); await rmdir(tmpDir); } catch {}
-
-      resolve({ exitCode: exitCode ?? 1, stdout, stderr });
-    });
-
-    proc.on('error', async (err) => {
-      try { await unlink(tmpFile); } catch {}
-      resolve({ exitCode: 1, stdout: '', stderr: `spawn error: ${err.message}` });
-    });
-  });
-}
-
-// ---------------------------------------------------------------------------
 // 在 E2B 沙箱中执行代码
 // ---------------------------------------------------------------------------
 
 /**
  * 在指定 key 上创建沙箱并执行任务代码。
- * 优先走本地执行（LOCAL_EXEC=true），否则走 SDK，缺包则走 HTTP 直连。
+ * 走 SDK（若已安装），否则走 HTTP 直连。
  */
 async function runInSandbox(task: Task, key: KeySlot): Promise<ExecOutput> {
-  // 本地执行模式：直接在本机运行
-  if (LOCAL_EXEC) {
-    return runLocally(task);
-  }
-
   const timeoutSec = normalizeTimeout(task.timeout);
   const useCustom =
     (task.require_custom_template || task.template === CUSTOM_TEMPLATE_ID) && key.canUseCustomTemplate;
@@ -362,12 +301,24 @@ async function runViaSdk(
 /** 通过 SDK 跑一条 shell 命令。 */
 async function runCommandViaSdk(sandbox: any, cmd: string, timeoutSec: number): Promise<ExecOutput> {
   if (sandbox.commands && typeof sandbox.commands.run === 'function') {
-    const res = await sandbox.commands.run(cmd, { timeoutMs: timeoutSec * 1000 });
-    return {
-      exitCode: typeof res?.exitCode === 'number' ? res.exitCode : 0,
-      stdout: res?.stdout ?? '',
-      stderr: res?.stderr ?? '',
-    };
+    try {
+      const res = await sandbox.commands.run(cmd, { timeoutMs: timeoutSec * 1000 });
+      return {
+        exitCode: typeof res?.exitCode === 'number' ? res.exitCode : 0,
+        stdout: res?.stdout ?? '',
+        stderr: res?.stderr ?? '',
+      };
+    } catch (err: any) {
+      // E2B SDK v2.29+ throws CommandExitError on non-zero exit code
+      if (typeof err?.exitCode === 'number') {
+        return {
+          exitCode: err.exitCode,
+          stdout: err.stdout ?? '',
+          stderr: err.stderr ?? '',
+        };
+      }
+      throw err;
+    }
   }
   if (typeof sandbox.process?.startAndWait === 'function') {
     const res = await sandbox.process.startAndWait(cmd);
@@ -632,7 +583,7 @@ async function mainLoop(): Promise<void> {
   let backoff = 1000;
   const maxBackoff = 30_000;
 
-  log(`starting. queue=${QUEUE_BASE_URL} keys=${KEYS.map((k) => k.id).join(',')} capacity=${KEYS.length * MAX_CONCURRENCY_PER_KEY} localExec=${LOCAL_EXEC}`);
+  log(`starting. queue=${QUEUE_BASE_URL} keys=${KEYS.map((k) => k.id).join(',')} capacity=${KEYS.length * MAX_CONCURRENCY_PER_KEY}`);
 
   while (!shuttingDown) {
     // 全部 key 都打满时，稍等再轮询，避免空转拉到无法处理的任务。
