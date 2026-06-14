@@ -5,6 +5,40 @@
  * and orchestration across multiple agent instances.
  */
 
+// ── Context Mode ─────────────────────────────────────────────────────────────
+
+/**
+ * Controls how much parent context a sub-agent inherits.
+ *
+ * - isolated: (default) No parent context. Sub-agent gets only skills + task description.
+ *   Best for independent tasks that don't need conversation history.
+ *
+ * - fork: Full context inheritance. Sub-agent gets compressed parent conversation
+ *   summary + per-agent memory + skills. Like OpenClaw's fork mode.
+ *   Best for tasks that need to understand the ongoing conversation.
+ *
+ * - lightweight: Minimal bootstrap. No skills injection, just task + basic tools.
+ *   Best for simple tool-calling tasks (e.g. "fetch this URL", "read this file").
+ *   Saves ~80% of system prompt tokens.
+ */
+export type ContextMode = "isolated" | "fork" | "lightweight"
+
+// ── Token Budget ─────────────────────────────────────────────────────────────
+
+/**
+ * Token threshold for automatic degradation.
+ * When system prompt exceeds this, auto-degrade from fork → isolated → lightweight.
+ * Based on OpenClaw's 100K threshold pattern.
+ */
+export const TOKEN_THRESHOLD = {
+  /** Above this, fork mode degrades to isolated (drop parent context) */
+  FORK_TO_ISOLATED: 100_000,
+  /** Above this, isolated degrades to lightweight (drop skills) */
+  ISOLATED_TO_LIGHTWEIGHT: 150_000,
+  /** Absolute maximum — refuse to spawn if exceeded */
+  ABSOLUTE_MAX: 180_000,
+} as const
+
 // ── Task Definition ──────────────────────────────────────────────────────────
 
 export type TaskStatus =
@@ -34,6 +68,8 @@ export interface SubTask {
   allowedPaths: string[]
   /** Task dependencies: must complete before this task starts */
   dependsOn: string[]
+  /** Context propagation mode (isolated/fork/lightweight) */
+  contextMode: ContextMode
   /** Results produced upon completion */
   result?: TaskResult
   /** Creation timestamp */
@@ -45,10 +81,25 @@ export interface SubTask {
 export interface TaskResult {
   success: boolean
   output: string
+  /** Structured result parsed from the sub-agent's three-part output */
+  structured?: StructuredResult
   /** Artifacts produced (file paths, data, etc.) */
   artifacts: Artifact[]
   /** Metrics about the execution */
   metrics: ExecutionMetrics
+}
+
+/**
+ * Three-part structured result from sub-agent output.
+ * Inspired by smolagents' conclusion/details/context pattern.
+ */
+export interface StructuredResult {
+  /** One-line conclusion (success/failure/partial) */
+  conclusion: string
+  /** Detailed execution output */
+  details: string
+  /** Additional context useful for follow-up tasks (optional) */
+  additionalContext?: string
 }
 
 export interface Artifact {

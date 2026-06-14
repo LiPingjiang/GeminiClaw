@@ -207,8 +207,10 @@ describe("delegate_tasks tool", () => {
   it("handles sub-agent failure in background", async () => {
     const chat = vi.fn(
       async (messages: Array<{ role: string; content: string }>) => {
-        const userMsg = messages.find((m) => m.role === "user")?.content ?? ""
-        if (userMsg.includes("Boom")) throw new Error("sub-agent exploded")
+        // Task details are now in the system prompt (not user message),
+        // so check all messages for "Boom" to simulate failure for that task.
+        const allContent = messages.map((m) => m.content).join(" ")
+        if (allContent.includes("Boom")) throw new Error("sub-agent exploded")
         return { content: "done", tool_calls: undefined }
       },
     )

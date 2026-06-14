@@ -149,11 +149,16 @@ function formatCompletionMessage(
   const taskList = record.taskTitles.join("、")
 
   if (evt.phase === "end") {
+    const result = evt.result || "(无详细输出)"
+    // Truncate very long results for push notifications (keep full in session injection)
+    const displayResult = result.length > 3000
+      ? result.slice(0, 3000) + "\n\n…(结果已截断，完整内容已注入会话记忆)"
+      : result
     return [
       `📋 后台任务完成（耗时 ${durationSec}s）`,
       `任务：${taskList}`,
       "",
-      evt.result || "(无详细输出)",
+      displayResult,
     ].join("\n")
   }
 

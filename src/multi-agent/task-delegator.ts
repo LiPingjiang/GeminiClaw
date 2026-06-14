@@ -14,6 +14,7 @@ import type {
   TaskResult,
   TaskPriority,
   TaskStatus,
+  ContextMode,
   Artifact,
   ExecutionMetrics,
 } from "./types.js"
@@ -26,6 +27,8 @@ export interface TaskSpec {
   maxTurns?: number
   allowedPaths?: string[]
   dependsOn?: string[]
+  /** Context propagation mode. Default: "isolated" */
+  contextMode?: ContextMode
 }
 
 export interface DelegatorConfig {
@@ -64,6 +67,7 @@ export class TaskDelegator {
       maxTurns: spec.maxTurns ?? this.config.defaultMaxTurns,
       allowedPaths: spec.allowedPaths ?? [],
       dependsOn: spec.dependsOn ?? [],
+      contextMode: spec.contextMode ?? "isolated",
       createdAt: now,
       updatedAt: now,
     }

@@ -21,6 +21,7 @@ import type {
   MultiAgentEvent,
 } from "./types.js"
 import { createScopedToolRegistry } from "./context-boundary.js"
+import { parseStructuredResult } from "./result-parser.js"
 import type { ToolRegistryLike } from "../agent/loop.js"
 
 export interface SubAgentRunnerConfig {
@@ -79,12 +80,18 @@ export class SubAgentRunner {
     const messages = this.buildMessages(task, options)
 
     // Create the agent loop
+    // Build a comprehensive system prompt that contains ALL task context.
+    // The user message is just "Begin." — all instructions live here.
+    const effectivePrompt = this.config.systemPrompt
+      ? this.buildEffectivePrompt(task, options)
+      : this.buildSystemPrompt(task)
+
     const loop = new AgentLoop({
       chatFn: this.config.chatFn,
       toolRegistry: scopedRegistry,
       config: {
         maxTurns: task.maxTurns,
-        systemPrompt: this.config.systemPrompt ?? this.buildSystemPrompt(task),
+        systemPrompt: effectivePrompt,
         toolExecutionMode: "parallel",
         maxToolOutputChars: 8000,
       },
@@ -175,9 +182,13 @@ export class SubAgentRunner {
         return failResult
       }
 
+      // Parse structured three-part result from sub-agent output
+      const structured = parseStructuredResult(finalOutput)
+
       const result: TaskResult = {
         success: true,
         output: finalOutput,
+        structured,
         artifacts,
         metrics,
       }
@@ -227,27 +238,99 @@ export class SubAgentRunner {
   ): InternalMessage[] {
     const messages: InternalMessage[] = []
 
-    // Seed messages (parent context)
+    // Seed messages (parent context — e.g. compressed conversation summary in fork mode)
     if (options.seedMessages) {
       messages.push(...options.seedMessages)
     }
 
-    // Build task instruction as user message
-    let instruction = `## Task: ${task.title}\n\n${task.description}`
-    if (options.parentContext) {
-      instruction = `## Context from parent agent:\n${options.parentContext}\n\n${instruction}`
-    }
-
-    messages.push({ role: "user", content: instruction })
+    // Task details are already in the system prompt (effectivePrompt).
+    // User message is just a trigger to start execution — avoids token doubling.
+    messages.push({ role: "user", content: "Begin." })
     return messages
   }
 
+  /**
+   * Build the full effective system prompt when an external base prompt (with skills) is provided.
+   * This is the SINGLE source of truth for the task — user message is just "Begin.".
+   *
+   * Structure:
+   * 1. Base system prompt (global AGENT.md + skills)
+   * 2. Parent context (if fork mode — compressed conversation summary)
+   * 3. Sub-agent role framing + full task description
+   * 4. Structured output requirements
+   */
+  private buildEffectivePrompt(task: SubTask, options: RunOptions): string {
+    const parts: string[] = []
+
+    // 1. Base system prompt (skills, identity, etc.)
+    parts.push(this.config.systemPrompt!)
+
+    // 2. Parent context injection (fork mode: compressed summary of parent conversation)
+    if (options.parentContext) {
+      parts.push([
+        "---",
+        "",
+        "## 父对话上下文",
+        "",
+        "以下是父 Agent 对话的压缩摘要，供你参考背景信息：",
+        "",
+        options.parentContext,
+      ].join("\n"))
+    }
+
+    // 3. Sub-agent role framing + full task description
+    const taskSection = [
+      "---",
+      "",
+      "## 当前子任务",
+      "",
+      "你正在作为子 Agent 执行一个独立任务。用户消息只是触发信号（\"Begin.\"），",
+      "你的完整任务指令如下：",
+      "",
+      `### ${task.title}`,
+      "",
+      task.description,
+      "",
+      task.allowedTools.length > 0
+        ? `**可用工具**: ${task.allowedTools.join(", ")}`
+        : "",
+      "",
+      "### 执行要求",
+      "",
+      "- 专注完成上述任务，不要偏离范围",
+      "- 高效使用工具，避免不必要的调用",
+      "- 完成后清晰报告结果",
+    ].filter(Boolean).join("\n")
+    parts.push(taskSection)
+
+    // 4. Structured output format requirement
+    parts.push([
+      "",
+      "### 输出格式",
+      "",
+      "完成任务后，请按以下三段式结构输出最终结果：",
+      "",
+      "**结论**: 一句话总结任务结果（成功/失败/部分完成）",
+      "",
+      "**详情**: 具体执行过程和产出物",
+      "",
+      "**附加上下文**: 对后续任务可能有用的发现或建议（可选）",
+    ].join("\n"))
+
+    return parts.join("\n\n")
+  }
+
   private buildSystemPrompt(task: SubTask): string {
+    // Fallback: no external system prompt provided (shouldn't happen in normal flow)
     return [
       "You are a focused sub-agent working on a specific task.",
-      `Your task: "${task.title}"`,
       "",
-      "Guidelines:",
+      `## Task: ${task.title}`,
+      "",
+      task.description,
+      "",
+      "## Guidelines",
+      "",
       "- Focus exclusively on the assigned task",
       "- Be concise and efficient in your tool usage",
       "- Report results clearly when done",
@@ -256,6 +339,13 @@ export class SubAgentRunner {
       task.allowedTools.length > 0
         ? `Available tools: ${task.allowedTools.join(", ")}`
         : "You have access to the standard tool set.",
+      "",
+      "## Output Format",
+      "",
+      "When done, structure your final response as:",
+      "**Conclusion**: One-line summary",
+      "**Details**: Execution details and artifacts",
+      "**Additional Context**: Useful findings for follow-up (optional)",
     ].join("\n")
   }
 

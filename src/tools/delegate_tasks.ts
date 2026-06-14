@@ -13,7 +13,7 @@ import { registry } from "./registry.js"
 import { asyncExecute } from "../multi-agent/async-executor.js"
 import { getRunningForParent } from "../multi-agent/subagent-registry.js"
 import type { TaskSpec } from "../multi-agent/task-delegator.js"
-import type { TaskPriority, ExecutionStrategy } from "../multi-agent/types.js"
+import type { TaskPriority, ExecutionStrategy, ContextMode } from "../multi-agent/types.js"
 
 // Tools a leaf sub-agent must never use (prevents runaway recursion / fan-out).
 const LEAF_DENIED_TOOLS = ["delegate_tasks", "create_agent", "switch_agent"]
@@ -70,6 +70,15 @@ registry.register({
               enum: ["leaf", "orchestrator"],
               description:
                 "可选，默认 leaf（不可再委派）。仅当确需再嵌套一层委派时设为 orchestrator。",
+            },
+            context_mode: {
+              type: "string",
+              enum: ["isolated", "fork", "lightweight"],
+              description:
+                "可选，默认 isolated。控制子 Agent 继承多少父上下文：" +
+                "isolated=只有技能+任务描述（默认，适合独立任务）；" +
+                "fork=继承父对话压缩摘要+per-agent记忆（适合需要理解对话背景的任务）；" +
+                "lightweight=最小化启动，不注入技能（适合简单工具调用任务，省token）。",
             },
           },
           required: ["title", "description"],
@@ -129,6 +138,7 @@ registry.register({
             ? (t["max_turns"] as number)
             : DEFAULT_MAX_TURNS,
         dependsOn: [],
+        contextMode: (t["context_mode"] as ContextMode) ?? "isolated",
       }
     })
 
@@ -138,11 +148,11 @@ registry.register({
     let parentSessionId = ctx.sessionId ?? "unknown"
     const parentAgentId = ctx.extra?.["targetAgentId"] as string | undefined
     const parentUserId = ctx.extra?.["userId"] as string | undefined
+    const db = ctx.extra?.["db"] as { prepare(sql: string): { get(...args: unknown[]): unknown; all(...args: unknown[]): unknown[] } } | undefined
 
     if (parentSessionId.startsWith("mem-") || parentSessionId.startsWith("subagent:")) {
       // We're inside a temporary session (memory manager or sub-agent).
       // Look up the user's real agent session from the database.
-      const db = ctx.extra?.["db"] as { prepare(sql: string): { get(...args: unknown[]): unknown } } | undefined
       if (db && parentUserId) {
         try {
           const row = db.prepare(
@@ -160,6 +170,27 @@ registry.register({
       }
     }
 
+    // Extract parent context for fork mode (compressed recent conversation)
+    let parentContext: string | undefined
+    const hasForkTask = taskSpecs.some((t) => t.contextMode === "fork")
+    if (hasForkTask && db && parentSessionId) {
+      try {
+        const rows = db.prepare(
+          `SELECT role, substr(content, 1, 500) AS content
+           FROM chat_messages
+           WHERE session_id = ?
+           ORDER BY created_at DESC LIMIT 20`,
+        ).all(parentSessionId) as Array<{ role: string; content: string }>
+        if (rows.length > 0) {
+          // Build compressed summary (most recent first, then reverse for chronological order)
+          const messages = rows.reverse().map((r) => `[${r.role}]: ${r.content}`).join("\n")
+          parentContext = `以下是父对话最近 ${rows.length} 条消息的摘要：\n\n${messages}`
+        }
+      } catch {
+        // Non-fatal: proceed without parent context
+      }
+    }
+
     // Fire-and-forget: launch async execution
     const result = asyncExecute(taskSpecs, {
       parentSessionId,
@@ -167,6 +198,7 @@ registry.register({
       parentUserId,
       strategy,
       maxConcurrent,
+      parentContext,
       logger: ctx.logger,
     })
 

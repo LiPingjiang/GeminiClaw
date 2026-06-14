@@ -13,8 +13,12 @@ import { Orchestrator } from "./orchestrator.js"
 import { registerRun, completeRun, failRun } from "./subagent-registry.js"
 import { emitLifecycle } from "./lifecycle-bus.js"
 import { getMultiAgentRuntime } from "./runtime-context.js"
+import { loadSystemPrompt } from "../memory/strategy.js"
+import { resolveContext } from "./context-resolver.js"
+import { WorkingMemoryBuilder } from "../memory/working-memory.js"
+import { MemoryPaths } from "../memory/paths.js"
 import type { TaskSpec } from "./task-delegator.js"
-import type { ExecutionStrategy } from "./types.js"
+import type { ExecutionStrategy, ContextMode } from "./types.js"
 
 // ── 配置 ──────────────────────────────────────────────────────────────────────
 
@@ -42,6 +46,8 @@ export interface AsyncExecuteOptions {
   maxConcurrent?: number
   /** 超时 ms */
   timeoutMs?: number
+  /** 父对话上下文摘要（fork 模式使用） */
+  parentContext?: string
   /** Logger */
   logger?: {
     info(msg: string, ...args: unknown[]): void
@@ -150,10 +156,62 @@ async function executeInBackground(
   }, timeoutMs)
 
   try {
+    // Load the full system prompt (including skills) for context resolution
+    const basePrompt = loadSystemPrompt()
+
+    // Resolve context mode for the task batch.
+    // Use the first task's contextMode as the batch mode (all tasks in a batch share mode).
+    const requestedMode: ContextMode = taskSpecs[0]?.contextMode ?? "isolated"
+
+    // Load per-agent memory if fork mode and parentAgentId is available
+    let agentMemory: string | undefined
+    if (requestedMode === "fork" && options.parentAgentId) {
+      try {
+        const paths = new MemoryPaths()
+        const builder = new WorkingMemoryBuilder(paths)
+        const today = new Date().toISOString().slice(0, 10)
+        const wm = builder.build(options.parentAgentId, today)
+        const memParts = [wm.agentFixed, wm.agentNonFixed].filter(Boolean)
+        if (memParts.length > 0) {
+          agentMemory = memParts.join("\n\n")
+        }
+      } catch {
+        // Non-fatal: proceed without agent memory
+      }
+    }
+
+    // Resolve effective context with token budget protection
+    const contextResult = resolveContext({
+      requestedMode,
+      basePrompt,
+      parentContext: options.parentContext,
+      agentMemory,
+      taskDescription: taskSpecs.map(t => `${t.title}: ${t.description}`).join("\n"),
+    })
+
+    if (contextResult.refused) {
+      failRun(runId, contextResult.degradationReason ?? "Token budget exceeded")
+      log.error(
+        `[AsyncExecutor] run=${runId} refused: ${contextResult.degradationReason}`,
+      )
+      return
+    }
+
+    if (contextResult.degraded) {
+      log.warn(
+        `[AsyncExecutor] run=${runId} context degraded: ${requestedMode} → ${contextResult.effectiveMode} (${contextResult.estimatedTokens} tokens). Reason: ${contextResult.degradationReason}`,
+      )
+    }
+
+    log.info(
+      `[AsyncExecutor] run=${runId} context: mode=${contextResult.effectiveMode}, tokens≈${contextResult.estimatedTokens}`,
+    )
+
     const orchestrator = new Orchestrator({
       chatFn: rt.chatFn,
       toolRegistry: rt.toolRegistry,
       strategy,
+      systemPrompt: contextResult.systemPrompt ?? undefined,
       boundary: {
         isolationLevel: "strict",
         deniedTools: LEAF_DENIED_TOOLS,
@@ -167,6 +225,7 @@ async function executeInBackground(
 
     const result = await orchestrator.execute(taskSpecs, {
       strategy,
+      parentContext: contextResult.parentContext ?? undefined,
       signal: abortController.signal,
     })
 
