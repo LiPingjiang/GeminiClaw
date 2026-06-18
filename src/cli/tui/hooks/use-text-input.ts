@@ -130,6 +130,7 @@ export interface UseTextInputOpts {
   onHistoryDown: () => void
   onCancel: () => void
   onExit: () => void
+  onEscape?: () => void
 }
 
 export interface UseTextInputResult {
@@ -146,6 +147,7 @@ export function useTextInput(opts: UseTextInputOpts): UseTextInputResult {
       // ── Exit / interrupt ──────────────────────────────────────────
       if (key.ctrl && input === 'c') { opts.onCancel(); return }
       if (key.ctrl && input === 'd' && value === '') { opts.onExit(); return }
+      if (key.escape && opts.onEscape) { opts.onEscape(); return }
 
       // ── Submit ────────────────────────────────────────────────────
       if (key.return && !key.shift && !key.meta) {

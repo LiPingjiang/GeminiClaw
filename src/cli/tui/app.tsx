@@ -148,6 +148,7 @@ function App({ srv, opts }: { srv: ServerConfig; opts: TuiOptions }) {
       sessionId: state.currentSessionId,
       model: opts.model,
       authToken: srv.authToken,
+      attachments: state.inputAttachments,
 
       onEvent: (event: TuiEvent) => {
         if (event.kind === 'thinking_delta') {
@@ -200,7 +201,7 @@ function App({ srv, opts }: { srv: ServerConfig; opts: TuiOptions }) {
   }, [state.isRunning, state.currentSessionId, srv, opts.model, exit])
 
   const { termSize, headerState, events, streamingContent, input, inputCursor, isRunning,
-          thinkingContent, thinkingStartMs, thinkingDone, scrollOffset } = state
+          thinkingContent, thinkingStartMs, thinkingDone, scrollOffset, inputAttachments } = state
 
   return (
     <Box flexDirection="column" height={termSize.rows}>
@@ -233,6 +234,7 @@ function App({ srv, opts }: { srv: ServerConfig; opts: TuiOptions }) {
           dispatch({ type: 'CANCEL' })
         }}
         onExit={exit}
+        attachments={inputAttachments}
       />
       </Box>
     </Box>

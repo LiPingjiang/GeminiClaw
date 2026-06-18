@@ -147,6 +147,7 @@ export interface StreamOptions {
   sessionId?: string
   model?: string
   authToken?: string
+  attachments?: Array<{ base64: string; mediaType: string }>
   onEvent: (event: TuiEvent) => void
   onSessionId: (sessionId: string) => void
   onDone: () => void
@@ -154,11 +155,20 @@ export interface StreamOptions {
 }
 
 export function streamChat(opts: StreamOptions): () => void {
-  const { baseUrl, message, sessionId, model, authToken, onEvent, onSessionId, onDone, onError } = opts
+  const { baseUrl, message, sessionId, model, authToken, attachments, onEvent, onSessionId, onDone, onError } = opts
   const url = new URL("/v1/agent/stream", baseUrl)
   const transport = url.protocol === "https:" ? https : http
 
-  const body = JSON.stringify({ message, sessionId, model })
+  const body = JSON.stringify({
+    message,
+    sessionId,
+    model,
+    ...(attachments?.length ? { attachments: attachments.map(a => ({
+      type: 'image',
+      mediaType: a.mediaType,
+      data: a.base64,
+    })) } : {}),
+  })
 
   const headers: Record<string, string> = {
     "Content-Type": "application/json",

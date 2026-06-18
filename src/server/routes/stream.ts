@@ -23,6 +23,7 @@ interface StreamBody {
   message: string
   sessionId?: string
   model?: string
+  attachments?: Array<{ type: 'image'; mediaType: string; data: string }>
 }
 
 interface StreamRouteOpts {
@@ -45,7 +46,7 @@ export async function streamRoute(
       }
     }
 
-    const { message, sessionId, model } = request.body
+    const { message, sessionId, model, attachments } = request.body
 
     if (!message || typeof message !== "string" || message.trim() === "") {
       return reply.status(400).send({ error: "message is required and must be a non-empty string" })
@@ -53,12 +54,30 @@ export async function streamRoute(
 
     const sid = sessionId ?? crypto.randomUUID()
 
-    // ── 准备消息历史 ──────────────────────────────────────────────────────────
-    await opts.strategy.ensureSession(sid)
-    const { messages: contextMessages } = await opts.strategy.getContext(sid, message)
+    // ── 准备消息历史（在 hijack 之前，失败可以正常返回 HTTP 错误） ──────────
+    let contextMessages: Awaited<ReturnType<typeof opts.strategy.getContext>>["messages"]
+    try {
+      await opts.strategy.ensureSession(sid)
+      const ctx = await opts.strategy.getContext(sid, message)
+      contextMessages = ctx.messages
+    } catch (err) {
+      return reply.status(500).send({ error: `Memory error: ${String(err)}` })
+    }
+
+    // Build user message content (multimodal if attachments present)
+    const userContent: unknown = attachments?.length
+      ? [
+          { type: 'text', text: message },
+          ...attachments.map(a => ({
+            type: 'image',
+            source: { type: 'base64', media_type: a.mediaType, data: a.data },
+          })),
+        ]
+      : message
+
     const allMessages = [
       ...contextMessages,
-      { role: "user" as const, content: message },
+      { role: "user" as const, content: userContent },
     ]
 
     // ── Hijack → SSE ──────────────────────────────────────────────────────────
@@ -97,11 +116,16 @@ export async function streamRoute(
 
     // 存 memory
     if (fullContent) {
-      await opts.strategy.appendTurn(
-        sid,
-        { role: "user", content: message },
-        { role: "assistant", content: fullContent },
-      )
+      try {
+        await opts.strategy.appendTurn(
+          sid,
+          { role: "user", content: message },
+          { role: "assistant", content: fullContent },
+        )
+      } catch (err) {
+        // Memory save failure should not crash the stream response
+        console.error("[streamRoute] appendTurn failed:", err)
+      }
     }
 
     sendEvent("done", { sessionId: sid })
