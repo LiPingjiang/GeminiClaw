@@ -1,6 +1,7 @@
 import React from 'react';
 import { Box } from 'ink';
 import { MessageItem } from './message-item.js';
+import { StreamingMd } from './streaming-md.js';
 import type { TuiEvent } from '../types.js';
 
 interface MessageListProps {
@@ -9,7 +10,7 @@ interface MessageListProps {
   columns: number;  // added — used by StreamingMd in Task 7
 }
 
-export function MessageList({ events, streamingContent }: MessageListProps) {
+export function MessageList({ events, streamingContent, columns }: MessageListProps) {
   const visibleEvents = events.slice(-50);
 
   return (
@@ -18,7 +19,7 @@ export function MessageList({ events, streamingContent }: MessageListProps) {
         <MessageItem key={i} event={event} />
       ))}
       {streamingContent && (
-        <MessageItem event={{ kind: 'response', content: streamingContent }} />
+        <StreamingMd text={streamingContent} columns={columns} />
       )}
     </Box>
   );
