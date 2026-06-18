@@ -5,6 +5,8 @@ import {
   deleteGraphemeBefore, deleteGraphemeAfter,
 } from '../lib/grapheme.js'
 
+let _killRingContent = ''
+
 const INV = '\x1b[7m'
 const INV_OFF = '\x1b[27m'
 
@@ -239,12 +241,25 @@ export function useTextInput(opts: UseTextInputOpts): UseTextInputResult {
       // Ctrl+K — kill to end of line
       if (key.ctrl && input === 'k') {
         const lineEnd = value.indexOf('\n', cursor)
+        const killed = lineEnd >= 0 ? value.slice(cursor, lineEnd) : value.slice(cursor)
+        if (killed) _killRingContent = killed
         onChange(value.slice(0, cursor) + (lineEnd >= 0 ? value.slice(lineEnd) : ''), cursor); return
       }
       // Ctrl+U — kill to start of line
       if (key.ctrl && input === 'u') {
         const lineStart = value.lastIndexOf('\n', cursor - 1) + 1
+        const killed = value.slice(lineStart, cursor)
+        if (killed) _killRingContent = killed
         onChange(value.slice(0, lineStart) + value.slice(cursor), lineStart); return
+      }
+
+      // Ctrl+Y — yank (paste last killed text)
+      if (key.ctrl && input === 'y') {
+        if (_killRingContent) {
+          const newVal = value.slice(0, cursor) + _killRingContent + value.slice(cursor)
+          onChange(newVal, cursor + _killRingContent.length)
+        }
+        return
       }
 
       // ── Normal character input (including CJK, emoji) ─────────────
