@@ -74,7 +74,17 @@ export const COMMANDS: TuiCommand[] = [
     name: 'diff',
     prefix: '/diff',
     description: '显示当前目录 git diff',
-    handler: (_args, ctx) => ctx.sendMessage('/diff'),
+    handler: (_args, ctx) => {
+      import('child_process').then(({ execSync }) => {
+        try {
+          const output = execSync('git diff --stat HEAD', { encoding: 'utf-8', timeout: 5000 })
+          const msg = output.trim() || '(no changes)'
+          ctx.dispatch({ type: 'SSE_EVENT', event: { kind: 'system', message: msg } })
+        } catch {
+          ctx.dispatch({ type: 'SSE_EVENT', event: { kind: 'system', message: 'git diff failed — not a git repo?' } })
+        }
+      })
+    },
   },
   {
     name: 'bg',

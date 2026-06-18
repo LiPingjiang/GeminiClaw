@@ -307,12 +307,10 @@ export function tuiReducer(state: TuiState, action: TuiAction): TuiState {
       return { ...state, events: [...state.events, { kind: 'system', message: msg }] }
     }
 
-    case 'COPY_LAST': {
-      const last = [...state.events].reverse().find(e => e.kind === 'response')
-      if (!last || last.kind !== 'response') return state
-      // Side effect handled outside reducer; just append system message here
-      return { ...state, events: [...state.events, { kind: 'system', message: 'Copied to clipboard.' }] }
-    }
+    case 'COPY_LAST':
+      // Side effect (actual clipboard write) is in handlers.ts
+      // Reducer just returns state unchanged — the handler dispatches SSE_EVENT after copy
+      return state
 
     case 'BG_START':
       return { ...state, bgRunning: true, bgContent: '' }

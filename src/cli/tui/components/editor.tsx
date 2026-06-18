@@ -83,7 +83,26 @@ export function Editor({ value, cursor, columns, focus, dispatch, onSubmit, onCa
     columns: inputCols,
     focus,
     onChange: (newVal, newCur) => dispatch({ type: 'INPUT_CHANGE', value: newVal, cursor: newCur }),
-    onSubmit,
+    onSubmit: (msg: string) => {
+      if (suggestions.length > 0 && selectedSuggestion >= 0) {
+        const cmd = suggestions[selectedSuggestion]
+        if (cmd) {
+          if (cmd.argHint) {
+            // Complete to prefix, don't submit yet
+            const newVal = cmd.prefix + ' '
+            dispatch({ type: 'INPUT_CHANGE', value: newVal, cursor: newVal.length })
+            dispatch({ type: 'SUGGESTION_CLEAR' })
+            return
+          } else {
+            // No args — submit immediately with just the prefix
+            dispatch({ type: 'SUGGESTION_CLEAR' })
+            onSubmit(cmd.prefix)
+            return
+          }
+        }
+      }
+      onSubmit(msg)
+    },
     onHistoryUp: onHistoryUp,
     onHistoryDown: onHistoryDown,
     onCancel,
@@ -95,6 +114,16 @@ export function Editor({ value, cursor, columns, focus, dispatch, onSubmit, onCa
       }
       if (value === '' && attachments.length > 0) {
         dispatch({ type: 'INPUT_CLEAR_ATTACHMENTS' })
+      }
+    },
+    onTab: () => {
+      if (suggestions.length > 0 && selectedSuggestion >= 0) {
+        const cmd = suggestions[selectedSuggestion]
+        if (cmd) {
+          const newVal = cmd.argHint ? cmd.prefix + ' ' : cmd.prefix
+          dispatch({ type: 'INPUT_CHANGE', value: newVal, cursor: newVal.length })
+          dispatch({ type: 'SUGGESTION_CLEAR' })
+        }
       }
     },
     onScrollUp,

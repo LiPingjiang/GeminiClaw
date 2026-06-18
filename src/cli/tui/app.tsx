@@ -277,10 +277,10 @@ function App({ srv, opts }: { srv: ServerConfig; opts: TuiOptions }) {
       const query = state.input.slice(1)
       const items = filterCommands(query)
       dispatch({ type: 'SET_SUGGESTIONS', items, selected: items.length > 0 ? 0 : -1 })
-    } else if (suggestions.length > 0) {
+    } else if (state.suggestions.length > 0) {
       dispatch({ type: 'SUGGESTION_CLEAR' })
     }
-  }, [state.input])
+  }, [state.input, state.suggestions.length])
 
   const { termSize, headerState, events, streamingContent, input, inputCursor, isRunning,
           thinkingContent, thinkingStartMs, thinkingDone, scrollOffset, inputAttachments,

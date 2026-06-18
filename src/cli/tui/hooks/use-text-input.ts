@@ -131,6 +131,7 @@ export interface UseTextInputOpts {
   onCancel: () => void
   onExit: () => void
   onEscape?: () => void
+  onTab?: () => void
   onScrollUp?: () => void
   onScrollDown?: () => void
   onScrollToBottom?: () => void
@@ -151,6 +152,9 @@ export function useTextInput(opts: UseTextInputOpts): UseTextInputResult {
       if (key.ctrl && input === 'c') { opts.onCancel(); return }
       if (key.ctrl && input === 'd' && value === '') { opts.onExit(); return }
       if (key.escape && opts.onEscape) { opts.onEscape(); return }
+
+      // ── Tab: complete selected suggestion ─────────────────────────
+      if (key.tab && opts.onTab) { opts.onTab(); return }
 
       // ── Submit ────────────────────────────────────────────────────
       if (key.return && !key.shift && !key.meta) {
