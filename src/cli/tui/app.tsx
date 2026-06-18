@@ -196,7 +196,7 @@ function App({ srv, opts }: { srv: ServerConfig; opts: TuiOptions }) {
   return (
     <Box flexDirection="column" height={termSize.rows}>
       <Box flexShrink={0}>
-        <Header state={headerState} />
+        <Header state={headerState} columns={termSize.columns} />
       </Box>
       <Box flexDirection="column" flexGrow={1} overflowY="hidden">
         <MessageList events={events} streamingContent={streamingContent} columns={termSize.columns} />

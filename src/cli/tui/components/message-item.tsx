@@ -1,94 +1,118 @@
-import React from 'react';
-import { Box, Text } from 'ink';
-import type { TuiEvent } from '../types.js';
+// src/cli/tui/components/message-item.tsx
+import React from 'react'
+import { Box, Text } from 'ink'
+import type { TuiEvent } from '../types.js'
 
 interface MessageItemProps {
-  event: TuiEvent;
+  event: TuiEvent
 }
 
 export function MessageItem({ event }: MessageItemProps) {
   switch (event.kind) {
     case 'user_message':
       return (
-        <Box>
-          <Text color="yellow" bold>{'> '}</Text>
-          <Text color="yellow">{event.content}</Text>
+        <Box marginTop={1}>
+          <Text bold>{'❯ '}</Text>
+          <Text bold>{event.content}</Text>
         </Box>
-      );
+      )
 
     case 'response':
       return (
-        <Box marginLeft={2}>
-          <Text color="green">{event.content}</Text>
+        <Box marginTop={1} paddingLeft={2}>
+          <Text>{event.content}</Text>
         </Box>
-      );
+      )
 
     case 'tool_start':
       return (
-        <Box>
-          <Text color="magenta">▶ {event.name}</Text>
-          <Text color="gray"> {JSON.stringify(event.args).slice(0, 100)}</Text>
+        <Box marginTop={1}>
+          <Text color="magenta" dimColor>{'⬡ '}</Text>
+          <Text color="magenta" dimColor bold>{event.name}</Text>
+          <Text dimColor>{' ('}{JSON.stringify(event.args).slice(0, 80)}{')'}</Text>
         </Box>
-      );
+      )
 
     case 'tool_end':
       return (
-        <Box>
-          <Text color={event.isError ? 'red' : 'green'}>
-            {event.isError ? '✗' : '✓'} {event.name} ({event.durationMs}ms)
+        <Box paddingLeft={2}>
+          <Text color={event.isError ? 'red' : 'green'} dimColor>
+            {event.isError ? '✗' : '✓'}{' '}{event.name}{' '}{event.durationMs}ms
           </Text>
         </Box>
-      );
+      )
 
-    case 'turn_start':
+    case 'thinking_end':
       return (
-        <Box justifyContent="flex-end">
-          <Text color="gray" dimColor>{'─ TURN '}{event.turn}{' ─'}</Text>
+        <Box marginTop={1}>
+          <Text dimColor italic>{'∴ Thought for '}{Math.round(event.durationMs / 1000)}{'s'}</Text>
         </Box>
-      );
+      )
 
     case 'agent_end':
       return (
-        <Box>
-          <Text color="gray">
-            ✓ {event.totalTurns} turns, {event.stopReason}
+        <Box marginTop={1}>
+          <Text dimColor>
+            {'✓ '}{event.totalTurns}{' turns · '}{event.stopReason}
+            {event.usage ? ` · in:${fmtTokens(event.usage.inputTokens)} out:${fmtTokens(event.usage.outputTokens)}` : ''}
           </Text>
         </Box>
-      );
+      )
 
     case 'error':
       return (
         <Box>
-          <Text color="red">✗ {event.message}</Text>
+          <Text color="red">{'✗ '}{event.message}</Text>
         </Box>
-      );
+      )
 
     case 'system':
-      return (
+      return event.message ? (
         <Box>
-          <Text color="gray">ℹ {event.message}</Text>
+          <Text dimColor>{event.message}</Text>
         </Box>
-      );
+      ) : null
 
     case 'guardrail_warn':
       return (
         <Box>
-          <Text color="yellow">⚠ [{event.toolName}] {event.message}</Text>
+          <Text color="yellow" dimColor>{'⚠ ['}{event.toolName}{']: '}{event.message}</Text>
         </Box>
-      );
+      )
 
     case 'guardrail_halt':
       return (
         <Box>
-          <Text color="red">✗ HALT [{event.toolName}] {event.message}</Text>
+          <Text color="red">{'✗ HALT ['}{event.toolName}{']: '}{event.message}</Text>
         </Box>
-      );
+      )
+
+    case 'turn_start':
+      return (
+        <Box justifyContent="flex-end">
+          <Text dimColor>{'─ TURN '}{event.turn}{' ─'}</Text>
+        </Box>
+      )
+
+    case 'diff':
+      // DiffView wired in Task 5
+      return (
+        <Box marginTop={1} paddingLeft={2}>
+          <Text dimColor>{'[diff: '}{event.filename}{'  — install DiffView in Task 5]'}</Text>
+        </Box>
+      )
 
     case 'delta':
     case 'turn_end':
-      return null;
+    case 'thinking_delta':
+      return null
 
     default:
-      return null;
+      return null
   }
+}
+
+function fmtTokens(n: number): string {
+  if (n >= 1000) return `${(n / 1000).toFixed(1)}K`
+  return String(n)
 }
