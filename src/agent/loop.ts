@@ -865,6 +865,15 @@ export class AgentLoop {
       if (raw && raw.type === "multimodal") {
         multimodal = raw.content as ContentPart[];
         toolResult = { content: raw.textSummary ?? "", isError: false };
+      } else if (raw && raw.type === "diff") {
+        // diff result: store as multimodal side-channel for SSE emission
+        toolResult = { content: `[diff: ${raw.filename}]`, isError: false };
+        multimodal = [{
+          type: 'diff' as any,
+          filename: raw.filename,
+          before: raw.before,
+          after: raw.after,
+        }] as any;
       } else if (raw && raw.type === "text") {
         toolResult = { content: raw.text ?? "", isError: false };
       } else if (raw && raw.type === "error") {

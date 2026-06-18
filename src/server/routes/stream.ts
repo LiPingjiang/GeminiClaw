@@ -106,6 +106,20 @@ export async function streamRoute(
         // 把每个 AgentEvent 原样推出去
         sendEvent("agent_event", event)
 
+        // After emitting tool_end, check for diff payload and emit extra agent_event
+        if (event.type === "tool_end") {
+          const mm = (event.result as any)?.multimodal
+          if (Array.isArray(mm) && mm[0]?.type === 'diff') {
+            const diffPayload = mm[0] as any
+            sendEvent("agent_event", {
+              type: 'diff',
+              filename: diffPayload.filename,
+              before: diffPayload.before,
+              after: diffPayload.after,
+            })
+          }
+        }
+
         // 同时累积 response 内容（用于存 memory）
         if (event.type === "message_delta" && "delta" in event) {
           fullContent += (event as { delta: string }).delta

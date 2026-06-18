@@ -134,6 +134,14 @@ function translateAgentEvent(raw: AgentEvent): TuiEvent | null {
     case "thinking_end":
       return { kind: "thinking_end", content: (raw as { content?: string }).content ?? "", durationMs: raw.durationMs ?? 0 }
 
+    case "diff":
+      return {
+        kind: "diff",
+        filename: (raw as { filename?: string }).filename ?? "",
+        before: (raw as { before?: string }).before ?? "",
+        after: (raw as { after?: string }).after ?? "",
+      }
+
     default:
       return null
   }

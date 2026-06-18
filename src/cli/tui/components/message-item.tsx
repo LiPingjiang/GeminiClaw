@@ -2,6 +2,7 @@
 import React from 'react'
 import { Box, Text } from 'ink'
 import type { TuiEvent } from '../types.js'
+import { DiffView } from './diff-view.js'
 
 interface MessageItemProps {
   event: TuiEvent
@@ -95,10 +96,9 @@ export function MessageItem({ event }: MessageItemProps) {
       )
 
     case 'diff':
-      // DiffView wired in Task 5
       return (
-        <Box marginTop={1} paddingLeft={2}>
-          <Text dimColor>{'[diff: '}{event.filename}{'  — install DiffView in Task 5]'}</Text>
+        <Box marginTop={1}>
+          <DiffView filename={event.filename} before={event.before} after={event.after} columns={80} />
         </Box>
       )
 
