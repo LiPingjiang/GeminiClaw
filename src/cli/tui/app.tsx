@@ -210,7 +210,7 @@ function App({ srv, opts }: { srv: ServerConfig; opts: TuiOptions }) {
         cursor={inputCursor}
         columns={termSize.columns}
         focus={!isRunning}
-        dispatch={dispatch as (action: { type: string; [k: string]: unknown }) => void}
+        dispatch={dispatch}
         onSubmit={sendMessage}
         onCancel={() => {
           if (cancelRef.current) cancelRef.current()
