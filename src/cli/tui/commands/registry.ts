@@ -46,7 +46,12 @@ export const COMMANDS: TuiCommand[] = [
     name: 'new',
     prefix: '/new',
     description: '新建 session',
-    handler: (_args, ctx) => ctx.dispatch({ type: 'SET_NEW_SESSION' }),
+    handler: (_args, ctx) => {
+      import('../session-store.js').then(({ saveLastSessionId }) => {
+        saveLastSessionId('')  // clear so next startup gets a fresh session
+      }).catch(() => {})
+      ctx.dispatch({ type: 'SET_NEW_SESSION' })
+    },
   },
   {
     name: 'model',

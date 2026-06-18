@@ -79,6 +79,9 @@ function App({ srv, opts }: { srv: ServerConfig; opts: TuiOptions }) {
   isRunningRef.current = state.isRunning
   exitRef.current = exit
 
+  const eventsRef = useRef(state.events)
+  eventsRef.current = state.events
+
   // Global Ctrl+C: always active (isActive not set = defaults to true).
   // Handles two cases: interrupt running agent, or exit when idle.
   useInput((input, key) => {
@@ -295,8 +298,11 @@ function App({ srv, opts }: { srv: ServerConfig; opts: TuiOptions }) {
         exit,
         baseUrl: srv.baseUrl,
         authToken: srv.authToken,
-        setBtwCancel: (fn) => { btwCancelRef.current = fn },
-        getEvents: () => state.events,
+        setBtwCancel: (fn) => {
+          btwCancelRef.current?.()  // cancel any in-flight btw before starting new one
+          btwCancelRef.current = fn
+        },
+        getEvents: () => eventsRef.current,
       })
       return
     }

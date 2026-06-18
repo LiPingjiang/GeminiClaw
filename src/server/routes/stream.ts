@@ -54,16 +54,21 @@ export async function streamRoute(
       return reply.status(400).send({ error: "message is required and must be a non-empty string" })
     }
 
+    const isEphemeral = !!request.body.ephemeral
     const sid = sessionId ?? crypto.randomUUID()
 
     // ── 准备消息历史（在 hijack 之前，失败可以正常返回 HTTP 错误） ──────────
     let contextMessages: Awaited<ReturnType<typeof opts.strategy.getContext>>["messages"]
-    try {
-      await opts.strategy.ensureSession(sid)
-      const ctx = await opts.strategy.getContext(sid, message)
-      contextMessages = ctx.messages
-    } catch (err) {
-      return reply.status(500).send({ error: `Memory error: ${String(err)}` })
+    if (!isEphemeral) {
+      try {
+        await opts.strategy.ensureSession(sid)
+        const ctx = await opts.strategy.getContext(sid, message)
+        contextMessages = ctx.messages
+      } catch (err) {
+        return reply.status(500).send({ error: `Memory error: ${String(err)}` })
+      }
+    } else {
+      contextMessages = []  // ephemeral sessions have no context
     }
 
     const ALLOWED_MEDIA_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp'])
@@ -135,7 +140,7 @@ export async function streamRoute(
     }
 
     // 存 memory (skip for ephemeral requests)
-    if (fullContent && !request.body.ephemeral) {
+    if (fullContent && !isEphemeral) {
       try {
         await opts.strategy.appendTurn(
           sid,
