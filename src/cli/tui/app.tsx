@@ -1,6 +1,6 @@
 // src/cli/tui/app.tsx
 import React, { useCallback, useEffect, useReducer, useRef } from 'react'
-import { render, Box, Text, useApp, useStdout, useStdin } from 'ink'
+import { render, Box, Text, useApp, useStdout, useStdin, useInput } from 'ink'
 import { useTerminalMode } from './hooks/use-terminal-mode.js'
 import { existsSync, readFileSync } from 'fs'
 import { join } from 'path'
@@ -57,12 +57,42 @@ function App({ srv, opts }: { srv: ServerConfig; opts: TuiOptions }) {
   const { stdin } = useStdin()
   const [state, dispatch] = useReducer(tuiReducer, initialTuiState({ sessionId: opts.sessionId }))
   useTerminalMode()
+
+  // Global Ctrl+C / Ctrl+D handler — always active regardless of focus or isRunning.
+  // useInput with isActive=true (default) intercepts before the Editor's own useInput.
+  // Without this, focus={false} on Editor disables useInput there, making Ctrl+C a no-op.
   const cancelRef = useRef<(() => void) | null>(null)
+  const isRunningRef = useRef(false)
+  const exitRef = useRef(exit)
   const elapsedTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const startMsRef = useRef(0)
   // Accumulate delta content between React renders (throttle to 20fps)
   const pendingDeltaRef = useRef('')
   const lastDeltaFlushRef = useRef(0)
+
+  // Keep refs in sync with latest state so the global handler closure is always fresh
+  isRunningRef.current = state.isRunning
+  exitRef.current = exit
+
+  // Global Ctrl+C: always active (isActive not set = defaults to true).
+  // Handles two cases: interrupt running agent, or exit when idle.
+  useInput((input, key) => {
+    if (key.ctrl && input === 'c') {
+      if (isRunningRef.current) {
+        // Interrupt running agent
+        if (cancelRef.current) cancelRef.current()
+        if (elapsedTimerRef.current) { clearInterval(elapsedTimerRef.current); elapsedTimerRef.current = null }
+        pendingDeltaRef.current = ''
+        dispatch({ type: 'CANCEL' })
+      } else {
+        // Exit when idle (Editor's own onCancel also fires, but CANCEL is a no-op when idle)
+        exitRef.current()
+      }
+    }
+    if (key.ctrl && input === 'd' && !isRunningRef.current) {
+      exitRef.current()
+    }
+  })
 
   // ── Resize ──────────────────────────────────────────────────────
   useEffect(() => {
