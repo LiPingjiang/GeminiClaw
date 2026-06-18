@@ -148,12 +148,14 @@ describe('attachment actions', () => {
 
 describe('scroll actions', () => {
   it('SCROLL_UP increases offset', () => {
-    const s = tuiReducer(base, { type: 'SCROLL_UP', lines: 3 })
+    const s0 = tuiReducer(base, { type: 'SET_MAX_SCROLL_OFFSET', value: 100 })
+    const s = tuiReducer(s0, { type: 'SCROLL_UP', lines: 3 })
     expect(s.scrollOffset).toBe(3)
   })
 
   it('SCROLL_DOWN decreases offset, clamps at 0', () => {
-    const s1 = tuiReducer(base, { type: 'SCROLL_UP', lines: 5 })
+    const s0 = tuiReducer(base, { type: 'SET_MAX_SCROLL_OFFSET', value: 100 })
+    const s1 = tuiReducer(s0, { type: 'SCROLL_UP', lines: 5 })
     const s2 = tuiReducer(s1, { type: 'SCROLL_DOWN', lines: 3 })
     expect(s2.scrollOffset).toBe(2)
     const s3 = tuiReducer(s2, { type: 'SCROLL_DOWN', lines: 10 })
@@ -161,20 +163,45 @@ describe('scroll actions', () => {
   })
 
   it('SCROLL_TO_BOTTOM resets to 0', () => {
-    const s1 = tuiReducer(base, { type: 'SCROLL_UP', lines: 10 })
+    const s0 = tuiReducer(base, { type: 'SET_MAX_SCROLL_OFFSET', value: 100 })
+    const s1 = tuiReducer(s0, { type: 'SCROLL_UP', lines: 10 })
     const s2 = tuiReducer(s1, { type: 'SCROLL_TO_BOTTOM' })
     expect(s2.scrollOffset).toBe(0)
   })
 
   it('SEND_MESSAGE resets scroll to bottom', () => {
-    const s1 = tuiReducer(base, { type: 'SCROLL_UP', lines: 5 })
+    const s0 = tuiReducer(base, { type: 'SET_MAX_SCROLL_OFFSET', value: 100 })
+    const s1 = tuiReducer(s0, { type: 'SCROLL_UP', lines: 5 })
     const s2 = tuiReducer(s1, { type: 'SEND_MESSAGE', message: 'hi' })
     expect(s2.scrollOffset).toBe(0)
   })
 
   it('STREAM_DELTA does not reset scroll offset', () => {
-    const s1 = tuiReducer(base, { type: 'SCROLL_UP', lines: 5 })
+    const s0 = tuiReducer(base, { type: 'SET_MAX_SCROLL_OFFSET', value: 100 })
+    const s1 = tuiReducer(s0, { type: 'SCROLL_UP', lines: 5 })
     const s2 = tuiReducer(s1, { type: 'STREAM_DELTA', content: 'hello' })
     expect(s2.scrollOffset).toBe(5)  // preserved
+  })
+})
+
+describe('SET_MAX_SCROLL_OFFSET', () => {
+  it('sets maxScrollOffset', () => {
+    const s = tuiReducer(base, { type: 'SET_MAX_SCROLL_OFFSET', value: 42 })
+    expect(s.maxScrollOffset).toBe(42)
+  })
+})
+
+describe('SCROLL_UP with maxScrollOffset', () => {
+  it('clamps at maxScrollOffset', () => {
+    const s1 = tuiReducer(base, { type: 'SET_MAX_SCROLL_OFFSET', value: 10 })
+    const s2 = tuiReducer(s1, { type: 'SCROLL_UP', lines: 20 })
+    expect(s2.scrollOffset).toBe(10)
+  })
+
+  it('does not exceed maxScrollOffset on repeated scroll', () => {
+    const s1 = tuiReducer(base, { type: 'SET_MAX_SCROLL_OFFSET', value: 5 })
+    const s2 = tuiReducer(s1, { type: 'SCROLL_UP', lines: 3 })
+    const s3 = tuiReducer(s2, { type: 'SCROLL_UP', lines: 3 })
+    expect(s3.scrollOffset).toBe(5)
   })
 })

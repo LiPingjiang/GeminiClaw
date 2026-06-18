@@ -89,11 +89,7 @@ export function MessageItem({ event }: MessageItemProps) {
       )
 
     case 'turn_start':
-      return (
-        <Box justifyContent="flex-end">
-          <Text dimColor>{'─ TURN '}{event.turn}{' ─'}</Text>
-        </Box>
-      )
+      return null
 
     case 'diff':
       return (

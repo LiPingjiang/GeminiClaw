@@ -33,6 +33,7 @@ export interface TuiState {
   inputAttachments: InputAttachment[]
   // Scroll
   scrollOffset: number
+  maxScrollOffset: number
 }
 
 export type TuiAction =
@@ -58,6 +59,7 @@ export type TuiAction =
   | { type: 'SCROLL_UP'; lines: number }
   | { type: 'SCROLL_DOWN'; lines: number }
   | { type: 'SCROLL_TO_BOTTOM' }
+  | { type: 'SET_MAX_SCROLL_OFFSET'; value: number }
 
 export interface InitialTuiStateOpts {
   sessionId?: string
@@ -87,6 +89,7 @@ export function initialTuiState(opts: InitialTuiStateOpts): TuiState {
     thinkingDurationMs: 0,
     inputAttachments: [],
     scrollOffset: 0,
+    maxScrollOffset: 0,
   }
 }
 
@@ -253,13 +256,16 @@ export function tuiReducer(state: TuiState, action: TuiAction): TuiState {
       return { ...state, inputAttachments: [] }
 
     case 'SCROLL_UP':
-      return { ...state, scrollOffset: state.scrollOffset + action.lines }
+      return { ...state, scrollOffset: Math.min(state.scrollOffset + action.lines, state.maxScrollOffset) }
 
     case 'SCROLL_DOWN':
       return { ...state, scrollOffset: Math.max(0, state.scrollOffset - action.lines) }
 
     case 'SCROLL_TO_BOTTOM':
       return { ...state, scrollOffset: 0 }
+
+    case 'SET_MAX_SCROLL_OFFSET':
+      return { ...state, maxScrollOffset: action.value }
 
     default:
       return state

@@ -110,8 +110,8 @@ function App({ srv, opts }: { srv: ServerConfig; opts: TuiOptions }) {
       const sgrMouse = str.match(/\x1b\[<(\d+);(\d+);(\d+)([Mm])/)
       if (!sgrMouse) return  // not a mouse event — let useInput handle it
       const button = parseInt(sgrMouse[1], 10)
-      if (button === 64) dispatch({ type: 'SCROLL_UP', lines: 3 })
-      if (button === 65) dispatch({ type: 'SCROLL_DOWN', lines: 3 })
+      if (button === 64) dispatch({ type: 'SCROLL_UP', lines: 1 })
+      if (button === 65) dispatch({ type: 'SCROLL_DOWN', lines: 1 })
     }
     stdin.on('data', handleMouseData)
     return () => { stdin.off('data', handleMouseData) }
@@ -267,11 +267,12 @@ function App({ srv, opts }: { srv: ServerConfig; opts: TuiOptions }) {
           streamingContent={streamingContent}
           columns={termSize.columns}
           scrollOffset={scrollOffset}
-          visibleRows={termSize.rows - 4}
+          visibleRows={termSize.rows - 5}
           thinkingContent={thinkingContent}
           thinkingStartMs={thinkingStartMs}
           thinkingDone={thinkingDone}
           elapsedMs={headerState.elapsedMs ?? 0}
+          dispatch={dispatch}
         />
       </Box>
       <Box flexShrink={0}>
