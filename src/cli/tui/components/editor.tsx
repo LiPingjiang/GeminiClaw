@@ -1,5 +1,5 @@
 import React from 'react'
-import { Box, Text, useCursor, usePaste } from 'ink'
+import { Box, Text, usePaste } from 'ink'
 import { useTextInput } from '../hooks/use-text-input.js'
 import { snapPos } from '../lib/grapheme.js'
 import type { TuiAction } from '../state.js'
@@ -19,8 +19,6 @@ const PROMPT = '> '
 const PROMPT_WIDTH = 2 // '> ' is 2 columns wide
 
 export function Editor({ value, cursor, columns, focus, dispatch, onSubmit, onCancel, onExit }: EditorProps) {
-  const { setCursorPosition } = useCursor()
-
   // Bracketed paste: Ink 7 usePaste handles \x1b[200~...\x1b[201~ natively.
   // Pasted text is inserted at cursor position as a single string.
   usePaste(
@@ -35,7 +33,7 @@ export function Editor({ value, cursor, columns, focus, dispatch, onSubmit, onCa
 
   const inputCols = Math.max(1, columns - PROMPT_WIDTH)
 
-  const { rendered, cursorRow, cursorCol } = useTextInput({
+  const { rendered } = useTextInput({
     value,
     cursor,
     columns: inputCols,
@@ -46,20 +44,6 @@ export function Editor({ value, cursor, columns, focus, dispatch, onSubmit, onCa
     onHistoryDown: () => dispatch({ type: 'INPUT_HISTORY_DOWN' }),
     onCancel,
     onExit,
-  })
-
-  // Park the native terminal cursor at the text insertion point.
-  // Terminal emulators display IME candidate windows at the physical cursor
-  // position — this makes the CJK composition popup appear inline with the input.
-  // useCursor(Ink 7) translates (x, y) relative to the Ink output origin into
-  // an ANSI cursor-position escape written after each frame.
-  React.useLayoutEffect(() => {
-    if (focus) {
-      // x and y are 0-based from Ink output origin
-      setCursorPosition({ x: PROMPT_WIDTH + cursorCol, y: cursorRow })
-    } else {
-      setCursorPosition(undefined)
-    }
   })
 
   if (!focus) {
