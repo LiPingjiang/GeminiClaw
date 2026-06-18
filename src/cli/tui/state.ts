@@ -1,5 +1,12 @@
 import type { TuiEvent, HeaderState, TokenUsage } from './types.js'
 
+export interface InputAttachment {
+  base64: string
+  mediaType: 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp'
+  filename: string
+  sizeBytes: number
+}
+
 export interface TuiState {
   events: TuiEvent[]
   headerState: HeaderState
@@ -17,6 +24,15 @@ export interface TuiState {
     totalCacheRead: number
     totalCacheCreation: number
   }
+  // Thinking mode
+  thinkingContent: string
+  thinkingStartMs: number
+  thinkingDone: boolean
+  thinkingDurationMs: number
+  // Clipboard attachments
+  inputAttachments: InputAttachment[]
+  // Scroll
+  scrollOffset: number
 }
 
 export type TuiAction =
@@ -34,6 +50,14 @@ export type TuiAction =
   | { type: 'RESIZE'; rows: number; columns: number }
   | { type: 'AGENT_END'; model?: string; usage?: TokenUsage }
   | { type: 'TICK'; elapsedMs: number }
+  | { type: 'THINKING_DELTA'; delta: string; nowMs: number }
+  | { type: 'THINKING_DONE'; content: string; durationMs: number }
+  | { type: 'THINKING_CLEAR' }
+  | { type: 'INPUT_ATTACH_IMAGE'; attachment: InputAttachment }
+  | { type: 'INPUT_CLEAR_ATTACHMENTS' }
+  | { type: 'SCROLL_UP'; lines: number }
+  | { type: 'SCROLL_DOWN'; lines: number }
+  | { type: 'SCROLL_TO_BOTTOM' }
 
 export interface InitialTuiStateOpts {
   sessionId?: string
@@ -57,6 +81,12 @@ export function initialTuiState(opts: InitialTuiStateOpts): TuiState {
     history: [],
     historyIdx: -1,
     sessionStats: { totalInput: 0, totalOutput: 0, totalCacheRead: 0, totalCacheCreation: 0 },
+    thinkingContent: '',
+    thinkingStartMs: 0,
+    thinkingDone: false,
+    thinkingDurationMs: 0,
+    inputAttachments: [],
+    scrollOffset: 0,
   }
 }
 
@@ -88,11 +118,17 @@ export function tuiReducer(state: TuiState, action: TuiAction): TuiState {
         history: [action.message, ...state.history].slice(0, 100),
         events: [...state.events, { kind: 'user_message', content: action.message }],
         streamingContent: '',
+        scrollOffset: 0,
+        inputAttachments: [],
+        thinkingContent: '',
+        thinkingStartMs: 0,
+        thinkingDone: false,
+        thinkingDurationMs: 0,
         headerState: { ...state.headerState, status: 'running', elapsedMs: 0, currentTool: undefined },
       }
 
     case 'STREAM_DELTA':
-      return { ...state, streamingContent: state.streamingContent + action.content }
+      return { ...state, streamingContent: state.streamingContent + action.content, scrollOffset: 0 }
 
     case 'STREAM_DONE': {
       const newEvents = state.streamingContent
@@ -183,6 +219,47 @@ export function tuiReducer(state: TuiState, action: TuiAction): TuiState {
         ...state,
         headerState: { ...state.headerState, elapsedMs: action.elapsedMs, status: 'running' },
       }
+
+    case 'THINKING_DELTA':
+      return {
+        ...state,
+        thinkingContent: state.thinkingContent + action.delta,
+        thinkingStartMs: state.thinkingStartMs || action.nowMs,
+        thinkingDone: false,
+      }
+
+    case 'THINKING_DONE':
+      return {
+        ...state,
+        thinkingDone: true,
+        thinkingDurationMs: action.durationMs,
+        thinkingContent: action.content,
+        events: [...state.events, { kind: 'thinking_end' as const, content: action.content, durationMs: action.durationMs }],
+      }
+
+    case 'THINKING_CLEAR':
+      return {
+        ...state,
+        thinkingContent: '',
+        thinkingStartMs: 0,
+        thinkingDone: false,
+        thinkingDurationMs: 0,
+      }
+
+    case 'INPUT_ATTACH_IMAGE':
+      return { ...state, inputAttachments: [...state.inputAttachments, action.attachment] }
+
+    case 'INPUT_CLEAR_ATTACHMENTS':
+      return { ...state, inputAttachments: [] }
+
+    case 'SCROLL_UP':
+      return { ...state, scrollOffset: state.scrollOffset + action.lines }
+
+    case 'SCROLL_DOWN':
+      return { ...state, scrollOffset: Math.max(0, state.scrollOffset - action.lines) }
+
+    case 'SCROLL_TO_BOTTOM':
+      return { ...state, scrollOffset: 0 }
 
     default:
       return state

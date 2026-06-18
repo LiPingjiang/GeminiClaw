@@ -90,3 +90,91 @@ describe('tuiReducer', () => {
     expect(s.history.length).toBe(100)
   })
 })
+
+describe('thinking actions', () => {
+  it('THINKING_DELTA accumulates content and sets startMs', () => {
+    const s1 = tuiReducer(base, { type: 'THINKING_DELTA', delta: 'hello ', nowMs: 1000 })
+    expect(s1.thinkingContent).toBe('hello ')
+    expect(s1.thinkingStartMs).toBe(1000)
+    expect(s1.thinkingDone).toBe(false)
+    const s2 = tuiReducer(s1, { type: 'THINKING_DELTA', delta: 'world', nowMs: 2000 })
+    expect(s2.thinkingContent).toBe('hello world')
+    expect(s2.thinkingStartMs).toBe(1000) // preserved from first delta
+  })
+
+  it('THINKING_DONE sets done flag and duration, adds thinking_end event', () => {
+    const s1 = tuiReducer(base, { type: 'THINKING_DELTA', delta: 'hi', nowMs: 1000 })
+    const s2 = tuiReducer(s1, { type: 'THINKING_DONE', content: 'hi', durationMs: 3500 })
+    expect(s2.thinkingDone).toBe(true)
+    expect(s2.thinkingDurationMs).toBe(3500)
+    expect(s2.events.at(-1)).toEqual({ kind: 'thinking_end', content: 'hi', durationMs: 3500 })
+  })
+
+  it('SEND_MESSAGE clears thinking state', () => {
+    const s1 = tuiReducer(base, { type: 'THINKING_DELTA', delta: 'thinking', nowMs: 1000 })
+    const s2 = tuiReducer(s1, { type: 'SEND_MESSAGE', message: 'hi' })
+    expect(s2.thinkingContent).toBe('')
+    expect(s2.thinkingDone).toBe(false)
+    expect(s2.thinkingStartMs).toBe(0)
+  })
+})
+
+describe('attachment actions', () => {
+  const attachment = {
+    base64: 'abc123',
+    mediaType: 'image/png' as const,
+    filename: 'clipboard',
+    sizeBytes: 1024,
+  }
+
+  it('INPUT_ATTACH_IMAGE adds to attachments', () => {
+    const s = tuiReducer(base, { type: 'INPUT_ATTACH_IMAGE', attachment })
+    expect(s.inputAttachments).toHaveLength(1)
+    expect(s.inputAttachments[0]).toEqual(attachment)
+  })
+
+  it('INPUT_CLEAR_ATTACHMENTS empties list', () => {
+    const s1 = tuiReducer(base, { type: 'INPUT_ATTACH_IMAGE', attachment })
+    const s2 = tuiReducer(s1, { type: 'INPUT_CLEAR_ATTACHMENTS' })
+    expect(s2.inputAttachments).toHaveLength(0)
+  })
+
+  it('SEND_MESSAGE clears attachments', () => {
+    const s1 = tuiReducer(base, { type: 'INPUT_ATTACH_IMAGE', attachment })
+    const s2 = tuiReducer(s1, { type: 'SEND_MESSAGE', message: 'hi' })
+    expect(s2.inputAttachments).toHaveLength(0)
+  })
+})
+
+describe('scroll actions', () => {
+  it('SCROLL_UP increases offset', () => {
+    const s = tuiReducer(base, { type: 'SCROLL_UP', lines: 3 })
+    expect(s.scrollOffset).toBe(3)
+  })
+
+  it('SCROLL_DOWN decreases offset, clamps at 0', () => {
+    const s1 = tuiReducer(base, { type: 'SCROLL_UP', lines: 5 })
+    const s2 = tuiReducer(s1, { type: 'SCROLL_DOWN', lines: 3 })
+    expect(s2.scrollOffset).toBe(2)
+    const s3 = tuiReducer(s2, { type: 'SCROLL_DOWN', lines: 10 })
+    expect(s3.scrollOffset).toBe(0)
+  })
+
+  it('SCROLL_TO_BOTTOM resets to 0', () => {
+    const s1 = tuiReducer(base, { type: 'SCROLL_UP', lines: 10 })
+    const s2 = tuiReducer(s1, { type: 'SCROLL_TO_BOTTOM' })
+    expect(s2.scrollOffset).toBe(0)
+  })
+
+  it('SEND_MESSAGE resets scroll to bottom', () => {
+    const s1 = tuiReducer(base, { type: 'SCROLL_UP', lines: 5 })
+    const s2 = tuiReducer(s1, { type: 'SEND_MESSAGE', message: 'hi' })
+    expect(s2.scrollOffset).toBe(0)
+  })
+
+  it('STREAM_DELTA resets scroll to bottom', () => {
+    const s1 = tuiReducer(base, { type: 'SCROLL_UP', lines: 5 })
+    const s2 = tuiReducer(s1, { type: 'STREAM_DELTA', content: 'hello' })
+    expect(s2.scrollOffset).toBe(0)
+  })
+})
