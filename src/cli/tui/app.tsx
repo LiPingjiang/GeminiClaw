@@ -292,6 +292,8 @@ function App({ srv, opts }: { srv: ServerConfig; opts: TuiOptions }) {
         onScrollUp={() => dispatch({ type: 'SCROLL_UP', lines: 10 })}
         onScrollDown={() => dispatch({ type: 'SCROLL_DOWN', lines: 10 })}
         onScrollToBottom={() => dispatch({ type: 'SCROLL_TO_BOTTOM' })}
+        isRunning={isRunning}
+        currentTool={headerState.currentTool}
       />
       </Box>
     </Box>

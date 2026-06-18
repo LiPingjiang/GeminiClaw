@@ -18,12 +18,14 @@ export interface EditorProps {
   onScrollUp: () => void
   onScrollDown: () => void
   onScrollToBottom: () => void
+  isRunning: boolean
+  currentTool?: string
 }
 
 const PROMPT = '> '
 const PROMPT_WIDTH = 2 // '> ' is 2 columns wide
 
-export function Editor({ value, cursor, columns, focus, dispatch, onSubmit, onCancel, onExit, attachments, onScrollUp, onScrollDown, onScrollToBottom }: EditorProps) {
+export function Editor({ value, cursor, columns, focus, dispatch, onSubmit, onCancel, onExit, attachments, onScrollUp, onScrollDown, onScrollToBottom, isRunning, currentTool }: EditorProps) {
   // Bracketed paste: Ink 7 usePaste handles \x1b[200~...\x1b[201~ natively.
   // Pasted text is inserted at cursor position as a single string.
   usePaste(
@@ -115,6 +117,66 @@ export function Editor({ value, cursor, columns, focus, dispatch, onSubmit, onCa
         {/* rendered contains ANSI escape sequences for cursor highlight */}
         <Text>{rendered}</Text>
       </Box>
+      <StatusBar
+        focus={focus}
+        isRunning={isRunning}
+        currentTool={currentTool}
+        inputEmpty={value === ''}
+        inputIsCommand={value.startsWith('/')}
+        columns={columns}
+      />
+    </Box>
+  )
+}
+
+function StatusBar({
+  focus,
+  isRunning,
+  currentTool,
+  inputEmpty,
+  inputIsCommand,
+  columns,
+}: {
+  focus: boolean
+  isRunning: boolean
+  currentTool?: string
+  inputEmpty: boolean
+  inputIsCommand: boolean
+  columns: number
+}) {
+  if (!focus) return null
+
+  if (isRunning) {
+    const toolLabel = currentTool ? `⚡${currentTool}` : 'Thinking…'
+    return (
+      <Box justifyContent="space-between">
+        <Text dimColor>{'  ● '}{toolLabel}</Text>
+        <Text dimColor>{'Ctrl+C interrupt  '}</Text>
+      </Box>
+    )
+  }
+
+  if (inputIsCommand) {
+    return (
+      <Box>
+        <Text dimColor>{'  ↑↓ select  Tab complete  Esc close'}</Text>
+      </Box>
+    )
+  }
+
+  if (!inputEmpty) {
+    return (
+      <Box justifyContent="flex-end">
+        <Text dimColor>{'Enter send  Shift+Enter newline  '}</Text>
+      </Box>
+    )
+  }
+
+  // idle + empty
+  return (
+    <Box justifyContent="space-between">
+      <Text dimColor>{'  /btw · /clear · /model · /help'}</Text>
+      <Text dimColor>{'? for commands  '}</Text>
     </Box>
   )
 }
