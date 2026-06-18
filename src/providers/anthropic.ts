@@ -170,6 +170,7 @@ export class AnthropicProvider implements Provider {
     const systemText = systemMessages.length > 0 ? systemMessages.map(m => m.content).join("\n") : undefined
     const cached = applyPromptCache({ system: systemText, messages: anthropicMessages })
 
+    const thinkingStartMs = Date.now()
     const response = await this.client.messages.create({
       model,
       max_tokens: options?.maxTokens ?? 4096,
@@ -177,6 +178,7 @@ export class AnthropicProvider implements Provider {
       ...(cached.system ? { system: cached.system } : {}),
       ...(tools && tools.length > 0 ? { tools } : {}),
       ...(toolChoice ? { tool_choice: toolChoice } : {}),
+      ...(options?.thinking ? { thinking: options.thinking } : {}),
       messages: cached.messages,
     })
 
@@ -186,6 +188,9 @@ export class AnthropicProvider implements Provider {
       const errText = response.content.find(b => b.type === "text")
       throw new Error(`Provider returned stop_reason=error: ${errText?.type === "text" ? errText.text : "unknown error"}`)
     }
+
+    const thinkingBlock = response.content.find(b => b.type === "thinking")
+    const thinkingContent = thinkingBlock && (thinkingBlock as { type: 'thinking'; thinking: string }).thinking || undefined
 
     const textBlock = response.content.find(b => b.type === "text")
     const content = textBlock && textBlock.type === "text" ? textBlock.text : ""
@@ -202,6 +207,7 @@ export class AnthropicProvider implements Provider {
         cacheCreationInputTokens: (response.usage as unknown as Record<string, unknown>).cache_creation_input_tokens as number | undefined,
         cacheReadInputTokens: (response.usage as unknown as Record<string, unknown>).cache_read_input_tokens as number | undefined,
       },
+      ...(thinkingContent ? { thinkingContent, thinkingDurationMs: Date.now() - thinkingStartMs } : {}),
     }
   }
 

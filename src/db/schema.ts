@@ -99,6 +99,13 @@ export function migrate(db: Db): void {
 
   // ─── Migrations: add columns that may be missing in older databases ───
 
+  // Add main_agent_id to chat_sessions (needed by AgentRepository.createMainAgent)
+  const sessionColumns = db.prepare(`PRAGMA table_info(chat_sessions)`).all() as Array<{ name: string }>
+  const sessionColNames = new Set(sessionColumns.map(c => c.name))
+  if (!sessionColNames.has("main_agent_id")) {
+    db.exec(`ALTER TABLE chat_sessions ADD COLUMN main_agent_id TEXT`)
+  }
+
   // Add tool_calls and tool_call_id columns to chat_messages (needed for tool-call persistence)
   const columns = db.prepare(`PRAGMA table_info(chat_messages)`).all() as Array<{ name: string }>
   const colNames = new Set(columns.map(c => c.name))

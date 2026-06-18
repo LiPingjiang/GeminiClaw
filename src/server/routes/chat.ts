@@ -123,6 +123,14 @@ export async function chatRoute(
             }
           }
 
+          // 2026-06-17: P6 防护 — 如果 AgentLoop 完成但没有产生任何文本内容，发送提示
+          if (!fullContent) {
+            const fallbackMsg = "⚠️ 处理完成但未生成文本回复。可能是工具调用超时或内部错误，请简化问题重试。"
+            const data = JSON.stringify({ choices: [{ delta: { content: fallbackMsg } }] })
+            raw.write(`data: ${data}\n\n`)
+            fullContent = fallbackMsg
+          }
+
           raw.write(`data: ${JSON.stringify({ type: "done" })}\n\n`)
           raw.write("data: [DONE]\n\n")
 
@@ -143,6 +151,9 @@ export async function chatRoute(
       }
 
       // 非流式 + AgentLoop：收集所有 message_delta 事件
+      // ⚠️ 2026-06-17: 添加请求级超时保护，防止 AgentLoop 工具调用卡死导致 session 永久挂起
+      // 回滚方案：移除 Promise.race 包装，恢复原始 for-await 循环
+      const REQUEST_TIMEOUT_MS = 120_000 // 2 分钟超时
       let fullContent = ""
       const eventStream = opts.agentLoop.run({
         messages: allMessages as any,
@@ -150,18 +161,36 @@ export async function chatRoute(
         model,
       })
 
-      for await (const event of eventStream) {
-        if (event.type === "message_delta") {
-          fullContent += event.delta
+      const collectEvents = async () => {
+        for await (const event of eventStream) {
+          if (event.type === "message_delta") {
+            fullContent += event.delta
+          }
         }
       }
 
-      await opts.strategy.appendTurn(
-        sid,
-        { role: "user", content: message },
-        { role: "assistant", content: fullContent },
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error(`Request timeout after ${REQUEST_TIMEOUT_MS / 1000}s`)), REQUEST_TIMEOUT_MS),
       )
-      opts.twinSystem?.activityTracker.recordActivity()
+
+      try {
+        await Promise.race([collectEvents(), timeoutPromise])
+      } catch (err) {
+        // 超时或其他错误：返回已收集的部分内容 + 错误提示
+        const timeoutMsg = fullContent
+          ? `\n\n⚠️ 响应超时（${REQUEST_TIMEOUT_MS / 1000}秒），以上为已生成的部分内容。`
+          : `⚠️ 响应超时（${REQUEST_TIMEOUT_MS / 1000}秒），请简化问题或使用流式模式（stream: true）。`
+        fullContent += timeoutMsg
+      }
+
+      if (fullContent) {
+        await opts.strategy.appendTurn(
+          sid,
+          { role: "user", content: message },
+          { role: "assistant", content: fullContent },
+        )
+        opts.twinSystem?.activityTracker.recordActivity()
+      }
 
       return reply.send({
         response: fullContent,

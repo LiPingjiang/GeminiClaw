@@ -34,11 +34,21 @@ const POLL_WAIT_SECONDS = 30;
 const E2B_API_URL = 'https://api.sandbox.sankuai.com';
 const E2B_DOMAIN = 'sandbox.sankuai.com';
 
-/** 回测模板（含 /data/kline_3yr.parquet 三年K线数据），仅 KEY1 有访问权限。 */
+/** 回测模板（含 /data/kline_3yr.parquet 三年K线数据），KEY1 原始版本。 */
 const CUSTOM_TEMPLATE_ID = 'lqp7omxamf1rwy27yrxb';
 
-/** 每个 key 的最大并发沙箱数。 */
-const MAX_CONCURRENCY_PER_KEY = 5;
+/** 15年回测模板 v3（A股1990+港股1980+美股2009，2281万行清洗数据，含美股2011-2019历史），KEY1 原始版本。 */
+const BACKTEST_15YR_TEMPLATE_ID = '5jnft9ic70zs0nt8g21w';
+
+/** Per-key 回测模板映射（每个 key 有自己归属的全量模板，含 15yr + 3yr 数据）。 */
+const TEMPLATE_MAP: Record<string, { backtest: string; backtest15yr: string }> = {
+  KEY1: { backtest: 'lqp7omxamf1rwy27yrxb', backtest15yr: '5jnft9ic70zs0nt8g21w' },
+  KEY2: { backtest: 'huwbqr0on3ur2m6mwpzk', backtest15yr: 'huwbqr0on3ur2m6mwpzk' },
+  KEY3: { backtest: 'nz8z8yx9k4rkuzy1ej2y', backtest15yr: 'nz8z8yx9k4rkuzy1ej2y' },
+};
+
+/** 每个 key 的最大并发沙箱数。E2B Team 限制为 20 concurrent sandboxes per key。 */
+const MAX_CONCURRENCY_PER_KEY = 20;
 
 /** 任务默认超时（秒）。 */
 const DEFAULT_TASK_TIMEOUT = 300;
@@ -64,13 +74,13 @@ const KEYS: KeySlot[] = [
   {
     id: 'KEY2',
     apiKey: 'e2b_c41a5511810565c2e61711c2f4cbfea342d2dfeb',
-    canUseCustomTemplate: false,
+    canUseCustomTemplate: true,
     active: 0,
   },
   {
     id: 'KEY3',
     apiKey: 'e2b_a92bc4c2475362c2bf6e592c623dcfe2f773ef79',
-    canUseCustomTemplate: false,
+    canUseCustomTemplate: true,
     active: 0,
   },
 ];
@@ -97,6 +107,8 @@ interface Task {
   require_custom_template?: boolean;
   /** 是否要求回测模板（兼容字段名，等同于 require_custom_template）。 */
   require_backtest_template?: boolean;
+  /** 是否要求 15 年回测模板。 */
+  require_15yr_template?: boolean;
   /** 自定义模板 id 覆盖。 */
   template?: string;
   /** 任意附加字段。 */
@@ -143,6 +155,8 @@ function logErr(msg: string): void {
 let shuttingDown = false;
 /** 当前正在跑的任务数（用于优雅退出时等待）。 */
 let inFlight = 0;
+/** 因无可用 key 而暂存的任务，等有 key 释放后优先处理，避免任务丢失变僵尸。 */
+const retryBuffer: Task[] = [];
 
 // ---------------------------------------------------------------------------
 // key 选择（round-robin + 负载均衡）
@@ -157,7 +171,10 @@ let rrCursor = 0;
  * 返回 null 表示当前没有可用容量。
  */
 function pickKey(task: Task): KeySlot | null {
-  const needsCustom = Boolean(task.require_custom_template || task.require_backtest_template);
+  const needsCustom = Boolean(task.require_custom_template || task.require_backtest_template || task.require_15yr_template);
+
+  // DEBUG: dump key states before filtering
+  log(`pickKey: keys=[${KEYS.map((k) => `${k.id}:${k.active}/${MAX_CONCURRENCY_PER_KEY}`).join(', ')}] needsCustom=${needsCustom}`);
 
   const eligible = KEYS.filter((k) => {
     if (k.active >= MAX_CONCURRENCY_PER_KEY) return false;
@@ -165,7 +182,10 @@ function pickKey(task: Task): KeySlot | null {
     return true;
   });
 
-  if (eligible.length === 0) return null;
+  if (eligible.length === 0) {
+    log(`pickKey: NO eligible key! all full or incompatible`);
+    return null;
+  }
 
   // 1) 尊重 key_preference
   if (task.key_preference) {
@@ -177,9 +197,18 @@ function pickKey(task: Task): KeySlot | null {
   const minActive = Math.min(...eligible.map((k) => k.active));
   const leastLoaded = eligible.filter((k) => k.active === minActive);
 
-  const chosen = leastLoaded[rrCursor % leastLoaded.length];
-  rrCursor = (rrCursor + 1) % KEYS.length;
-  return chosen;
+  // round-robin：从 rrCursor 对应的 KEYS 全局位置开始，找到第一个在 leastLoaded 中的 key
+  let chosen: KeySlot | undefined;
+  for (let i = 0; i < KEYS.length; i++) {
+    const idx = (rrCursor + i) % KEYS.length;
+    if (leastLoaded.includes(KEYS[idx])) {
+      chosen = KEYS[idx];
+      rrCursor = (idx + 1) % KEYS.length;  // 下次从它后面开始
+      break;
+    }
+  }
+  log(`pickKey: chosen=${chosen?.id ?? 'NONE'} rrCursor=${rrCursor} leastLoaded=[${leastLoaded.map((k) => k.id).join(',')}]`);
+  return chosen ?? leastLoaded[0];
 }
 
 // ---------------------------------------------------------------------------
@@ -229,11 +258,14 @@ function loadE2bSdk(): Promise<SandboxSdk | null> {
  */
 async function runInSandbox(task: Task, key: KeySlot): Promise<ExecOutput> {
   const timeoutSec = normalizeTimeout(task.timeout);
+  const use15yr = Boolean(task.require_15yr_template || task.template === BACKTEST_15YR_TEMPLATE_ID);
   const useCustom =
-    (task.require_custom_template || task.require_backtest_template || task.template === CUSTOM_TEMPLATE_ID) && key.canUseCustomTemplate;
-  const templateId = task.template ?? (useCustom ? CUSTOM_TEMPLATE_ID : 'base');
+    (task.require_custom_template || task.require_backtest_template || task.template === CUSTOM_TEMPLATE_ID || use15yr) && key.canUseCustomTemplate;
+  // 使用 per-key 模板映射，每个 key 使用归属自己的模板
+  const keyTemplates = TEMPLATE_MAP[key.id];
+  const templateId = task.template ?? (use15yr ? keyTemplates.backtest15yr : useCustom ? keyTemplates.backtest : 'base');
 
-  log(`template=${templateId} useCustom=${useCustom} (require_custom=${task.require_custom_template}, require_backtest=${task.require_backtest_template})`);
+  log(`template=${templateId} useCustom=${useCustom} use15yr=${use15yr} (require_custom=${task.require_custom_template}, require_backtest=${task.require_backtest_template}, require_15yr=${task.require_15yr_template})`);
 
   // 给 E2B SDK / 远端读取的环境变量
   process.env.E2B_API_KEY = key.apiKey;
@@ -598,21 +630,30 @@ async function mainLoop(): Promise<void> {
   while (!shuttingDown) {
     // 全部 key 都打满时，稍等再轮询，避免空转拉到无法处理的任务。
     if (totalActive() >= KEYS.length * MAX_CONCURRENCY_PER_KEY) {
-      await sleep(500);
-      continue;
+      // 但如果 retryBuffer 里没有任务，才需要等待
+      if (retryBuffer.length === 0) {
+        await sleep(500);
+        continue;
+      }
     }
 
+    // 优先处理 retryBuffer 里的任务（之前因无可用 key 暂存的）
     let task: Task | null = null;
-    try {
-      log('polling...');
-      task = await pollTask();
-      // 轮询成功，重置退避
-      backoff = 1000;
-    } catch (err) {
-      logErr(`poll error: ${errMsg(err)}; reconnecting in ${backoff}ms`);
-      await sleep(backoff);
-      backoff = Math.min(backoff * 2, maxBackoff);
-      continue;
+    if (retryBuffer.length > 0) {
+      task = retryBuffer.shift()!;
+      log(`retrying buffered task ${task.id} (buffer remaining: ${retryBuffer.length})`);
+    } else {
+      try {
+        log('polling...');
+        task = await pollTask();
+        // 轮询成功，重置退避
+        backoff = 1000;
+      } catch (err) {
+        logErr(`poll error: ${errMsg(err)}; reconnecting in ${backoff}ms`);
+        await sleep(backoff);
+        backoff = Math.min(backoff * 2, maxBackoff);
+        continue;
+      }
     }
 
     if (!task) {
@@ -628,10 +669,10 @@ async function mainLoop(): Promise<void> {
 
     const key = pickKey(task);
     if (!key) {
-      // 没有可用容量（例如任务要求自定义模板但 KEY1 已满），稍等重试
-      logErr(`no available key for task ${task.id} (require_custom=${Boolean(task.require_custom_template)}), retrying`);
-      await sleep(1000);
-      // 注意：此时任务还在队列里（我们没确认），下次会再拉到
+      // 没有可用容量——把任务暂存到 retryBuffer，等有 key 释放后再处理
+      logErr(`no available key for task ${task.id} (require_custom=${Boolean(task.require_custom_template)}), will retry after slot frees up`);
+      retryBuffer.push(task);
+      await sleep(500);
       continue;
     }
 

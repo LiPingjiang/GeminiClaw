@@ -18,6 +18,7 @@ interface TaskInput {
   timeout?: number
   key_preference?: 'key1' | 'key2' | 'key3' | 'any'
   require_backtest_template?: boolean
+  require_15yr_template?: boolean
   require_custom_template?: boolean
   pip?: string[]
 }
@@ -36,6 +37,7 @@ interface Task {
   timeout: number
   key_preference: 'key1' | 'key2' | 'key3' | 'any'
   require_backtest_template?: boolean
+  require_15yr_template?: boolean
   require_custom_template?: boolean
   pip?: string[]
   result?: TaskResult
@@ -149,7 +151,8 @@ app.post('/tasks', async (request: FastifyRequest, reply: FastifyReply) => {
     timeout: body.timeout || 60,
     key_preference: body.key_preference || 'any',
     require_backtest_template: body.require_backtest_template || false,
-    require_custom_template: body.require_custom_template || body.require_backtest_template || false,
+    require_15yr_template: body.require_15yr_template || false,
+    require_custom_template: body.require_custom_template || body.require_backtest_template || body.require_15yr_template || false,
     pip: body.pip,
     createdAt: new Date().toISOString(),
   }

@@ -17,18 +17,27 @@ importers:
       commander:
         specifier: ^15.0.0
         version: 15.0.0
+      diff:
+        specifier: ^9.0.0
+        version: 9.0.0
       e2b:
         specifier: ^2.29.1
         version: 2.29.1
       fastify:
         specifier: ^5.3.2
         version: 5.8.5
+      ink:
+        specifier: ^7.0.6
+        version: 7.0.6(@types/react@19.2.17)(react@19.2.7)
       js-yaml:
         specifier: ^4.1.0
         version: 4.1.1
       puppeteer-core:
         specifier: ^25.1.0
         version: 25.1.0
+      react:
+        specifier: ^19.2.7
+        version: 19.2.7
       ws:
         specifier: ^8.18.0
         version: 8.21.0
@@ -39,12 +48,18 @@ importers:
       '@types/better-sqlite3':
         specifier: ^7.6.13
         version: 7.6.13
+      '@types/diff':
+        specifier: ^8.0.0
+        version: 8.0.0
       '@types/js-yaml':
         specifier: ^4.0.9
         version: 4.0.9
       '@types/node':
         specifier: ^22.15.3
         version: 22.19.17
+      '@types/react':
+        specifier: ^19.2.17
+        version: 19.2.17
       '@types/ws':
         specifier: ^8.5.14
         version: 8.18.1
@@ -62,6 +77,10 @@ importers:
         version: 3.2.4(@types/node@22.19.17)(tsx@4.21.0)
 
 packages:
+
+  '@alcalzone/ansi-tokenize@0.3.0':
+    resolution: {integrity: sha1-ghbMXy8070qCZtJAfn47cLog4PY=, tarball: http://r.npm.sankuai.com/@alcalzone/ansi-tokenize/download/@alcalzone/ansi-tokenize-0.3.0.tgz}
+    engines: {node: '>=18'}
 
   '@ampproject/remapping@2.3.0':
     resolution: {integrity: sha512-30iZtAPgz+LTIYoeivqYo853f02jBYSd5uGnGpkFV0M3xOt9aN73erkgYAmZU43x4VfqcnLxW9Kpg3R5LC4YYw==}
@@ -472,6 +491,10 @@ packages:
   '@types/deep-eql@4.0.2':
     resolution: {integrity: sha1-M0MRlx06BxIefrkbaEpgXn7qnL0=, tarball: https://registry.npmmirror.com/@types/deep-eql/download/@types/deep-eql-4.0.2.tgz}
 
+  '@types/diff@8.0.0':
+    resolution: {integrity: sha1-j8OLZIjSsii/CybD2GpoItwJYcU=, tarball: http://r.npm.sankuai.com/@types/diff/download/@types/diff-8.0.0.tgz}
+    deprecated: This is a stub types definition. diff provides its own type definitions, so you do not need this installed.
+
   '@types/estree@1.0.8':
     resolution: {integrity: sha1-lYuRyZGxhnztMYvt6g4hXuBQcm4=, tarball: https://registry.npmmirror.com/@types/estree/download/@types/estree-1.0.8.tgz}
 
@@ -486,6 +509,9 @@ packages:
 
   '@types/node@22.19.17':
     resolution: {integrity: sha1-Cccfs0uiUQ+KyGU2Gx/LlVK4pYE=, tarball: https://registry.npmmirror.com/@types/node/download/@types/node-22.19.17.tgz}
+
+  '@types/react@19.2.17':
+    resolution: {integrity: sha1-3MrDZbqg8XNOwnD/S1HIlGXo3H8=, tarball: http://r.npm.sankuai.com/@types/react/download/@types/react-19.2.17.tgz}
 
   '@types/ws@8.18.1':
     resolution: {integrity: sha1-SEZOS/Ld/RfbE9hFRn9gcP/qSqk=, tarball: https://registry.npmmirror.com/@types/ws/download/@types/ws-8.18.1.tgz}
@@ -550,6 +576,10 @@ packages:
   ajv@8.20.0:
     resolution: {integrity: sha1-MEs2Nq3Yi6fZNnYN1Q7OAG3qlfk=, tarball: https://registry.npmmirror.com/ajv/download/ajv-8.20.0.tgz}
 
+  ansi-escapes@7.3.0:
+    resolution: {integrity: sha1-U5W7dLIVCkodbjwlZfSuynjShic=, tarball: http://r.npm.sankuai.com/ansi-escapes/download/ansi-escapes-7.3.0.tgz}
+    engines: {node: '>=18'}
+
   ansi-regex@5.0.1:
     resolution: {integrity: sha1-CCyyyJyf6GWaMRpTvWpNxTAdswQ=, tarball: https://registry.npmmirror.com/ansi-regex/download/ansi-regex-5.0.1.tgz}
     engines: {node: '>=8'}
@@ -563,7 +593,7 @@ packages:
     engines: {node: '>=8'}
 
   ansi-styles@6.2.3:
-    resolution: {integrity: sha512-4Dj6M28JB+oAH8kFkTLUo+a2jwOFkuqb3yucU0CANcRRUbxS0cP0nZYCGjcc3BNXwRIsUVmDGgzawme7zvJHvg==}
+    resolution: {integrity: sha1-wETV3MUhoHZBNHJZehrLHxA8QEE=, tarball: http://r.npm.sankuai.com/ansi-styles/download/ansi-styles-6.2.3.tgz}
     engines: {node: '>=12'}
 
   argparse@2.0.1:
@@ -582,6 +612,10 @@ packages:
   atomic-sleep@1.0.0:
     resolution: {integrity: sha1-64W3emAfyTLP5DLFrNNkqeLJB1s=, tarball: https://registry.npmmirror.com/atomic-sleep/download/atomic-sleep-1.0.0.tgz}
     engines: {node: '>=8.0.0'}
+
+  auto-bind@5.0.1:
+    resolution: {integrity: sha1-UNjmPqWh3dy15eNkUcGoJm/7sq4=, tarball: http://r.npm.sankuai.com/auto-bind/download/auto-bind-5.0.1.tgz}
+    engines: {node: ^12.20.0 || ^14.13.1 || >=16.0.0}
 
   avvio@9.2.0:
     resolution: {integrity: sha1-FrtlPAIiN9GuuYSwDTy+LZa3fCA=, tarball: https://registry.npmmirror.com/avvio/download/avvio-9.2.0.tgz}
@@ -649,9 +683,25 @@ packages:
     peerDependencies:
       devtools-protocol: '*'
 
+  cli-boxes@4.0.1:
+    resolution: {integrity: sha1-cmf0rjLsu1K1r3f+9IviGfZmxXw=, tarball: http://r.npm.sankuai.com/cli-boxes/download/cli-boxes-4.0.1.tgz}
+    engines: {node: '>=18.20 <19 || >=20.10'}
+
+  cli-cursor@4.0.0:
+    resolution: {integrity: sha1-POz+NzS/T+Aqg2HL3A9v4oxqV+o=, tarball: http://r.npm.sankuai.com/cli-cursor/download/cli-cursor-4.0.0.tgz}
+    engines: {node: ^12.20.0 || ^14.13.1 || >=16.0.0}
+
+  cli-truncate@6.0.0:
+    resolution: {integrity: sha1-nnybZGSeS9NeaneRl5fDC6fcAJU=, tarball: http://r.npm.sankuai.com/cli-truncate/download/cli-truncate-6.0.0.tgz}
+    engines: {node: '>=22'}
+
   cliui@8.0.1:
     resolution: {integrity: sha1-DASwddsCy/5g3I5s8vVIaxo2CKo=, tarball: https://registry.npmmirror.com/cliui/download/cliui-8.0.1.tgz}
     engines: {node: '>=12'}
+
+  code-excerpt@4.0.0:
+    resolution: {integrity: sha1-LefUbphRQ4XLAfezt0EyARX0yV4=, tarball: http://r.npm.sankuai.com/code-excerpt/download/code-excerpt-4.0.0.tgz}
+    engines: {node: ^12.20.0 || ^14.13.1 || >=16.0.0}
 
   color-convert@2.0.1:
     resolution: {integrity: sha1-ctOmjVmMm9s68q0ehPIdiWq9TeM=, tarball: https://registry.npmmirror.com/color-convert/download/color-convert-2.0.1.tgz}
@@ -671,6 +721,10 @@ packages:
   compare-versions@6.1.1:
     resolution: {integrity: sha1-evPMEJm6N9JEsxRamvUgG2KRSKk=, tarball: http://r.npm.sankuai.com/compare-versions/download/compare-versions-6.1.1.tgz}
 
+  convert-to-spaces@2.0.1:
+    resolution: {integrity: sha1-YabJj4qmJsFrKWuGKpFBKjO862s=, tarball: http://r.npm.sankuai.com/convert-to-spaces/download/convert-to-spaces-2.0.1.tgz}
+    engines: {node: ^12.20.0 || ^14.13.1 || >=16.0.0}
+
   cookie@1.1.1:
     resolution: {integrity: sha1-O7m9/II2nbnC9pyTycPOsxDIizw=, tarball: https://registry.npmmirror.com/cookie/download/cookie-1.1.1.tgz}
     engines: {node: '>=18'}
@@ -678,6 +732,9 @@ packages:
   cross-spawn@7.0.6:
     resolution: {integrity: sha1-ilj+ePANzXDDcEUXWd+/rwPo7p8=, tarball: http://r.npm.sankuai.com/cross-spawn/download/cross-spawn-7.0.6.tgz}
     engines: {node: '>= 8'}
+
+  csstype@3.2.3:
+    resolution: {integrity: sha1-7EjA8+mT5QZIyG2lWeJhCZXPmJo=, tarball: http://r.npm.sankuai.com/csstype/download/csstype-3.2.3.tgz}
 
   debug@4.4.3:
     resolution: {integrity: sha1-xq5DLZvZZiWC/OCHCbA4xY6ePWo=, tarball: https://registry.npmmirror.com/debug/download/debug-4.4.3.tgz}
@@ -715,6 +772,10 @@ packages:
   devtools-protocol@0.0.1624250:
     resolution: {integrity: sha1-sdwq1RLASajcL04t5CAABFpddJ0=, tarball: https://registry.npmmirror.com/devtools-protocol/download/devtools-protocol-0.0.1624250.tgz}
 
+  diff@9.0.0:
+    resolution: {integrity: sha1-KXwxzXwoDxPf4zV5HsIGO9SnOm8=, tarball: http://r.npm.sankuai.com/diff/download/diff-9.0.0.tgz}
+    engines: {node: '>=0.3.1'}
+
   dockerfile-ast@0.7.1:
     resolution: {integrity: sha1-FvK+BDS/yUDJ6vANqXCZ/l0sBQ8=, tarball: http://r.npm.sankuai.com/dockerfile-ast/download/dockerfile-ast-0.7.1.tgz}
 
@@ -738,6 +799,10 @@ packages:
   end-of-stream@1.4.5:
     resolution: {integrity: sha1-c0TXEd6kDgt0q8LtSXeHQ8ztsIw=, tarball: https://registry.npmmirror.com/end-of-stream/download/end-of-stream-1.4.5.tgz}
 
+  environment@1.1.0:
+    resolution: {integrity: sha1-jobGaxgPNjx6sxF4fgJZZl9FqfE=, tarball: http://r.npm.sankuai.com/environment/download/environment-1.1.0.tgz}
+    engines: {node: '>=18'}
+
   es-define-property@1.0.1:
     resolution: {integrity: sha1-mD6y+aZyTpMD9hrd8BHHLgngsPo=, tarball: https://registry.npmmirror.com/es-define-property/download/es-define-property-1.0.1.tgz}
     engines: {node: '>= 0.4'}
@@ -757,6 +822,9 @@ packages:
     resolution: {integrity: sha1-8x274MGDsAptJutjJcgQwP0YvU0=, tarball: https://registry.npmmirror.com/es-set-tostringtag/download/es-set-tostringtag-2.1.0.tgz}
     engines: {node: '>= 0.4'}
 
+  es-toolkit@1.47.1:
+    resolution: {integrity: sha1-bwSf7wTC7ydADo84JVoNyjI+HDo=, tarball: http://r.npm.sankuai.com/es-toolkit/download/es-toolkit-1.47.1.tgz}
+
   esbuild@0.27.7:
     resolution: {integrity: sha1-vK3OIrLz/XbyV+OmT4OmSYb+oR8=, tarball: https://registry.npmmirror.com/esbuild/download/esbuild-0.27.7.tgz}
     engines: {node: '>=18'}
@@ -765,6 +833,10 @@ packages:
   escalade@3.2.0:
     resolution: {integrity: sha1-ARo/aYVroYnf+n3I/M6Z0qh5A+U=, tarball: https://registry.npmmirror.com/escalade/download/escalade-3.2.0.tgz}
     engines: {node: '>=6'}
+
+  escape-string-regexp@2.0.0:
+    resolution: {integrity: sha1-owME6Z2qMuI7L9IPUbq9B8/8o0Q=, tarball: http://r.npm.sankuai.com/escape-string-regexp/download/escape-string-regexp-2.0.0.tgz}
+    engines: {node: '>=8'}
 
   estree-walker@3.0.3:
     resolution: {integrity: sha1-Z8PlSexAKkh7T8GT0ZU6UkdSNA0=, tarball: https://registry.npmmirror.com/estree-walker/download/estree-walker-3.0.3.tgz}
@@ -848,6 +920,10 @@ packages:
     resolution: {integrity: sha1-T5RBKoLbMvNuOwuXQfipf+sDH34=, tarball: https://registry.npmmirror.com/get-caller-file/download/get-caller-file-2.0.5.tgz}
     engines: {node: 6.* || 8.* || >= 10.*}
 
+  get-east-asian-width@1.6.0:
+    resolution: {integrity: sha1-IWkA+R3xGossGYw+HZPWwDWndrk=, tarball: http://r.npm.sankuai.com/get-east-asian-width/download/get-east-asian-width-1.6.0.tgz}
+    engines: {node: '>=18'}
+
   get-intrinsic@1.3.0:
     resolution: {integrity: sha1-dD8OO2lkqTpUke0b/6rgVNf5jQE=, tarball: https://registry.npmmirror.com/get-intrinsic/download/get-intrinsic-1.3.0.tgz}
     engines: {node: '>= 0.4'}
@@ -900,11 +976,28 @@ packages:
   ieee754@1.2.1:
     resolution: {integrity: sha1-jrehCmP/8l0VpXsAFYbRd9Gw01I=, tarball: https://registry.npmmirror.com/ieee754/download/ieee754-1.2.1.tgz}
 
+  indent-string@5.0.0:
+    resolution: {integrity: sha1-T9KYD8yvhiLRTGTWlPTPM8gZUaU=, tarball: http://r.npm.sankuai.com/indent-string/download/indent-string-5.0.0.tgz}
+    engines: {node: '>=12'}
+
   inherits@2.0.4:
     resolution: {integrity: sha1-D6LGT5MpF8NDOg3tVTY6rjdBa3w=, tarball: https://registry.npmmirror.com/inherits/download/inherits-2.0.4.tgz}
 
   ini@1.3.8:
     resolution: {integrity: sha1-op2kJbSIBvNHZ6Tvzjlyaa8oQyw=, tarball: https://registry.npmmirror.com/ini/download/ini-1.3.8.tgz}
+
+  ink@7.0.6:
+    resolution: {integrity: sha1-ltekhH+6a7kn0TvI3/EdrzZgoEc=, tarball: http://r.npm.sankuai.com/ink/download/ink-7.0.6.tgz}
+    engines: {node: '>=22'}
+    peerDependencies:
+      '@types/react': '>=19.2.0'
+      react: '>=19.2.0'
+      react-devtools-core: '>=6.1.2'
+    peerDependenciesMeta:
+      '@types/react':
+        optional: true
+      react-devtools-core:
+        optional: true
 
   ipaddr.js@2.4.0:
     resolution: {integrity: sha1-A46c6vghnvxbt2NHt+t4eHXVCVs=, tarball: https://registry.npmmirror.com/ipaddr.js/download/ipaddr.js-2.4.0.tgz}
@@ -913,6 +1006,15 @@ packages:
   is-fullwidth-code-point@3.0.0:
     resolution: {integrity: sha1-8Rb4Bk/pCz94RKOJl8C3UFEmnx0=, tarball: https://registry.npmmirror.com/is-fullwidth-code-point/download/is-fullwidth-code-point-3.0.0.tgz}
     engines: {node: '>=8'}
+
+  is-fullwidth-code-point@5.1.0:
+    resolution: {integrity: sha1-BGsqbU9rFWsiM9MgfUtal4OZm5g=, tarball: http://r.npm.sankuai.com/is-fullwidth-code-point/download/is-fullwidth-code-point-5.1.0.tgz}
+    engines: {node: '>=18'}
+
+  is-in-ci@2.0.0:
+    resolution: {integrity: sha1-5LNHHFVbR1CagxGGnDd8I0lnB58=, tarball: http://r.npm.sankuai.com/is-in-ci/download/is-in-ci-2.0.0.tgz}
+    engines: {node: '>=20'}
+    hasBin: true
 
   isexe@2.0.0:
     resolution: {integrity: sha1-6PvzdNxVb/iUehDcsFctYz8s+hA=, tarball: http://r.npm.sankuai.com/isexe/download/isexe-2.0.0.tgz}
@@ -991,6 +1093,10 @@ packages:
     resolution: {integrity: sha1-OBqHG2KnNEUGYK497uRIE/cNlZo=, tarball: https://registry.npmmirror.com/mime-types/download/mime-types-2.1.35.tgz}
     engines: {node: '>= 0.6'}
 
+  mimic-fn@2.1.0:
+    resolution: {integrity: sha1-ftLCzMyvhNP/y3pptXcR/CCDQBs=, tarball: http://r.npm.sankuai.com/mimic-fn/download/mimic-fn-2.1.0.tgz}
+    engines: {node: '>=6'}
+
   mimic-response@3.1.0:
     resolution: {integrity: sha1-LR1Zr5wbEpgVrMwsRqAipc4fo8k=, tarball: https://registry.npmmirror.com/mimic-response/download/mimic-response-3.1.0.tgz}
     engines: {node: '>=10'}
@@ -1060,6 +1166,10 @@ packages:
   once@1.4.0:
     resolution: {integrity: sha1-WDsap3WWHUsROsF9nFC6753Xa9E=, tarball: https://registry.npmmirror.com/once/download/once-1.4.0.tgz}
 
+  onetime@5.1.2:
+    resolution: {integrity: sha1-0Oluu1awdHbfHdnEgG5SN5hcpF4=, tarball: http://r.npm.sankuai.com/onetime/download/onetime-5.1.2.tgz}
+    engines: {node: '>=6'}
+
   openapi-fetch@0.14.1:
     resolution: {integrity: sha1-auPopvY5j0V+Iv7EGXx/pALmugY=, tarball: http://r.npm.sankuai.com/openapi-fetch/download/openapi-fetch-0.14.1.tgz}
 
@@ -1068,6 +1178,10 @@ packages:
 
   package-json-from-dist@1.0.1:
     resolution: {integrity: sha1-TxRxoBCCeob5TP2bByfjbSZ95QU=, tarball: http://r.npm.sankuai.com/package-json-from-dist/download/package-json-from-dist-1.0.1.tgz}
+
+  patch-console@2.0.0:
+    resolution: {integrity: sha1-kCP0ZlhA5m9A6c53T5BKYxZ0M7s=, tarball: http://r.npm.sankuai.com/patch-console/download/patch-console-2.0.0.tgz}
+    engines: {node: ^12.20.0 || ^14.13.1 || >=16.0.0}
 
   path-key@3.1.1:
     resolution: {integrity: sha1-WB9q3mWMu6ZaDTOA3ndTKVBU83U=, tarball: http://r.npm.sankuai.com/path-key/download/path-key-3.1.1.tgz}
@@ -1138,6 +1252,16 @@ packages:
     resolution: {integrity: sha1-zZJL9SAKB1uDwYjNa54hG3/A0+0=, tarball: https://registry.npmmirror.com/rc/download/rc-1.2.8.tgz}
     hasBin: true
 
+  react-reconciler@0.33.0:
+    resolution: {integrity: sha1-ndICCNRbqlsLRwF4H4WCNmV/FeE=, tarball: http://r.npm.sankuai.com/react-reconciler/download/react-reconciler-0.33.0.tgz}
+    engines: {node: '>=0.10.0'}
+    peerDependencies:
+      react: ^19.2.0
+
+  react@19.2.7:
+    resolution: {integrity: sha1-H0ehv8BvjsiFdSxvSvFDaan4Jgs=, tarball: http://r.npm.sankuai.com/react/download/react-19.2.7.tgz}
+    engines: {node: '>=0.10.0'}
+
   readable-stream@3.6.2:
     resolution: {integrity: sha1-VqmzbqllwAxak+8x6xEaDxEFaWc=, tarball: https://registry.npmmirror.com/readable-stream/download/readable-stream-3.6.2.tgz}
     engines: {node: '>= 6'}
@@ -1156,6 +1280,10 @@ packages:
 
   resolve-pkg-maps@1.0.0:
     resolution: {integrity: sha1-YWs9wsVwVrVYjDHN9LPWTbEzcg8=, tarball: https://registry.npmmirror.com/resolve-pkg-maps/download/resolve-pkg-maps-1.0.0.tgz}
+
+  restore-cursor@4.0.0:
+    resolution: {integrity: sha1-UZVgpDGJdQlt725gnUQQDtqkzLk=, tarball: http://r.npm.sankuai.com/restore-cursor/download/restore-cursor-4.0.0.tgz}
+    engines: {node: ^12.20.0 || ^14.13.1 || >=16.0.0}
 
   ret@0.5.0:
     resolution: {integrity: sha1-MKTTin5wS9ltxf/L584qknTEHJU=, tarball: https://registry.npmmirror.com/ret/download/ret-0.5.0.tgz}
@@ -1184,6 +1312,9 @@ packages:
     resolution: {integrity: sha1-TKL444XygxxDKnGbEIo7969Cod0=, tarball: https://registry.npmmirror.com/safe-stable-stringify/download/safe-stable-stringify-2.5.0.tgz}
     engines: {node: '>=10'}
 
+  scheduler@0.27.0:
+    resolution: {integrity: sha1-DE74LWfR5cHjWej8dtOofwRf5b0=, tarball: http://r.npm.sankuai.com/scheduler/download/scheduler-0.27.0.tgz}
+
   secure-json-parse@4.1.0:
     resolution: {integrity: sha1-Txq0HGehNJfqG5Exu0GDoihlR3w=, tarball: https://registry.npmmirror.com/secure-json-parse/download/secure-json-parse-4.1.0.tgz}
 
@@ -1206,6 +1337,9 @@ packages:
   siginfo@2.0.0:
     resolution: {integrity: sha1-MudscLeXJOO7Vny51UPrhYzPrzA=, tarball: https://registry.npmmirror.com/siginfo/download/siginfo-2.0.0.tgz}
 
+  signal-exit@3.0.7:
+    resolution: {integrity: sha1-qaF2f4r4QVURTqq9c/mSc8j1mtk=, tarball: http://r.npm.sankuai.com/signal-exit/download/signal-exit-3.0.7.tgz}
+
   signal-exit@4.1.0:
     resolution: {integrity: sha1-lSGIwcvVRgcOLdIND0HArgUwywQ=, tarball: http://r.npm.sankuai.com/signal-exit/download/signal-exit-4.1.0.tgz}
     engines: {node: '>=14'}
@@ -1215,6 +1349,10 @@ packages:
 
   simple-get@4.0.1:
     resolution: {integrity: sha1-SjnbVJKHyXnTUhEvoD/Zn9a8NUM=, tarball: https://registry.npmmirror.com/simple-get/download/simple-get-4.0.1.tgz}
+
+  slice-ansi@9.0.0:
+    resolution: {integrity: sha1-jtOP3DHxa2B6Vs+GwxYNJoTxths=, tarball: http://r.npm.sankuai.com/slice-ansi/download/slice-ansi-9.0.0.tgz}
+    engines: {node: '>=22'}
 
   sonic-boom@4.2.1:
     resolution: {integrity: sha1-KFmCUN9ImcCsVy1+LwRgaQumoDA=, tarball: https://registry.npmmirror.com/sonic-boom/download/sonic-boom-4.2.1.tgz}
@@ -1226,6 +1364,10 @@ packages:
   split2@4.2.0:
     resolution: {integrity: sha1-ycWSCQTRSLqwufZxRfJFqGqtv6Q=, tarball: https://registry.npmmirror.com/split2/download/split2-4.2.0.tgz}
     engines: {node: '>= 10.x'}
+
+  stack-utils@2.0.6:
+    resolution: {integrity: sha1-qvB0gWnAL8M8gjKrzPkz9Uocw08=, tarball: http://r.npm.sankuai.com/stack-utils/download/stack-utils-2.0.6.tgz}
+    engines: {node: '>=10'}
 
   stackback@0.0.2:
     resolution: {integrity: sha1-Gsig2Ug4SNFpXkGLbQMaPDzmjjs=, tarball: https://registry.npmmirror.com/stackback/download/stackback-0.0.2.tgz}
@@ -1240,6 +1382,10 @@ packages:
   string-width@5.1.2:
     resolution: {integrity: sha512-HnLOCR3vjcY8beoNLtcjZ5/nxn2afmME6lhrDrebokqMap+XbeW8n9TXpPDOqdGK5qcI3oT0GKTW6wC7EMiVqA==}
     engines: {node: '>=12'}
+
+  string-width@8.2.1:
+    resolution: {integrity: sha1-FlCJz6UnzIj7wj3XMxP14zSvHqE=, tarball: http://r.npm.sankuai.com/string-width/download/string-width-8.2.1.tgz}
+    engines: {node: '>=20'}
 
   string_decoder@1.3.0:
     resolution: {integrity: sha1-QvEUWUpGzxqOMLCoT1bHjD7awh4=, tarball: https://registry.npmmirror.com/string_decoder/download/string_decoder-1.3.0.tgz}
@@ -1263,6 +1409,10 @@ packages:
     resolution: {integrity: sha512-qpCAvRl9stuOHveKsn7HncJRvv501qIacKzQlO/+Lwxc9+0q2wLyv4Dfvt80/DPn2pqOBsJdDiogXGR9+OvwRw==}
     engines: {node: '>=8'}
 
+  tagged-tag@1.0.0:
+    resolution: {integrity: sha1-oLWRfChky6VIQUlav6P2sT7c9NY=, tarball: http://r.npm.sankuai.com/tagged-tag/download/tagged-tag-1.0.0.tgz}
+    engines: {node: '>=20'}
+
   tar-fs@2.1.4:
     resolution: {integrity: sha1-gAgk2/TvBt7Zr+pKyv5xxnx2uTA=, tarball: https://registry.npmmirror.com/tar-fs/download/tar-fs-2.1.4.tgz}
 
@@ -1272,6 +1422,10 @@ packages:
 
   tar@7.5.16:
     resolution: {integrity: sha1-8R4GOv7UVU91gEnQgpCeN9a1PO0=, tarball: http://r.npm.sankuai.com/tar/download/tar-7.5.16.tgz}
+    engines: {node: '>=18'}
+
+  terminal-size@4.0.1:
+    resolution: {integrity: sha1-T+jLdIKq4lPwQrzQxnth8t3peQE=, tarball: http://r.npm.sankuai.com/terminal-size/download/terminal-size-4.0.1.tgz}
     engines: {node: '>=18'}
 
   test-exclude@7.0.2:
@@ -1318,6 +1472,10 @@ packages:
 
   tunnel-agent@0.6.0:
     resolution: {integrity: sha1-J6XeoGs2sEoKmWZ3SykIaPD8QP0=, tarball: https://registry.npmmirror.com/tunnel-agent/download/tunnel-agent-0.6.0.tgz}
+
+  type-fest@5.7.0:
+    resolution: {integrity: sha1-uuWG07fCWWvZx+YhlfM8f8raHJE=, tarball: http://r.npm.sankuai.com/type-fest/download/type-fest-5.7.0.tgz}
+    engines: {node: '>=20'}
 
   typed-query-selector@2.12.2:
     resolution: {integrity: sha1-ZeJGKsawrs+uG/rBpPMCcHDbq6o=, tarball: https://registry.npmmirror.com/typed-query-selector/download/typed-query-selector-2.12.2.tgz}
@@ -1442,6 +1600,14 @@ packages:
     engines: {node: '>=8'}
     hasBin: true
 
+  widest-line@6.0.0:
+    resolution: {integrity: sha1-aoY4r4NwWVAdYcXTvfcsuTT2x5I=, tarball: http://r.npm.sankuai.com/widest-line/download/widest-line-6.0.0.tgz}
+    engines: {node: '>=20'}
+
+  wrap-ansi@10.0.0:
+    resolution: {integrity: sha1-uD3cwU28VZbxsH4VO/b4Y8Gsu1c=, tarball: http://r.npm.sankuai.com/wrap-ansi/download/wrap-ansi-10.0.0.tgz}
+    engines: {node: '>=20'}
+
   wrap-ansi@7.0.0:
     resolution: {integrity: sha1-Z+FFz/UQpqaYS98RUpEdadLrnkM=, tarball: https://registry.npmmirror.com/wrap-ansi/download/wrap-ansi-7.0.0.tgz}
     engines: {node: '>=10'}
@@ -1481,10 +1647,18 @@ packages:
     resolution: {integrity: sha1-mR3zmspnWhkrgW4eA2P5110qomk=, tarball: https://registry.npmmirror.com/yargs/download/yargs-17.7.2.tgz}
     engines: {node: '>=12'}
 
+  yoga-layout@3.2.1:
+    resolution: {integrity: sha1-0tG6BvDoHC62UMPlrYsLSt3h6EM=, tarball: http://r.npm.sankuai.com/yoga-layout/download/yoga-layout-3.2.1.tgz}
+
   zod@3.25.76:
     resolution: {integrity: sha1-JoQcP2/SKmonYOfMtxkXl2hHHjQ=, tarball: https://registry.npmmirror.com/zod/download/zod-3.25.76.tgz}
 
 snapshots:
+
+  '@alcalzone/ansi-tokenize@0.3.0':
+    dependencies:
+      ansi-styles: 6.2.3
+      is-fullwidth-code-point: 5.1.0
 
   '@ampproject/remapping@2.3.0':
     dependencies:
@@ -1757,6 +1931,10 @@ snapshots:
 
   '@types/deep-eql@4.0.2': {}
 
+  '@types/diff@8.0.0':
+    dependencies:
+      diff: 9.0.0
+
   '@types/estree@1.0.8': {}
 
   '@types/js-yaml@4.0.9': {}
@@ -1773,6 +1951,10 @@ snapshots:
   '@types/node@22.19.17':
     dependencies:
       undici-types: 6.21.0
+
+  '@types/react@19.2.17':
+    dependencies:
+      csstype: 3.2.3
 
   '@types/ws@8.18.1':
     dependencies:
@@ -1860,6 +2042,10 @@ snapshots:
       json-schema-traverse: 1.0.0
       require-from-string: 2.0.2
 
+  ansi-escapes@7.3.0:
+    dependencies:
+      environment: 1.1.0
+
   ansi-regex@5.0.1: {}
 
   ansi-regex@6.2.2: {}
@@ -1883,6 +2069,8 @@ snapshots:
   asynckit@0.4.0: {}
 
   atomic-sleep@1.0.0: {}
+
+  auto-bind@5.0.1: {}
 
   avvio@9.2.0:
     dependencies:
@@ -1952,11 +2140,26 @@ snapshots:
       mitt: 3.0.1
       zod: 3.25.76
 
+  cli-boxes@4.0.1: {}
+
+  cli-cursor@4.0.0:
+    dependencies:
+      restore-cursor: 4.0.0
+
+  cli-truncate@6.0.0:
+    dependencies:
+      slice-ansi: 9.0.0
+      string-width: 8.2.1
+
   cliui@8.0.1:
     dependencies:
       string-width: 4.2.3
       strip-ansi: 6.0.1
       wrap-ansi: 7.0.0
+
+  code-excerpt@4.0.0:
+    dependencies:
+      convert-to-spaces: 2.0.1
 
   color-convert@2.0.1:
     dependencies:
@@ -1972,6 +2175,8 @@ snapshots:
 
   compare-versions@6.1.1: {}
 
+  convert-to-spaces@2.0.1: {}
+
   cookie@1.1.1: {}
 
   cross-spawn@7.0.6:
@@ -1979,6 +2184,8 @@ snapshots:
       path-key: 3.1.1
       shebang-command: 2.0.0
       which: 2.0.2
+
+  csstype@3.2.3: {}
 
   debug@4.4.3:
     dependencies:
@@ -1999,6 +2206,8 @@ snapshots:
   detect-libc@2.1.2: {}
 
   devtools-protocol@0.0.1624250: {}
+
+  diff@9.0.0: {}
 
   dockerfile-ast@0.7.1:
     dependencies:
@@ -2035,6 +2244,8 @@ snapshots:
     dependencies:
       once: 1.4.0
 
+  environment@1.1.0: {}
+
   es-define-property@1.0.1: {}
 
   es-errors@1.3.0: {}
@@ -2051,6 +2262,8 @@ snapshots:
       get-intrinsic: 1.3.0
       has-tostringtag: 1.0.2
       hasown: 2.0.3
+
+  es-toolkit@1.47.1: {}
 
   esbuild@0.27.7:
     optionalDependencies:
@@ -2082,6 +2295,8 @@ snapshots:
       '@esbuild/win32-x64': 0.27.7
 
   escalade@3.2.0: {}
+
+  escape-string-regexp@2.0.0: {}
 
   estree-walker@3.0.3:
     dependencies:
@@ -2175,6 +2390,8 @@ snapshots:
 
   get-caller-file@2.0.5: {}
 
+  get-east-asian-width@1.6.0: {}
+
   get-intrinsic@1.3.0:
     dependencies:
       call-bind-apply-helpers: 1.0.2
@@ -2239,13 +2456,55 @@ snapshots:
 
   ieee754@1.2.1: {}
 
+  indent-string@5.0.0: {}
+
   inherits@2.0.4: {}
 
   ini@1.3.8: {}
 
+  ink@7.0.6(@types/react@19.2.17)(react@19.2.7):
+    dependencies:
+      '@alcalzone/ansi-tokenize': 0.3.0
+      ansi-escapes: 7.3.0
+      ansi-styles: 6.2.3
+      auto-bind: 5.0.1
+      chalk: 5.6.2
+      cli-boxes: 4.0.1
+      cli-cursor: 4.0.0
+      cli-truncate: 6.0.0
+      code-excerpt: 4.0.0
+      es-toolkit: 1.47.1
+      indent-string: 5.0.0
+      is-in-ci: 2.0.0
+      patch-console: 2.0.0
+      react: 19.2.7
+      react-reconciler: 0.33.0(react@19.2.7)
+      scheduler: 0.27.0
+      signal-exit: 3.0.7
+      slice-ansi: 9.0.0
+      stack-utils: 2.0.6
+      string-width: 8.2.1
+      terminal-size: 4.0.1
+      type-fest: 5.7.0
+      widest-line: 6.0.0
+      wrap-ansi: 10.0.0
+      ws: 8.21.0
+      yoga-layout: 3.2.1
+    optionalDependencies:
+      '@types/react': 19.2.17
+    transitivePeerDependencies:
+      - bufferutil
+      - utf-8-validate
+
   ipaddr.js@2.4.0: {}
 
   is-fullwidth-code-point@3.0.0: {}
+
+  is-fullwidth-code-point@5.1.0:
+    dependencies:
+      get-east-asian-width: 1.6.0
+
+  is-in-ci@2.0.0: {}
 
   isexe@2.0.0: {}
 
@@ -2328,6 +2587,8 @@ snapshots:
     dependencies:
       mime-db: 1.52.0
 
+  mimic-fn@2.1.0: {}
+
   mimic-response@3.1.0: {}
 
   minimatch@10.2.5:
@@ -2374,6 +2635,10 @@ snapshots:
     dependencies:
       wrappy: 1.0.2
 
+  onetime@5.1.2:
+    dependencies:
+      mimic-fn: 2.1.0
+
   openapi-fetch@0.14.1:
     dependencies:
       openapi-typescript-helpers: 0.0.15
@@ -2381,6 +2646,8 @@ snapshots:
   openapi-typescript-helpers@0.0.15: {}
 
   package-json-from-dist@1.0.1: {}
+
+  patch-console@2.0.0: {}
 
   path-key@3.1.1: {}
 
@@ -2476,6 +2743,13 @@ snapshots:
       minimist: 1.2.8
       strip-json-comments: 2.0.1
 
+  react-reconciler@0.33.0(react@19.2.7):
+    dependencies:
+      react: 19.2.7
+      scheduler: 0.27.0
+
+  react@19.2.7: {}
+
   readable-stream@3.6.2:
     dependencies:
       inherits: 2.0.4
@@ -2489,6 +2763,11 @@ snapshots:
   require-from-string@2.0.2: {}
 
   resolve-pkg-maps@1.0.0: {}
+
+  restore-cursor@4.0.0:
+    dependencies:
+      onetime: 5.1.2
+      signal-exit: 3.0.7
 
   ret@0.5.0: {}
 
@@ -2535,6 +2814,8 @@ snapshots:
 
   safe-stable-stringify@2.5.0: {}
 
+  scheduler@0.27.0: {}
+
   secure-json-parse@4.1.0: {}
 
   semver@7.7.4: {}
@@ -2549,6 +2830,8 @@ snapshots:
 
   siginfo@2.0.0: {}
 
+  signal-exit@3.0.7: {}
+
   signal-exit@4.1.0: {}
 
   simple-concat@1.0.1: {}
@@ -2559,6 +2842,11 @@ snapshots:
       once: 1.4.0
       simple-concat: 1.0.1
 
+  slice-ansi@9.0.0:
+    dependencies:
+      ansi-styles: 6.2.3
+      is-fullwidth-code-point: 5.1.0
+
   sonic-boom@4.2.1:
     dependencies:
       atomic-sleep: 1.0.0
@@ -2566,6 +2854,10 @@ snapshots:
   source-map-js@1.2.1: {}
 
   split2@4.2.0: {}
+
+  stack-utils@2.0.6:
+    dependencies:
+      escape-string-regexp: 2.0.0
 
   stackback@0.0.2: {}
 
@@ -2581,6 +2873,11 @@ snapshots:
     dependencies:
       eastasianwidth: 0.2.0
       emoji-regex: 9.2.2
+      strip-ansi: 7.2.0
+
+  string-width@8.2.1:
+    dependencies:
+      get-east-asian-width: 1.6.0
       strip-ansi: 7.2.0
 
   string_decoder@1.3.0:
@@ -2605,6 +2902,8 @@ snapshots:
     dependencies:
       has-flag: 4.0.0
 
+  tagged-tag@1.0.0: {}
+
   tar-fs@2.1.4:
     dependencies:
       chownr: 1.1.4
@@ -2627,6 +2926,8 @@ snapshots:
       minipass: 7.1.3
       minizlib: 3.1.0
       yallist: 5.0.0
+
+  terminal-size@4.0.1: {}
 
   test-exclude@7.0.2:
     dependencies:
@@ -2667,6 +2968,10 @@ snapshots:
   tunnel-agent@0.6.0:
     dependencies:
       safe-buffer: 5.2.1
+
+  type-fest@5.7.0:
+    dependencies:
+      tagged-tag: 1.0.0
 
   typed-query-selector@2.12.2: {}
 
@@ -2779,6 +3084,16 @@ snapshots:
       siginfo: 2.0.0
       stackback: 0.0.2
 
+  widest-line@6.0.0:
+    dependencies:
+      string-width: 8.2.1
+
+  wrap-ansi@10.0.0:
+    dependencies:
+      ansi-styles: 6.2.3
+      string-width: 8.2.1
+      strip-ansi: 7.2.0
+
   wrap-ansi@7.0.0:
     dependencies:
       ansi-styles: 4.3.0
@@ -2810,5 +3125,7 @@ snapshots:
       string-width: 4.2.3
       y18n: 5.0.8
       yargs-parser: 21.1.1
+
+  yoga-layout@3.2.1: {}
 
   zod@3.25.76: {}

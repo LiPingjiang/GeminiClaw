@@ -547,7 +547,7 @@ export class QQBotChannel implements IChannel {
             const ep = String(a.endpoint ?? a.path ?? "").slice(0, 30);
             return ep ? `调用 API ${ep}` : "调用 API";
           }
-          case "cloud_query": return `查询数据库`;
+          case "db_query": return `查询数据库`;
           case "browser": return "操作浏览器";
           case "send_image": return "发送图片";
           case "view_image": return "查看图片";
@@ -604,10 +604,11 @@ export class QQBotChannel implements IChannel {
         },
       })) {
         // 发布到 TraceHub（fire-and-forget，不阻塞主流程）
-        traceHub.publish({
+        traceHub.publishLegacy({
           ts: Date.now(),
           userId: _traceUserId,
           sessionId,
+          requestId: '',
           agentEvent: event as unknown as Record<string, unknown>,
         });
 
@@ -676,18 +677,24 @@ export class QQBotChannel implements IChannel {
         finalReply += `\n\n[fallback:${fallbackRoute}]`;
       }
 
-      // ── 持久化策略：只存 user + 最终 assistant 回复 ──────────────────
-      // 不再存储中间 tool-call 轮次（assistant+tool 交替消息），原因：
-      // 1. getRecentHistory 只取 role+content，丢失 tool_calls/tool_call_id 结构
-      //    → LLM 看到的是无结构的 assistant/tool 交替文本，无法理解
-      // 2. 一次 tool-call 循环可能产生 10+ 条中间消息，recentMessageLimit=20
-      //    只能覆盖不到 2 轮对话，LLM 缺乏足够的对话上下文
-      // 3. 中间 assistant 消息的重复内容会被 LLM 当作"正确模式"复制
+      // ── 持久化策略：存 user + 完整 tool 调用链 + 最终 assistant 回复 ──
+      // 保存中间 tool-call 轮次，让 LLM 下次能看到正确的工具调用模式：
+      //   assistant(tool_calls) → tool(result) → assistant(final reply)
+      // 这防止 LLM 学会"直接编造工具结果"的错误模式。
       const userMsg = { role: "user" as const, content };
-      const messagesToPersist: Array<Record<string, unknown>> = [
-        userMsg,
-        { role: "assistant" as const, content: finalReply },
-      ];
+      const messagesToPersist: Array<Record<string, unknown>> = [userMsg];
+
+      // turnMessages 包含完整的 tool 调用链（带 tool_calls 和 tool_call_id）
+      if (turnMessages.length > 0) {
+        messagesToPersist.push(...turnMessages);
+      }
+      // 确保最终 assistant 回复在最后（如果 turnMessages 最后一条不是最终回复）
+      const lastTurn = turnMessages[turnMessages.length - 1];
+      const lastTurnContent = lastTurn && typeof lastTurn === "object" ? (lastTurn as Record<string, unknown>).content : null;
+      if (!lastTurn || lastTurnContent !== finalReply) {
+        messagesToPersist.push({ role: "assistant" as const, content: finalReply });
+      }
+
       await memory.appendMessages(
         sessionId,
         messagesToPersist as Parameters<typeof memory.appendMessages>[1],

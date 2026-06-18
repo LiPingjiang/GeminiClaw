@@ -7,7 +7,7 @@
 
 import http from "http"
 import https from "https"
-import type { TuiEvent } from "./renderer.js"
+import type { TuiEvent } from "./types.js"
 
 // ── AgentEvent 类型（与 src/agent/types.ts 对应） ─────────────────────────────
 
@@ -30,6 +30,8 @@ interface AgentEvent {
   // agent_end
   totalTurns?: number
   stopReason?: string
+  model?: string
+  usage?: { inputTokens: number; outputTokens: number; cacheReadInputTokens?: number; cacheCreationInputTokens?: number }
   // paused
   pauseId?: string
   payload?: unknown
@@ -82,16 +84,10 @@ function translateAgentEvent(raw: AgentEvent): TuiEvent | null {
       return { kind: "turn_start", turn: raw.turn ?? 0 }
 
     case "message_delta":
-      // delta 在 turn_end 时统一输出，这里先忽略
-      return null
+      return { kind: "delta", content: raw.delta ?? "" }
 
     case "turn_end":
-      // 有工具调用时不输出 response（工具调用后还有下一轮）
-      // 无工具调用时输出 response
-      if (raw.message?.content && (raw.toolCallCount ?? 0) === 0) {
-        return { kind: "response", content: raw.message.content }
-      }
-      return null
+      return { kind: "turn_end", toolCallCount: raw.toolCallCount ?? 0 }
 
     case "tool_start":
       return {
@@ -114,6 +110,8 @@ function translateAgentEvent(raw: AgentEvent): TuiEvent | null {
         kind: "agent_end",
         totalTurns: raw.totalTurns ?? 0,
         stopReason: raw.stopReason ?? "unknown",
+        model: raw.model,
+        usage: raw.usage,
       }
 
     case "guardrail_warn":
@@ -130,6 +128,20 @@ function translateAgentEvent(raw: AgentEvent): TuiEvent | null {
         message: (raw as { message?: string }).message ?? "",
       }
 
+    case "thinking_delta":
+      return { kind: "thinking_delta", delta: raw.delta ?? "" }
+
+    case "thinking_end":
+      return { kind: "thinking_end", content: (raw as { content?: string }).content ?? "", durationMs: raw.durationMs ?? 0 }
+
+    case "diff":
+      return {
+        kind: "diff",
+        filename: (raw as { filename?: string }).filename ?? "",
+        before: (raw as { before?: string }).before ?? "",
+        after: (raw as { after?: string }).after ?? "",
+      }
+
     default:
       return null
   }
@@ -143,6 +155,8 @@ export interface StreamOptions {
   sessionId?: string
   model?: string
   authToken?: string
+  attachments?: Array<{ base64: string; mediaType: string }>
+  ephemeral?: boolean
   onEvent: (event: TuiEvent) => void
   onSessionId: (sessionId: string) => void
   onDone: () => void
@@ -150,11 +164,21 @@ export interface StreamOptions {
 }
 
 export function streamChat(opts: StreamOptions): () => void {
-  const { baseUrl, message, sessionId, model, authToken, onEvent, onSessionId, onDone, onError } = opts
+  const { baseUrl, message, sessionId, model, authToken, attachments, ephemeral, onEvent, onSessionId, onDone, onError } = opts
   const url = new URL("/v1/agent/stream", baseUrl)
   const transport = url.protocol === "https:" ? https : http
 
-  const body = JSON.stringify({ message, sessionId, model })
+  const body = JSON.stringify({
+    message,
+    sessionId,
+    model,
+    ...(ephemeral ? { ephemeral: true } : {}),
+    ...(attachments?.length ? { attachments: attachments.map(a => ({
+      type: 'image',
+      mediaType: a.mediaType,
+      data: a.base64,
+    })) } : {}),
+  })
 
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -164,8 +188,23 @@ export function streamChat(opts: StreamOptions): () => void {
   }
   if (authToken) headers["Authorization"] = `Bearer ${authToken}`
 
-  // 累积 delta，在 turn_end 时输出完整 response
-  let deltaBuffer = ""
+  // Track state to prevent duplicate done/error callbacks and status overwrites
+  let errorOccurred = false
+  let doneCalled = false
+
+  const handleDone = (): void => {
+    // Do not fire onDone if an error already occurred (prevents status overwrite),
+    // and deduplicate: only call onDone once (handles both [DONE] data and stream end).
+    if (errorOccurred || doneCalled) return
+    doneCalled = true
+    onDone()
+  }
+
+  const handleError = (err: Error): void => {
+    if (doneCalled) return
+    errorOccurred = true
+    onError(err)
+  }
 
   const req = transport.request(
     {
@@ -181,7 +220,7 @@ export function streamChat(opts: StreamOptions): () => void {
         res.setEncoding("utf-8")
         res.on("data", (c: string) => { errBody += c })
         res.on("end", () => {
-          onError(new Error(`HTTP ${res.statusCode}: ${errBody}`))
+          handleError(new Error(`HTTP ${res.statusCode}: ${errBody}`))
         })
         return
       }
@@ -190,7 +229,7 @@ export function streamChat(opts: StreamOptions): () => void {
         res,
         (eventType, data) => {
           if (data === "[DONE]") {
-            onDone()
+            handleDone()
             return
           }
 
@@ -205,9 +244,9 @@ export function streamChat(opts: StreamOptions): () => void {
           if (eventType === "error") {
             try {
               const parsed = JSON.parse(data) as { error?: string }
-              onError(new Error(parsed.error ?? "unknown stream error"))
+              handleError(new Error(parsed.error ?? "unknown stream error"))
             } catch {
-              onError(new Error(data))
+              handleError(new Error(data))
             }
             return
           }
@@ -216,47 +255,20 @@ export function streamChat(opts: StreamOptions): () => void {
 
           try {
             const raw = JSON.parse(data) as AgentEvent
-
-            // 特殊处理：累积 delta
-            if (raw.type === "message_delta" && raw.delta) {
-              deltaBuffer += raw.delta
-              return
-            }
-
-            // turn_end：如果有累积的 delta，作为 response 输出
-            if (raw.type === "turn_end") {
-              if (deltaBuffer && (raw.toolCallCount ?? 0) === 0) {
-                onEvent({ kind: "response", content: deltaBuffer })
-              }
-              deltaBuffer = ""
-              return
-            }
-
-            // agent_end：清空剩余 delta
-            if (raw.type === "agent_end") {
-              if (deltaBuffer) {
-                onEvent({ kind: "response", content: deltaBuffer })
-                deltaBuffer = ""
-              }
-            }
-
             const tuiEvent = translateAgentEvent(raw)
             if (tuiEvent) onEvent(tuiEvent)
           } catch { /* ignore parse errors */ }
         },
         () => {
-          if (deltaBuffer) {
-            onEvent({ kind: "response", content: deltaBuffer })
-            deltaBuffer = ""
-          }
-          onDone()
+          // Stream ended — fire onDone only if no error occurred and not already done
+          handleDone()
         },
-        onError,
+        handleError,
       )
     },
   )
 
-  req.on("error", onError)
+  req.on("error", handleError)
   req.write(body)
   req.end()
 
