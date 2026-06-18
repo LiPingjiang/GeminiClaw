@@ -191,6 +191,89 @@ describe('SET_MAX_SCROLL_OFFSET', () => {
   })
 })
 
+describe('SET_SUGGESTIONS', () => {
+  const mockCmd = { name: 'clear', prefix: '/clear', description: 'Clear', handler: () => {} }
+
+  it('sets suggestions and selected', () => {
+    const s = tuiReducer(base, { type: 'SET_SUGGESTIONS', items: [mockCmd], selected: 0 })
+    expect(s.suggestions).toHaveLength(1)
+    expect(s.selectedSuggestion).toBe(0)
+  })
+})
+
+describe('SUGGESTION_MOVE', () => {
+  const mockCmd = { name: 'clear', prefix: '/clear', description: 'Clear', handler: () => {} }
+
+  it('increments selectedSuggestion', () => {
+    const s1 = tuiReducer(base, { type: 'SET_SUGGESTIONS', items: [mockCmd, mockCmd], selected: 0 })
+    const s2 = tuiReducer(s1, { type: 'SUGGESTION_MOVE', delta: 1 })
+    expect(s2.selectedSuggestion).toBe(1)
+  })
+
+  it('clamps at max index', () => {
+    const s1 = tuiReducer(base, { type: 'SET_SUGGESTIONS', items: [mockCmd], selected: 0 })
+    const s2 = tuiReducer(s1, { type: 'SUGGESTION_MOVE', delta: 5 })
+    expect(s2.selectedSuggestion).toBe(0)
+  })
+
+  it('clamps at -1', () => {
+    const s1 = tuiReducer(base, { type: 'SET_SUGGESTIONS', items: [mockCmd], selected: 0 })
+    const s2 = tuiReducer(s1, { type: 'SUGGESTION_MOVE', delta: -5 })
+    expect(s2.selectedSuggestion).toBe(-1)
+  })
+})
+
+describe('SHOW_COST', () => {
+  it('appends token summary to events', () => {
+    const s = tuiReducer(base, { type: 'SHOW_COST' })
+    expect(s.events.at(-1)?.kind).toBe('system')
+    expect((s.events.at(-1) as any).message).toContain('Tokens')
+  })
+})
+
+describe('BG_START / BG_DELTA / BG_DONE', () => {
+  it('BG_START sets bgRunning', () => {
+    const s = tuiReducer(base, { type: 'BG_START' })
+    expect(s.bgRunning).toBe(true)
+  })
+
+  it('BG_DELTA accumulates content', () => {
+    const s1 = tuiReducer(base, { type: 'BG_START' })
+    const s2 = tuiReducer(s1, { type: 'BG_DELTA', content: 'hello ' })
+    const s3 = tuiReducer(s2, { type: 'BG_DELTA', content: 'world' })
+    expect(s3.bgContent).toBe('hello world')
+  })
+
+  it('BG_DONE appends response with [bg] prefix', () => {
+    const s1 = tuiReducer(base, { type: 'BG_START' })
+    const s2 = tuiReducer(s1, { type: 'BG_DELTA', content: 'answer' })
+    const s3 = tuiReducer(s2, { type: 'BG_DONE' })
+    expect(s3.bgRunning).toBe(false)
+    expect(s3.bgContent).toBe('')
+    expect((s3.events.at(-1) as any).content).toContain('[bg]')
+  })
+})
+
+describe('SET_NEW_SESSION', () => {
+  it('clears events except system message', () => {
+    const s1 = tuiReducer(base, { type: 'SEND_MESSAGE', message: 'hi' })
+    const s2 = tuiReducer(s1, { type: 'SET_NEW_SESSION' })
+    expect(s2.events).toHaveLength(1)
+    expect(s2.events[0]?.kind).toBe('system')
+    expect(s2.currentSessionId).toBeUndefined()
+  })
+})
+
+describe('LOAD_HISTORY', () => {
+  it('prepends history events before existing events', () => {
+    const s1 = tuiReducer(base, { type: 'SSE_EVENT', event: { kind: 'system', message: 'current' } })
+    const history = [{ kind: 'user_message' as const, content: 'old msg' }]
+    const s2 = tuiReducer(s1, { type: 'LOAD_HISTORY', events: history })
+    expect(s2.events[0]).toEqual(history[0])
+    expect(s2.events.at(-1)?.kind).toBe('system')
+  })
+})
+
 describe('SCROLL_UP with maxScrollOffset', () => {
   it('clamps at maxScrollOffset', () => {
     const s1 = tuiReducer(base, { type: 'SET_MAX_SCROLL_OFFSET', value: 10 })

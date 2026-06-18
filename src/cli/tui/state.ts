@@ -1,4 +1,5 @@
 import type { TuiEvent, HeaderState, TokenUsage } from './types.js'
+import type { TuiCommand } from './commands/registry.js'
 
 export interface InputAttachment {
   base64: string
@@ -34,6 +35,12 @@ export interface TuiState {
   // Scroll
   scrollOffset: number
   maxScrollOffset: number
+  // Suggestions
+  suggestions: TuiCommand[]
+  selectedSuggestion: number
+  // Background task
+  bgRunning: boolean
+  bgContent: string
 }
 
 export type TuiAction =
@@ -60,6 +67,16 @@ export type TuiAction =
   | { type: 'SCROLL_DOWN'; lines: number }
   | { type: 'SCROLL_TO_BOTTOM' }
   | { type: 'SET_MAX_SCROLL_OFFSET'; value: number }
+  | { type: 'SET_SUGGESTIONS'; items: TuiCommand[]; selected: number }
+  | { type: 'SUGGESTION_MOVE'; delta: number }
+  | { type: 'SUGGESTION_CLEAR' }
+  | { type: 'SHOW_COST' }
+  | { type: 'COPY_LAST' }
+  | { type: 'BG_START' }
+  | { type: 'BG_DELTA'; content: string }
+  | { type: 'BG_DONE' }
+  | { type: 'SET_NEW_SESSION' }
+  | { type: 'LOAD_HISTORY'; events: TuiEvent[] }
 
 export interface InitialTuiStateOpts {
   sessionId?: string
@@ -90,6 +107,10 @@ export function initialTuiState(opts: InitialTuiStateOpts): TuiState {
     inputAttachments: [],
     scrollOffset: 0,
     maxScrollOffset: 0,
+    suggestions: [],
+    selectedSuggestion: -1,
+    bgRunning: false,
+    bgContent: '',
   }
 }
 
@@ -266,6 +287,60 @@ export function tuiReducer(state: TuiState, action: TuiAction): TuiState {
 
     case 'SET_MAX_SCROLL_OFFSET':
       return { ...state, maxScrollOffset: action.value }
+
+    case 'SET_SUGGESTIONS':
+      return { ...state, suggestions: action.items, selectedSuggestion: action.selected }
+
+    case 'SUGGESTION_MOVE': {
+      const total = state.suggestions.length
+      if (total === 0) return state
+      const next = state.selectedSuggestion + action.delta
+      return { ...state, selectedSuggestion: Math.max(-1, Math.min(next, total - 1)) }
+    }
+
+    case 'SUGGESTION_CLEAR':
+      return { ...state, suggestions: [], selectedSuggestion: -1 }
+
+    case 'SHOW_COST': {
+      const { totalInput, totalOutput, totalCacheRead } = state.sessionStats
+      const msg = `Tokens — in: ${totalInput.toLocaleString()} out: ${totalOutput.toLocaleString()} cache: ${totalCacheRead.toLocaleString()}`
+      return { ...state, events: [...state.events, { kind: 'system', message: msg }] }
+    }
+
+    case 'COPY_LAST': {
+      const last = [...state.events].reverse().find(e => e.kind === 'response')
+      if (!last || last.kind !== 'response') return state
+      // Side effect handled outside reducer; just append system message here
+      return { ...state, events: [...state.events, { kind: 'system', message: 'Copied to clipboard.' }] }
+    }
+
+    case 'BG_START':
+      return { ...state, bgRunning: true, bgContent: '' }
+
+    case 'BG_DELTA':
+      return { ...state, bgContent: state.bgContent + action.content }
+
+    case 'BG_DONE': {
+      const bgMsg = state.bgContent ? `[bg] ${state.bgContent}` : ''
+      return {
+        ...state,
+        bgRunning: false,
+        bgContent: '',
+        events: bgMsg ? [...state.events, { kind: 'response' as const, content: bgMsg }] : state.events,
+      }
+    }
+
+    case 'SET_NEW_SESSION':
+      return {
+        ...state,
+        streamingContent: '',
+        currentSessionId: undefined,
+        scrollOffset: 0,
+        events: [{ kind: 'system' as const, message: 'New session started.' }],
+      }
+
+    case 'LOAD_HISTORY':
+      return { ...state, events: [...action.events, ...state.events] }
 
     default:
       return state

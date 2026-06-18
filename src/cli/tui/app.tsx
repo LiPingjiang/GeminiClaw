@@ -10,8 +10,10 @@ import { streamChat } from './sse-client.js'
 import { Header } from './components/header.js'
 import { MessageList } from './components/message-list.js'
 import { Editor } from './components/editor.js'
+import { SuggestionOverlay } from './components/suggestion-overlay.js'
 import { tuiReducer, initialTuiState } from './state.js'
 import type { TuiEvent } from './types.js'
+import { filterCommands, COMMANDS } from './commands/registry.js'
 import { getFileIndex } from '../../tools/file-index/index.js'
 import { getOrStartLspClient, detectLanguageServer } from '../../tools/lsp/index.js'
 
@@ -168,19 +170,11 @@ function App({ srv, opts }: { srv: ServerConfig; opts: TuiOptions }) {
     }
   }, [])
 
-  // ── Send message ─────────────────────────────────────────────────
-  const sendMessage = useCallback((message: string) => {
-    if (message === '/quit' || message === '/exit' || message === '/q') { exit(); return }
-    if (message === '/clear') { dispatch({ type: 'CLEAR' }); return }
-    if (message.startsWith('/session ')) {
-      const sid = message.slice(9).trim()
-      dispatch({ type: 'SESSION_ID', id: sid }); return
-    }
-    if (message === '/help') {
-      dispatch({ type: 'SSE_EVENT', event: { kind: 'system', message: 'Commands: /quit /clear /session <id> /help' } }); return
-    }
+  // ── Send to server (raw, no command interception) ─────────────────
+  const sendToServer = useCallback((message: string) => {
     if (state.isRunning) {
-      dispatch({ type: 'SSE_EVENT', event: { kind: 'system', message: 'Agent is running — press Ctrl+C to interrupt' } }); return
+      dispatch({ type: 'SSE_EVENT', event: { kind: 'system', message: 'Agent is running — press Ctrl+C to interrupt' } })
+      return
     }
 
     dispatch({ type: 'SEND_MESSAGE', message })
@@ -246,10 +240,51 @@ function App({ srv, opts }: { srv: ServerConfig; opts: TuiOptions }) {
         dispatch({ type: 'STREAM_ERROR', message: err.message })
       },
     })
-  }, [state.isRunning, state.currentSessionId, srv, opts.model, exit])
+  }, [state.isRunning, state.currentSessionId, srv, opts.model])
+
+  // ── Send message (command interception layer) ─────────────────────
+  const sendMessage = useCallback((message: string) => {
+    // Legacy slash-exit kept for backward compat (also in COMMANDS, but fast-path here)
+    if (message === '/quit' || message === '/exit' || message === '/q') { exit(); return }
+
+    // Check registry commands
+    const matchedCmd = COMMANDS.find(c =>
+      message === c.prefix ||
+      message.startsWith(c.prefix + ' ')
+    )
+    if (matchedCmd) {
+      const args = message.startsWith(matchedCmd.prefix + ' ')
+        ? message.slice(matchedCmd.prefix.length + 1)
+        : ''
+      dispatch({ type: 'SUGGESTION_CLEAR' })
+      matchedCmd.handler(args, {
+        dispatch,
+        sendMessage: (msg) => sendToServer(msg),
+        exit,
+        baseUrl: srv.baseUrl,
+        authToken: srv.authToken,
+      })
+      return
+    }
+
+    sendToServer(message)
+  }, [sendToServer, exit, srv, dispatch])
+
+  // ── Suggestion effect: update suggestions when input changes ───────
+  const { suggestions, selectedSuggestion } = state
+  useEffect(() => {
+    if (state.input.startsWith('/')) {
+      const query = state.input.slice(1)
+      const items = filterCommands(query)
+      dispatch({ type: 'SET_SUGGESTIONS', items, selected: items.length > 0 ? 0 : -1 })
+    } else if (suggestions.length > 0) {
+      dispatch({ type: 'SUGGESTION_CLEAR' })
+    }
+  }, [state.input])
 
   const { termSize, headerState, events, streamingContent, input, inputCursor, isRunning,
-          thinkingContent, thinkingStartMs, thinkingDone, scrollOffset, inputAttachments } = state
+          thinkingContent, thinkingStartMs, thinkingDone, scrollOffset, inputAttachments,
+          bgRunning } = state
 
   return (
     <Box flexDirection="column" height={termSize.rows}>
@@ -275,12 +310,17 @@ function App({ srv, opts }: { srv: ServerConfig; opts: TuiOptions }) {
           dispatch={dispatch}
         />
       </Box>
+      <SuggestionOverlay
+        suggestions={suggestions}
+        selectedSuggestion={selectedSuggestion}
+        columns={termSize.columns}
+      />
       <Box flexShrink={0}>
       <Editor
         value={input}
         cursor={inputCursor}
         columns={termSize.columns}
-        focus={!isRunning}
+        focus={!isRunning && !bgRunning}
         dispatch={dispatch}
         onSubmit={sendMessage}
         onCancel={() => {
@@ -294,6 +334,22 @@ function App({ srv, opts }: { srv: ServerConfig; opts: TuiOptions }) {
         onScrollToBottom={() => dispatch({ type: 'SCROLL_TO_BOTTOM' })}
         isRunning={isRunning}
         currentTool={headerState.currentTool}
+        suggestions={suggestions}
+        selectedSuggestion={selectedSuggestion}
+        onHistoryUp={() => {
+          if (suggestions.length > 0) {
+            dispatch({ type: 'SUGGESTION_MOVE', delta: -1 })
+          } else {
+            dispatch({ type: 'INPUT_HISTORY_UP' })
+          }
+        }}
+        onHistoryDown={() => {
+          if (suggestions.length > 0) {
+            dispatch({ type: 'SUGGESTION_MOVE', delta: 1 })
+          } else {
+            dispatch({ type: 'INPUT_HISTORY_DOWN' })
+          }
+        }}
       />
       </Box>
     </Box>
