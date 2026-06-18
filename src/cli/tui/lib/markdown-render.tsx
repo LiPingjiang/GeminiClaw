@@ -5,7 +5,6 @@ import { marked, type Token, type Tokens } from 'marked'
 // ANSI escape helpers (no external dep)
 const BOLD    = '\x1b[1m'
 const ITALIC  = '\x1b[3m'
-const DIM     = '\x1b[2m'
 const YELLOW  = '\x1b[33m'
 const CYAN    = '\x1b[36m'
 const RESET   = '\x1b[0m'
@@ -85,10 +84,16 @@ function renderToken(token: Token, columns: number, key: number): React.ReactNod
 
     case 'blockquote': {
       const t = token as Tokens.Blockquote
+      const innerText = t.tokens
+        ? t.tokens.map(inner => 'tokens' in inner && Array.isArray((inner as any).tokens)
+            ? formatInline((inner as any).tokens)
+            : ('text' in inner ? (inner as any).text : '')
+          ).join('\n')
+        : t.text
       return (
         <Box key={key} marginTop={key === 0 ? 0 : 1} paddingLeft={2}>
           <Text color="gray" dimColor>│ </Text>
-          <Text dimColor wrap="wrap">{t.text}</Text>
+          <Text dimColor wrap="wrap">{innerText}</Text>
         </Box>
       )
     }
@@ -96,7 +101,7 @@ function renderToken(token: Token, columns: number, key: number): React.ReactNod
     case 'hr':
       return (
         <Box key={key} marginTop={1}>
-          <Text dimColor>{'─'.repeat(Math.min(columns - 2, 60))}</Text>
+          <Text dimColor>{'─'.repeat(Math.max(0, Math.min(columns - 2, 60)))}</Text>
         </Box>
       )
 
