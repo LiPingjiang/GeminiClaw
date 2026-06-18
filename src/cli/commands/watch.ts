@@ -68,7 +68,7 @@ function renderEvent(event: TraceEvent): string {
   switch (type) {
     case 'user_message': {
       const content = String(ae['content'] ?? '').slice(0, 120)
-      return `${t} ${sess}  ${C.bold}USER  ${C.reset}${C.bold}❯ ${content}${C.reset}`
+      return `${t} ${sess}  ${C.white}${C.bold}USER  ${C.reset}${C.white}${C.bold}❯ ${content}${C.reset}`
     }
     case 'llm_request': {
       const model = String(ae['model'] ?? '?')
