@@ -104,6 +104,7 @@ export async function buildServer(
         description: string;
         input_schema: Record<string, unknown>;
       }>;
+      thinking?: { type: 'enabled'; budget_tokens: number };
     },
   ) => {
     const providerMessages = messages.map((m) => {
@@ -149,7 +150,7 @@ export async function buildServer(
 
     const response = await router.chat(
       providerMessages as import("../providers/types.js").Message[],
-      options ? { model: options.model, tools: providerTools } : undefined,
+      options ? { model: options.model, tools: providerTools, ...(options.thinking ? { thinking: options.thinking } : {}) } : undefined,
     );
 
     // Track fallback route for downstream consumers (QQBot channel etc.)
@@ -174,7 +175,7 @@ export async function buildServer(
         }))
       : undefined;
 
-    return { content: response.content ?? "", tool_calls: agentToolCalls };
+    return { content: response.content ?? "", tool_calls: agentToolCalls, model: response.model, usage: response.usage };
   };
 
   const agentLoop = new AgentLoop({

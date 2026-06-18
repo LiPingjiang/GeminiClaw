@@ -30,7 +30,8 @@ export function MessageList({
 
   const endIdx = allItems.length
   const startIdx = Math.max(0, endIdx - visibleRows - scrollOffset)
-  const endSlice = scrollOffset > 0 ? endIdx - scrollOffset : undefined
+  const rawEnd = endIdx - scrollOffset
+  const endSlice = scrollOffset > 0 ? Math.max(0, rawEnd) : undefined
   const visibleItems = allItems.slice(startIdx, endSlice)
 
   const isThinking = thinkingContent.length > 0 && !thinkingDone

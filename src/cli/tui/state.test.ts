@@ -172,9 +172,9 @@ describe('scroll actions', () => {
     expect(s2.scrollOffset).toBe(0)
   })
 
-  it('STREAM_DELTA resets scroll to bottom', () => {
+  it('STREAM_DELTA does not reset scroll offset', () => {
     const s1 = tuiReducer(base, { type: 'SCROLL_UP', lines: 5 })
     const s2 = tuiReducer(s1, { type: 'STREAM_DELTA', content: 'hello' })
-    expect(s2.scrollOffset).toBe(0)
+    expect(s2.scrollOffset).toBe(5)  // preserved
   })
 })

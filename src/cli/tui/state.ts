@@ -128,7 +128,7 @@ export function tuiReducer(state: TuiState, action: TuiAction): TuiState {
       }
 
     case 'STREAM_DELTA':
-      return { ...state, streamingContent: state.streamingContent + action.content, scrollOffset: 0 }
+      return { ...state, streamingContent: state.streamingContent + action.content }
 
     case 'STREAM_DONE': {
       const newEvents = state.streamingContent

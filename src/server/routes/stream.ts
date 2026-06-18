@@ -65,14 +65,18 @@ export async function streamRoute(
       return reply.status(500).send({ error: `Memory error: ${String(err)}` })
     }
 
+    const ALLOWED_MEDIA_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp'])
+
     // Build user message content (multimodal if attachments present)
     const userContent: unknown = attachments?.length
       ? [
           { type: 'text', text: message },
-          ...attachments.map(a => ({
-            type: 'image',
-            source: { type: 'base64', media_type: a.mediaType, data: a.data },
-          })),
+          ...attachments
+            .filter(a => ALLOWED_MEDIA_TYPES.has(a.mediaType))
+            .map(a => ({
+              type: 'image',
+              source: { type: 'base64', media_type: a.mediaType, data: a.data },
+            })),
         ]
       : message
 

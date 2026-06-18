@@ -28,7 +28,5 @@ import './delegate_to.js';
 import './check_subagent_tasks.js';
 import './execute_script.js';
 import './sandbox_exec.js';
-import './file_search.js';
-import './lsp_tools.js';
 import './show_diff.js';
 export { registry } from './registry.js';

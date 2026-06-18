@@ -15,6 +15,7 @@ export async function traceRoute(
     async (request, reply) => {
       const { session, tail } = request.query
 
+      reply.hijack()
       reply.raw.writeHead(200, {
         'Content-Type': 'text/event-stream',
         'Cache-Control': 'no-cache',
