@@ -26,6 +26,15 @@ describe('renderWithCursor', () => {
     expect(result).toContain('\x1b[7m')
     expect(result).toContain(s)
   })
+
+  it('cursor on newline shows inverted space then newline', () => {
+    const result = renderWithCursor('a\nb', 1)
+    // cursor on '\n' shows inverted space, then the newline still appears
+    expect(result).toContain('\x1b[7m \x1b[27m')
+    expect(result).toContain('\n')
+    expect(result).toContain('a')
+    expect(result).toContain('b')
+  })
 })
 
 describe('computeCursorPosition', () => {
