@@ -547,7 +547,7 @@ export class QQBotChannel implements IChannel {
             const ep = String(a.endpoint ?? a.path ?? "").slice(0, 30);
             return ep ? `调用 API ${ep}` : "调用 API";
           }
-          case "cloud_query": return `查询数据库`;
+          case "db_query": return `查询数据库`;
           case "browser": return "操作浏览器";
           case "send_image": return "发送图片";
           case "view_image": return "查看图片";
@@ -604,10 +604,11 @@ export class QQBotChannel implements IChannel {
         },
       })) {
         // 发布到 TraceHub（fire-and-forget，不阻塞主流程）
-        traceHub.publish({
+        traceHub.publishLegacy({
           ts: Date.now(),
           userId: _traceUserId,
           sessionId,
+          requestId: '',
           agentEvent: event as unknown as Record<string, unknown>,
         });
 

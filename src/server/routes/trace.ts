@@ -1,58 +1,62 @@
-/**
- * /v1/trace/live — SSE 端点
- *
- * gc watch 连接此端点，实时接收 QQBot 对话的每个 AgentEvent。
- * 无需认证（本地调试用途），但只监听，不写入。
- *
- * 事件格式（SSE）：
- *   data: {"ts":1234567890,"userId":"abc12345...","sessionId":"xxx","agentEvent":{...}}\n\n
- *
- * 心跳：每 15s 发一次 `: ping\n\n`，防止连接超时。
- */
-
-import type { FastifyInstance, FastifyPluginOptions } from "fastify"
-import { traceHub } from "../../trace/hub.js"
-import type { TraceEvent } from "../../trace/hub.js"
+// src/server/routes/trace.ts
+import type { FastifyInstance, FastifyPluginOptions } from 'fastify'
+import { traceHub } from '../../trace/hub.js'
+import type { TraceEvent } from '../../trace/hub.js'
+import { readFileSync, existsSync } from 'fs'
+import { join } from 'path'
+import { homedir } from 'os'
 
 export async function traceRoute(
   fastify: FastifyInstance,
   _opts: FastifyPluginOptions,
 ): Promise<void> {
-  fastify.get("/v1/trace/live", async (request, reply) => {
-    // SSE headers
-    reply.raw.writeHead(200, {
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache",
-      Connection: "keep-alive",
-      "X-Accel-Buffering": "no",
-    })
+  fastify.get<{ Querystring: { session?: string; tail?: string } }>(
+    '/v1/trace/live',
+    async (request, reply) => {
+      const { session, tail } = request.query
 
-    // 发送初始连接确认
-    reply.raw.write(": connected\n\n")
+      reply.raw.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        Connection: 'keep-alive',
+        'X-Accel-Buffering': 'no',
+      })
+      reply.raw.write(': connected\n\n')
 
-    // 心跳定时器（15s）
-    const heartbeat = setInterval(() => {
-      if (!reply.raw.destroyed) {
-        reply.raw.write(": ping\n\n")
+      // Replay tail events from today's trace file if requested
+      if (tail) {
+        const n = parseInt(tail, 10) || 50
+        const date = new Date().toISOString().slice(0, 10)
+        const path = join(homedir(), '.gemeniclaw', 'audit', `trace-${date}.jsonl`)
+        if (existsSync(path)) {
+          const lines = readFileSync(path, 'utf-8').trim().split('\n').filter(Boolean)
+          const recent = lines.slice(-n)
+          for (const line of recent) {
+            try {
+              const event = JSON.parse(line) as TraceEvent
+              if (session && !event.sessionId.startsWith(session)) continue
+              reply.raw.write(`data: ${line}\n\n`)
+            } catch { /* skip malformed lines */ }
+          }
+        }
       }
-    }, 15_000)
 
-    // 订阅 TraceHub
-    const unsubscribe = traceHub.subscribe((event: TraceEvent) => {
-      if (reply.raw.destroyed) return
-      const data = JSON.stringify(event)
-      reply.raw.write(`data: ${data}\n\n`)
-    })
+      const heartbeat = setInterval(() => {
+        if (!reply.raw.destroyed) reply.raw.write(': ping\n\n')
+      }, 15_000)
 
-    // 客户端断开时清理
-    request.raw.on("close", () => {
-      clearInterval(heartbeat)
-      unsubscribe()
-    })
+      const unsubscribe = traceHub.subscribe((event: TraceEvent) => {
+        if (reply.raw.destroyed) return
+        if (session && !event.sessionId.startsWith(session)) return
+        reply.raw.write(`data: ${JSON.stringify(event)}\n\n`)
+      })
 
-    // 保持连接（不 resolve）
-    await new Promise<void>((resolve) => {
-      request.raw.on("close", resolve)
-    })
-  })
+      request.raw.on('close', () => {
+        clearInterval(heartbeat)
+        unsubscribe()
+      })
+
+      await new Promise<void>((resolve) => request.raw.on('close', resolve))
+    },
+  )
 }

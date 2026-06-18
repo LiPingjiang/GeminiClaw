@@ -1,53 +1,71 @@
-/**
- * TraceHub — 全局单例事件总线
- *
- * QQBotChannel 在处理每条消息时，把 AgentLoop 产生的每个 AgentEvent
- * 连同上下文（userId、sessionId）一起 emit 到这里。
- *
- * /v1/trace/live SSE 端点订阅 TraceHub，把事件实时推给 gc watch。
- */
-
-import { EventEmitter } from "events"
-
-// ── 事件类型 ──────────────────────────────────────────────────────────────────
+// src/trace/hub.ts
+import { EventEmitter } from 'events'
+import { appendFileSync, mkdirSync, existsSync } from 'fs'
+import { join } from 'path'
+import { homedir } from 'os'
+import type { AgentEvent } from '../agent/types.js'
 
 export interface TraceEvent {
-  /** 事件时间戳（ms） */
   ts: number
-  /** QQ 用户 openid（脱敏：只保留前8位 + "..."） */
-  userId: string
-  /** session id */
   sessionId: string
-  /** 原始 AgentEvent（序列化为普通对象） */
+  requestId: string
+  userId?: string        // optional — QQBot sets this
   agentEvent: Record<string, unknown>
 }
 
-// ── 单例 ──────────────────────────────────────────────────────────────────────
+function getTracePath(): string {
+  const dir = join(homedir(), '.gemeniclaw', 'audit')
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
+  const date = new Date().toISOString().slice(0, 10)
+  return join(dir, `trace-${date}.jsonl`)
+}
 
 class TraceHub extends EventEmitter {
   private static _instance: TraceHub | null = null
 
   private constructor() {
     super()
-    this.setMaxListeners(100) // 支持多个 gc watch 同时连接
+    this.setMaxListeners(100)
   }
 
   static get instance(): TraceHub {
-    if (!TraceHub._instance) {
-      TraceHub._instance = new TraceHub()
-    }
+    if (!TraceHub._instance) TraceHub._instance = new TraceHub()
     return TraceHub._instance
   }
 
-  /** 发布一个 trace 事件 */
-  publish(event: TraceEvent): void {
-    this.emit("trace", event)
+  private _persist(traceEvent: TraceEvent): void {
+    try {
+      appendFileSync(getTracePath(), JSON.stringify(traceEvent) + '\n')
+    } catch { /* ignore write errors */ }
   }
 
-  /** 订阅 trace 事件，返回取消函数 */
+  /**
+   * Publish a trace event (convenience wrapper).
+   * Use this from loop.ts and other producers.
+   */
+  publish(sessionId: string, requestId: string, agentEvent: AgentEvent, userId?: string): void {
+    const traceEvent: TraceEvent = {
+      ts: Date.now(),
+      sessionId,
+      requestId,
+      ...(userId ? { userId } : {}),
+      agentEvent: agentEvent as unknown as Record<string, unknown>,
+    }
+    this._persist(traceEvent)
+    super.emit('trace', traceEvent)
+  }
+
+  /**
+   * @deprecated Use publish() instead. Kept for QQBot backward compat.
+   */
+  publishLegacy(event: TraceEvent): void {
+    this._persist(event)
+    super.emit('trace', event)
+  }
+
   subscribe(listener: (event: TraceEvent) => void): () => void {
-    this.on("trace", listener)
-    return () => this.off("trace", listener)
+    this.on('trace', listener)
+    return () => this.off('trace', listener)
   }
 }
 

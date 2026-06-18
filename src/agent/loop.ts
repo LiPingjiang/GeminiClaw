@@ -18,6 +18,8 @@ import { decideParallelization } from "./parallel-decision.js";
 import { truncateToolResult, enforceTurnBudget } from "./tool-result-truncation.js";
 import { EXECUTION_BIAS } from "./execution-bias.js";
 import { hookBus } from "../hooks/index.js";
+import { traceHub } from "../trace/hub.js";
+import { auditConversation } from "./audit.js";
 // ── Tools that are known to mutate state ────────────────────────────────────
 const MUTATING_TOOLS = new Set(["exec", "write", "edit", "file_write", "execute_script"]);
 
@@ -173,6 +175,12 @@ export class AgentLoop {
     let lastModel: string | undefined;
     let lastUsage: { inputTokens: number; outputTokens: number; cacheReadInputTokens?: number; cacheCreationInputTokens?: number } | undefined;
     const maxTurns = this.config.maxTurns;
+    const requestId = randomUUID().slice(0, 8);
+    const loopStartMs = Date.now();
+    const firstUserMsg = params.messages.find((m) => m.role === 'user');
+    const firstUserMessage = typeof firstUserMsg?.content === 'string'
+      ? firstUserMsg.content
+      : JSON.stringify(firstUserMsg?.content ?? '');
 
     // ── Build system prompt with Execution Bias ──────────────────────────────
     const fullSystemPrompt = this.config.systemPrompt
@@ -245,6 +253,8 @@ export class AgentLoop {
     while (budget.remaining > 0 || budget.canGrace) {
       if (params.signal?.aborted) {
         yield { type: "agent_end", totalTurns: turn, stopReason: "aborted", model: lastModel, usage: lastUsage };
+        traceHub.publish(params.sessionId, requestId, { type: 'agent_end', totalTurns: turn, stopReason: 'aborted', model: lastModel, usage: lastUsage });
+        auditConversation({ sessionId: params.sessionId, requestId, userMessage: firstUserMessage.slice(0, 500), totalTurns: turn, stopReason: 'aborted', model: lastModel ?? '', inputTokens: lastUsage?.inputTokens ?? 0, outputTokens: lastUsage?.outputTokens ?? 0, cacheReadTokens: lastUsage?.cacheReadInputTokens ?? 0, durationMs: Date.now() - loopStartMs });
         return;
       }
 
@@ -253,6 +263,7 @@ export class AgentLoop {
         budget.useGrace();
         turn++;
         yield { type: "turn_start", turn };
+        traceHub.publish(params.sessionId, requestId, { type: 'turn_start', turn });
 
         const summaryPrompt =
           "你已达到本次执行的迭代上限。请简要总结你已完成的工作、当前状态和剩余待办，不要再调用任何工具。";
@@ -279,11 +290,14 @@ export class AgentLoop {
         }
 
         yield { type: "agent_end", totalTurns: turn, stopReason: "max_turns", model: lastModel, usage: lastUsage };
+        traceHub.publish(params.sessionId, requestId, { type: 'agent_end', totalTurns: turn, stopReason: 'max_turns', model: lastModel, usage: lastUsage });
+        auditConversation({ sessionId: params.sessionId, requestId, userMessage: firstUserMessage.slice(0, 500), totalTurns: turn, stopReason: 'max_turns', model: lastModel ?? '', inputTokens: lastUsage?.inputTokens ?? 0, outputTokens: lastUsage?.outputTokens ?? 0, cacheReadTokens: lastUsage?.cacheReadInputTokens ?? 0, durationMs: Date.now() - loopStartMs });
         return;
       }
 
       budget.consume();
       yield { type: "turn_start", turn };
+      traceHub.publish(params.sessionId, requestId, { type: 'turn_start', turn });
       turn++;
 
       const toolSchemas = this.toolRegistry.list().map((t) => ({
@@ -330,6 +344,8 @@ export class AgentLoop {
       } catch (err) {
         this.logger.error("chatFn threw", err);
         yield { type: "agent_end", totalTurns: turn, stopReason: "error", model: lastModel, usage: lastUsage };
+        traceHub.publish(params.sessionId, requestId, { type: 'agent_end', totalTurns: turn, stopReason: 'error', model: lastModel, usage: lastUsage });
+        auditConversation({ sessionId: params.sessionId, requestId, userMessage: firstUserMessage.slice(0, 500), totalTurns: turn, stopReason: 'error', model: lastModel ?? '', inputTokens: lastUsage?.inputTokens ?? 0, outputTokens: lastUsage?.outputTokens ?? 0, cacheReadTokens: lastUsage?.cacheReadInputTokens ?? 0, durationMs: Date.now() - loopStartMs });
         return;
       }
 
@@ -415,6 +431,8 @@ export class AgentLoop {
               this.logger.error("idle-loop detected: model promised action " + consecutiveIdleTurns + " times without tool calls, aborting");
               yield { type: "message_delta", delta: "（检测到空转：模型连续承诺但不执行，已终止。）" };
               yield { type: "agent_end", totalTurns: turn, stopReason: "aborted", model: lastModel, usage: lastUsage };
+              traceHub.publish(params.sessionId, requestId, { type: 'agent_end', totalTurns: turn, stopReason: 'aborted', model: lastModel, usage: lastUsage });
+              auditConversation({ sessionId: params.sessionId, requestId, userMessage: firstUserMessage.slice(0, 500), totalTurns: turn, stopReason: 'aborted', model: lastModel ?? '', inputTokens: lastUsage?.inputTokens ?? 0, outputTokens: lastUsage?.outputTokens ?? 0, cacheReadTokens: lastUsage?.cacheReadInputTokens ?? 0, durationMs: Date.now() - loopStartMs });
               return;
             }
             messages = [
@@ -435,6 +453,8 @@ export class AgentLoop {
           model: lastModel,
           usage: lastUsage,
         };
+        traceHub.publish(params.sessionId, requestId, { type: 'agent_end', totalTurns: turn, stopReason: 'no_tool_calls', model: lastModel, usage: lastUsage });
+        auditConversation({ sessionId: params.sessionId, requestId, userMessage: firstUserMessage.slice(0, 500), totalTurns: turn, stopReason: 'no_tool_calls', model: lastModel ?? '', inputTokens: lastUsage?.inputTokens ?? 0, outputTokens: lastUsage?.outputTokens ?? 0, cacheReadTokens: lastUsage?.cacheReadInputTokens ?? 0, durationMs: Date.now() - loopStartMs });
         return;
       }
 
@@ -545,6 +565,7 @@ export class AgentLoop {
       const { events, results } = await this.executeTools(
         toolCallsToRun,
         params.sessionId,
+        requestId,
         params.beforeToolCall,
         params.afterToolCall,
       );
@@ -597,6 +618,8 @@ export class AgentLoop {
             model: lastModel,
             usage: lastUsage,
           };
+          traceHub.publish(params.sessionId, requestId, { type: 'agent_end', totalTurns: turn, stopReason: 'aborted', model: lastModel, usage: lastUsage });
+          auditConversation({ sessionId: params.sessionId, requestId, userMessage: firstUserMessage.slice(0, 500), totalTurns: turn, stopReason: 'aborted', model: lastModel ?? '', inputTokens: lastUsage?.inputTokens ?? 0, outputTokens: lastUsage?.outputTokens ?? 0, cacheReadTokens: lastUsage?.cacheReadInputTokens ?? 0, durationMs: Date.now() - loopStartMs });
           return;
         }
         const anyToolCalled = results.length > 0;
@@ -623,6 +646,8 @@ export class AgentLoop {
               model: lastModel,
               usage: lastUsage,
             };
+            traceHub.publish(params.sessionId, requestId, { type: 'agent_end', totalTurns: turn, stopReason: 'aborted', model: lastModel, usage: lastUsage });
+            auditConversation({ sessionId: params.sessionId, requestId, userMessage: firstUserMessage.slice(0, 500), totalTurns: turn, stopReason: 'aborted', model: lastModel ?? '', inputTokens: lastUsage?.inputTokens ?? 0, outputTokens: lastUsage?.outputTokens ?? 0, cacheReadTokens: lastUsage?.cacheReadInputTokens ?? 0, durationMs: Date.now() - loopStartMs });
             return;
           }
         }
@@ -657,6 +682,8 @@ export class AgentLoop {
       delta: `（任务已执行 ${turn} 轮，达到上限。如需继续请回复「继续」。）`,
     };
     yield { type: "agent_end", totalTurns: turn, stopReason: "max_turns", model: lastModel, usage: lastUsage };
+    traceHub.publish(params.sessionId, requestId, { type: 'agent_end', totalTurns: turn, stopReason: 'max_turns', model: lastModel, usage: lastUsage });
+    auditConversation({ sessionId: params.sessionId, requestId, userMessage: firstUserMessage.slice(0, 500), totalTurns: turn, stopReason: 'max_turns', model: lastModel ?? '', inputTokens: lastUsage?.inputTokens ?? 0, outputTokens: lastUsage?.outputTokens ?? 0, cacheReadTokens: lastUsage?.cacheReadInputTokens ?? 0, durationMs: Date.now() - loopStartMs });
   }
 
   // ── Interrupt point implementation ────────────────────────────────────────
@@ -704,6 +731,7 @@ export class AgentLoop {
   private async executeSingleTool(
     tc: ToolCall,
     sessionId: string,
+    requestId: string,
     beforeToolCall?: (
       ctx: BeforeToolCallContext,
     ) => Promise<{ block?: boolean; reason?: string }>,
@@ -721,6 +749,7 @@ export class AgentLoop {
       toolName: tc.name,
       args: tc.args,
     });
+    traceHub.publish(sessionId, requestId, { type: 'tool_start', toolCallId: tc.id, toolName: tc.name, args: tc.args });
 
     if (
       this.config.uncertaintyCheck?.enabled &&
@@ -934,6 +963,7 @@ export class AgentLoop {
       isError,
       durationMs,
     });
+    traceHub.publish(sessionId, requestId, { type: 'tool_end', toolCallId: tc.id, toolName: tc.name, result: toolResult, isError, durationMs });
     return {
       events,
       result: { toolCallId: tc.id, content: toolResult.content, isError },
@@ -943,6 +973,7 @@ export class AgentLoop {
   private async executeTools(
     toolCalls: ToolCall[],
     sessionId: string,
+    requestId: string,
     beforeToolCall?: (
       ctx: BeforeToolCallContext,
     ) => Promise<{ block?: boolean; reason?: string }>,
@@ -963,7 +994,7 @@ export class AgentLoop {
     if (this.shouldParallelize(toolCalls)) {
       const outputs = await Promise.all(
         toolCalls.map((tc) =>
-          this.executeSingleTool(tc, sessionId, beforeToolCall, afterToolCall),
+          this.executeSingleTool(tc, sessionId, requestId, beforeToolCall, afterToolCall),
         ),
       );
       for (const out of outputs) {
@@ -975,6 +1006,7 @@ export class AgentLoop {
         const out = await this.executeSingleTool(
           tc,
           sessionId,
+          requestId,
           beforeToolCall,
           afterToolCall,
         );
