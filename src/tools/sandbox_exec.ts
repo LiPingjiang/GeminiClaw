@@ -157,7 +157,7 @@ async function sandboxExecHandler(params: any, _ctx: any) {
 
 registry.register({
   name: 'sandbox_exec',
-  description: '在远程 E2B Sandbox 中执行 Python 或 Bash 代码。代码在隔离沙箱中运行，有完整的网络访问和文件系统。适合：运行不受信任的代码、需要特定依赖的脚本、长时间计算任务。沙箱有 Python 3.11 + 常用库（numpy/pandas/requests 等）。',
+  description: '在远程 E2B Sandbox 中执行 Python 或 Bash 代码。代码在隔离沙箱中运行，有完整的网络访问和文件系统。适合：运行不受信任的代码、需要特定依赖的脚本、长时间计算任务。沙箱有 Python 3.12 + 常用库（duckdb/numpy/pandas/scipy/matplotlib/requests 等）。',
   schema: {
     type: 'object',
     properties: {
@@ -181,7 +181,7 @@ registry.register({
       },
       require_backtest_template: {
         type: 'boolean',
-        description: '是否要求使用回测模板（策略回测场景必须为 true，确保代码包含完整的回测框架）',
+        description: '是否要求使用回测模板（策略回测场景必须为 true）。回测模板预装 /data/kline_3yr.parquet（660万行3年K线，字段: code/market/date/open/high/low/close/volume/turnover）。必须用 duckdb 读取，pd.read_parquet 不可用。',
       },
     },
     required: ['code'],

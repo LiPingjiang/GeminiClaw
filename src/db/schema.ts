@@ -96,4 +96,49 @@ export function migrate(db: Db): void {
     CREATE INDEX IF NOT EXISTS idx_user_agents_openid
       ON user_agents(openid);
   `)
+
+  // ─── Migrations: add columns that may be missing in older databases ───
+
+  // Add tool_calls and tool_call_id columns to chat_messages (needed for tool-call persistence)
+  const columns = db.prepare(`PRAGMA table_info(chat_messages)`).all() as Array<{ name: string }>
+  const colNames = new Set(columns.map(c => c.name))
+
+  if (!colNames.has("tool_calls")) {
+    db.exec(`ALTER TABLE chat_messages ADD COLUMN tool_calls TEXT`)
+  }
+  if (!colNames.has("tool_call_id")) {
+    db.exec(`ALTER TABLE chat_messages ADD COLUMN tool_call_id TEXT`)
+  }
+
+  // SQLite cannot ALTER CHECK constraints, so we recreate the table if role constraint is too narrow.
+  // We detect this by trying to insert a 'tool' role — if it fails, we need to rebuild.
+  const needsRoleUpdate = (() => {
+    try {
+      db.exec(`INSERT INTO chat_messages (session_id, role, content) VALUES ('__migration_test__', 'tool', '')`)
+      db.exec(`DELETE FROM chat_messages WHERE session_id = '__migration_test__'`)
+      return false
+    } catch {
+      return true
+    }
+  })()
+
+  if (needsRoleUpdate) {
+    db.exec(`
+      -- Recreate chat_messages with updated CHECK constraint
+      CREATE TABLE chat_messages_new (
+        id           INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id   TEXT NOT NULL REFERENCES chat_sessions(id) ON DELETE CASCADE,
+        role         TEXT NOT NULL CHECK(role IN ('user', 'assistant', 'system', 'tool')),
+        content      TEXT NOT NULL,
+        tool_calls   TEXT,
+        tool_call_id TEXT,
+        created_at   TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      INSERT INTO chat_messages_new (id, session_id, role, content, tool_calls, tool_call_id, created_at)
+        SELECT id, session_id, role, content, tool_calls, tool_call_id, created_at FROM chat_messages;
+      DROP TABLE chat_messages;
+      ALTER TABLE chat_messages_new RENAME TO chat_messages;
+      CREATE INDEX IF NOT EXISTS idx_chat_messages_session ON chat_messages(session_id, id);
+    `)
+  }
 }

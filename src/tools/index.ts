@@ -25,6 +25,7 @@ import './memory_edit.js';
 import './agent_memory.js';
 import './delegate_tasks.js';
 import './delegate_to.js';
+import './check_subagent_tasks.js';
 import './execute_script.js';
 import './sandbox_exec.js';
 export { registry } from './registry.js';

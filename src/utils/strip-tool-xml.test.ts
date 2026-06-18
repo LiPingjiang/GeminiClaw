@@ -77,4 +77,43 @@ describe("detectRepetitionLoop", () => {
   it("returns null when text is too short for detection", () => {
     expect(detectRepetitionLoop("abc".repeat(10), 40, 3)).toBeNull()
   })
+
+  it("does NOT false-positive on Markdown tables", () => {
+    const input = `## 📊 真实进展汇总（2026-06-14）
+### ✅ 已完成：16批任务（80个角度）
+| 批次 | 内容 | 关键结果 |
+|-----|------|----------|
+| P1-P5 | 五层完整验证 | P1 HK Sharpe 2.82 |
+| P6-P8 | 策略优化 | 收益提升15% |
+| P9-P12 | 风控测试 | 最大回撤3.2% |
+| P13-P16 | 实盘模拟 | 胜率68% |
+
+### 📋 进行中
+| 任务 | 状态 | 预计完成 |
+|-----|------|----------|
+| P17 数据清洗 | 进行中 | 今日 |
+| P18 回测验证 | 排队中 | 明日 |
+| P19 信号优化 | 排队中 | 后日 |
+
+### 🔜 待启动
+| 任务 | 依赖 | 优先级 |
+|-----|------|--------|
+| P20 全市场扫描 | P17完成 | 高 |
+| P21 组合优化 | P18完成 | 中 |`
+    expect(detectRepetitionLoop(input)).toBeNull()
+  })
+
+  it("does NOT false-positive on multiple similar table rows", () => {
+    const rows = Array(10).fill("| 数据项 | 正常 | 2026-06-14 |").join("\n")
+    const input = `## 状态报告\n| 项目 | 状态 | 日期 |\n|-----|------|------|\n${rows}`
+    expect(detectRepetitionLoop(input)).toBeNull()
+  })
+
+  it("still detects genuine repetition loops", () => {
+    const block = "让我检查一下数据库状态。正在连接数据库并查询最新记录。"
+    const input = "好的，开始检查：\n" + Array(8).fill(block).join("\n")
+    const result = detectRepetitionLoop(input)
+    expect(result).not.toBeNull()
+    expect(result!.length).toBeLessThan(input.length)
+  })
 })

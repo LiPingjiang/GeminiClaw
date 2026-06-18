@@ -279,6 +279,27 @@ export class SubAgentRunner {
     }
 
     // 3. Sub-agent role framing + full task description
+    // Detect if the task description requires file output
+    const requiresFileOutput = this.detectFileOutputRequirement(task)
+
+    const executionRules = [
+      "- 专注完成上述任务，不要偏离范围",
+      "- 高效使用工具，避免不必要的调用",
+      "- 完成后清晰报告结果",
+    ]
+
+    if (requiresFileOutput) {
+      executionRules.push(
+        "",
+        "⚠️ **文件写入强制要求**：",
+        "- 你 MUST 使用 write 工具将核心结果写入文件（不能只在回复中报告结果）",
+        "- 如果任务描述中指定了输出路径，写入该路径；否则写入 `~/.gemeniclaw/outputs/<任务标题的slug>.md`",
+        "- 写入的文件必须包含完整的数据/结论，而不是摘要",
+        "- 仅在 write 工具调用成功后，才算任务完成",
+        "- 禁止声称「已保存」但实际未调用 write 工具",
+      )
+    }
+
     const taskSection = [
       "---",
       "",
@@ -297,9 +318,7 @@ export class SubAgentRunner {
       "",
       "### 执行要求",
       "",
-      "- 专注完成上述任务，不要偏离范围",
-      "- 高效使用工具，避免不必要的调用",
-      "- 完成后清晰报告结果",
+      ...executionRules,
     ].filter(Boolean).join("\n")
     parts.push(taskSection)
 
@@ -347,6 +366,41 @@ export class SubAgentRunner {
       "**Details**: Execution details and artifacts",
       "**Additional Context**: Useful findings for follow-up (optional)",
     ].join("\n")
+  }
+
+  /**
+   * Detect if the task description implies that results should be written to a file.
+   * Checks both explicit file-write keywords and output path patterns.
+   */
+  private detectFileOutputRequirement(task: SubTask): boolean {
+    const text = `${task.title} ${task.description}`.toLowerCase()
+
+    // Explicit file-write keywords (Chinese + English)
+    const fileWriteKeywords = [
+      "写入文件", "写到文件", "写文档", "写入文档", "保存到文件",
+      "保存结果", "输出到文件", "结果写入", "写到文档",
+      "write to file", "save to file", "output to file",
+      "write results", "save results",
+      "必须写文档", "必须把结果写",
+    ]
+
+    if (fileWriteKeywords.some((kw) => text.includes(kw))) {
+      return true
+    }
+
+    // Output path patterns (e.g., "输出：xxx.md", "保存至 xxx.md", "写入 ~/xxx")
+    const pathPatterns = [
+      /输出[到至：:]\s*[~\/\w].*\.(md|txt|json|csv)/,
+      /保存[到至]\s*[~\/\w].*\.(md|txt|json|csv)/,
+      /写入\s*[~\/\w].*\.(md|txt|json|csv)/,
+      /output[:\s]+[~\/\w].*\.(md|txt|json|csv)/i,
+    ]
+
+    if (pathPatterns.some((pat) => pat.test(text))) {
+      return true
+    }
+
+    return false
   }
 
   private emit(event: MultiAgentEvent): void {

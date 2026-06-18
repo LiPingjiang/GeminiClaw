@@ -23,7 +23,7 @@ import type { ExecutionStrategy, ContextMode } from "./types.js"
 // ── 配置 ──────────────────────────────────────────────────────────────────────
 
 /** 同一父 session 最大并行 run 数 */
-const MAX_CONCURRENT_RUNS_PER_PARENT = 3
+export const MAX_CONCURRENT_RUNS_PER_PARENT = 3
 
 /** 子任务默认超时（5 分钟） */
 const DEFAULT_TIMEOUT_MS = 5 * 60 * 1000
