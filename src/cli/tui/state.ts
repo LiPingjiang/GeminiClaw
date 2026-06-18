@@ -33,6 +33,7 @@ export type TuiAction =
   | { type: 'SESSION_ID'; id: string }
   | { type: 'RESIZE'; rows: number; columns: number }
   | { type: 'AGENT_END'; model?: string; usage?: TokenUsage }
+  | { type: 'TICK'; elapsedMs: number }
 
 export interface InitialTuiStateOpts {
   sessionId?: string
@@ -176,6 +177,12 @@ export function tuiReducer(state: TuiState, action: TuiAction): TuiState {
       }
       return { ...state, events: newEvents, headerState }
     }
+
+    case 'TICK':
+      return {
+        ...state,
+        headerState: { ...state.headerState, elapsedMs: action.elapsedMs, status: 'running' },
+      }
 
     default:
       return state

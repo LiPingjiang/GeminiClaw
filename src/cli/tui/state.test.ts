@@ -75,6 +75,12 @@ describe('tuiReducer', () => {
     expect(s.termSize).toEqual({ rows: 40, columns: 120 })
   })
 
+  it('TICK updates elapsedMs in headerState', () => {
+    const s = tuiReducer(base, { type: 'TICK', elapsedMs: 1500 })
+    expect(s.headerState.elapsedMs).toBe(1500)
+    expect(s.headerState.status).toBe('running')
+  })
+
   it('history is capped at 100 entries', () => {
     let s = base
     for (let i = 0; i < 105; i++) {

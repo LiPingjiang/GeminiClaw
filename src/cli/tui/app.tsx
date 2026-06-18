@@ -139,13 +139,7 @@ function App({ srv, opts }: { srv: ServerConfig; opts: TuiOptions }) {
     startMsRef.current = Date.now()
 
     elapsedTimerRef.current = setInterval(() => {
-      dispatch({
-        type: 'SSE_EVENT',
-        event: { kind: 'system', message: '' } // just a noop to trigger elapsedMs update
-      })
-      // We can't easily dispatch header elapsed update here without a dedicated action
-      // — use a dedicated TICK action in the reducer if needed. For now, the header
-      // computes elapsed from Date.now() - startMsRef in onDone/agent_end.
+      dispatch({ type: 'TICK', elapsedMs: Date.now() - startMsRef.current })
     }, 500)
 
     cancelRef.current = streamChat({
