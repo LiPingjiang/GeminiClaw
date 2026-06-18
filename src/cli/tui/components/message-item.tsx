@@ -1,27 +1,32 @@
 // src/cli/tui/components/message-item.tsx
-import React from 'react'
+import React, { useState } from 'react'
 import { Box, Text } from 'ink'
 import type { TuiEvent } from '../types.js'
 import { DiffView } from './diff-view.js'
+import { renderMarkdown } from '../lib/markdown-render.js'
+
+const TOOL_RESULT_PREVIEW_LEN = 200
+const COLUMNS_DEFAULT = 80
 
 interface MessageItemProps {
   event: TuiEvent
+  columns?: number
 }
 
-export function MessageItem({ event }: MessageItemProps) {
+export function MessageItem({ event, columns = COLUMNS_DEFAULT }: MessageItemProps) {
   switch (event.kind) {
     case 'user_message':
       return (
         <Box marginTop={1}>
-          <Text bold>{'❯ '}</Text>
-          <Text bold>{event.content}</Text>
+          <Text bold color="yellow">{'❯ '}</Text>
+          <Text bold wrap="wrap">{event.content}</Text>
         </Box>
       )
 
     case 'response':
       return (
-        <Box marginTop={1} paddingLeft={2}>
-          <Text>{event.content}</Text>
+        <Box marginTop={1} paddingLeft={2} flexDirection="column">
+          {renderMarkdown(event.content, columns - 2)}
         </Box>
       )
 
@@ -29,26 +34,16 @@ export function MessageItem({ event }: MessageItemProps) {
       return (
         <Box marginTop={1}>
           <Text color="magenta" dimColor>{'⬡ '}</Text>
-          <Text color="magenta" dimColor bold>{event.name}</Text>
-          <Text dimColor>{' ('}{JSON.stringify(event.args).slice(0, 80)}{')'}</Text>
+          <Text color="magenta" bold>{event.name}</Text>
+          <Text dimColor>{' '}{formatArgs(event.args)}</Text>
         </Box>
       )
 
     case 'tool_end':
-      return (
-        <Box paddingLeft={2}>
-          <Text color={event.isError ? 'red' : 'green'} dimColor>
-            {event.isError ? '✗' : '✓'}{' '}{event.name}{' '}{event.durationMs}ms
-          </Text>
-        </Box>
-      )
+      return <ToolEndItem event={event} />
 
     case 'thinking_end':
-      return (
-        <Box marginTop={1}>
-          <Text dimColor italic>{'∴ Thought for '}{Math.round(event.durationMs / 1000)}{'s'}</Text>
-        </Box>
-      )
+      return <ThinkingEndItem event={event} columns={columns} />
 
     case 'agent_end':
       return (
@@ -62,7 +57,7 @@ export function MessageItem({ event }: MessageItemProps) {
 
     case 'error':
       return (
-        <Box>
+        <Box marginTop={1}>
           <Text color="red">{'✗ '}{event.message}</Text>
         </Box>
       )
@@ -94,7 +89,7 @@ export function MessageItem({ event }: MessageItemProps) {
     case 'diff':
       return (
         <Box marginTop={1}>
-          <DiffView filename={event.filename} before={event.before} after={event.after} columns={80} />
+          <DiffView filename={event.filename} before={event.before} after={event.after} columns={columns} />
         </Box>
       )
 
@@ -108,7 +103,83 @@ export function MessageItem({ event }: MessageItemProps) {
   }
 }
 
+/** Collapsible tool_end: short results inline, long results folded. */
+function ToolEndItem({ event }: { event: Extract<TuiEvent, { kind: 'tool_end' }> }) {
+  const [expanded, setExpanded] = useState(false)
+  const isLong = event.result.length > TOOL_RESULT_PREVIEW_LEN
+
+  return (
+    <Box paddingLeft={2} flexDirection="column">
+      <Box>
+        <Text color={event.isError ? 'red' : 'green'} dimColor>
+          {event.isError ? '✗' : '✓'}{' '}{event.name}{' '}{event.durationMs}ms
+        </Text>
+        {isLong && (
+          <Text dimColor>
+            {' '}
+            <Text
+              color="cyan"
+              underline
+              // Ink 7 doesn't have onClick; use a visual hint instead
+            >
+              {expanded ? '▼ collapse' : '▶ expand'}
+            </Text>
+          </Text>
+        )}
+      </Box>
+      {event.result && (
+        <Box paddingLeft={2}>
+          <Text dimColor wrap="wrap">
+            {isLong && !expanded
+              ? event.result.slice(0, TOOL_RESULT_PREVIEW_LEN) + '…'
+              : event.result}
+          </Text>
+        </Box>
+      )}
+    </Box>
+  )
+}
+
+/** thinking_end: always show "∴ Thought for Xs", collapsed content below. */
+function ThinkingEndItem({
+  event,
+  columns,
+}: {
+  event: Extract<TuiEvent, { kind: 'thinking_end' }>
+  columns: number
+}) {
+  const [expanded, setExpanded] = useState(false)
+  const seconds = Math.max(1, Math.round(event.durationMs / 1000))
+
+  return (
+    <Box marginTop={1} flexDirection="column">
+      <Box>
+        <Text dimColor italic>{'∴ Thought for '}{seconds}{'s'}</Text>
+        {event.content && (
+          <Text dimColor>{' · '}</Text>
+        )}
+        {event.content && (
+          <Text dimColor italic>
+            {expanded ? '▼' : '▶ show'}
+          </Text>
+        )}
+      </Box>
+      {expanded && event.content && (
+        <Box paddingLeft={2} marginTop={1} flexDirection="column">
+          {renderMarkdown(event.content, columns - 2)}
+        </Box>
+      )}
+    </Box>
+  )
+}
+
+function formatArgs(args: unknown): string {
+  if (!args || typeof args !== 'object') return ''
+  const s = JSON.stringify(args)
+  return s.length > 120 ? s.slice(0, 120) + '…' : s
+}
+
 function fmtTokens(n: number): string {
-  if (n >= 1000) return `${(n / 1000).toFixed(1)}K`
+  if (n >= 1000) return `${(n / 1000).toFixed(1)}k`
   return String(n)
 }

@@ -48,7 +48,7 @@ export function MessageList({
     <Box height={visibleRows} overflowY="hidden">
       <Box flexDirection="column" marginTop={-scrollOffset}>
         {allItems.map((event, i) => (
-          <MessageItem key={i} event={event} />
+          <MessageItem key={i} event={event} columns={columns} />
         ))}
         {isThinking && (
           <ThinkingLine
