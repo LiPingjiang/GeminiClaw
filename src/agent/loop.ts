@@ -218,6 +218,7 @@ export class AgentLoop {
                     ? `❌ ${(toolRes as { error?: string }).error}`
                     : (toolRes as { content?: string }).content ?? "命令执行失败";
               yield { type: "message_delta", delta: resultText };
+              traceHub.publish(params.sessionId, requestId, { type: 'agent_end', totalTurns: 1, stopReason: 'no_tool_calls', model: lastModel, usage: lastUsage });
               yield {
                 type: "agent_end",
                 totalTurns: 1,
@@ -229,6 +230,7 @@ export class AgentLoop {
                 type: "message_delta",
                 delta: `❌ 命令执行失败: ${err}`,
               };
+              traceHub.publish(params.sessionId, requestId, { type: 'agent_end', totalTurns: 1, stopReason: 'aborted', model: lastModel, usage: lastUsage });
               yield {
                 type: "agent_end",
                 totalTurns: 1,
@@ -261,9 +263,9 @@ export class AgentLoop {
       // ── Grace call: budget exhausted, produce summary without tools ────────
       if (budget.exhausted && budget.canGrace) {
         budget.useGrace();
-        turn++;
         yield { type: "turn_start", turn };
         traceHub.publish(params.sessionId, requestId, { type: 'turn_start', turn });
+        turn++;
 
         const summaryPrompt =
           "你已达到本次执行的迭代上限。请简要总结你已完成的工作、当前状态和剩余待办，不要再调用任何工具。";
@@ -468,7 +470,9 @@ export class AgentLoop {
         for (const [tcId, reason] of blocked) {
           const tcName = toolCallsToRun.find(tc => tc.id === tcId)?.name ?? "unknown";
           yield { type: "tool_start", toolCallId: tcId, toolName: tcName, args: {} };
+          traceHub.publish(params.sessionId, requestId, { type: 'tool_start', toolCallId: tcId, toolName: tcName, args: {} });
           yield { type: "tool_end", toolCallId: tcId, toolName: tcName, result: { content: reason, isError: true }, isError: true, durationMs: 0 };
+          traceHub.publish(params.sessionId, requestId, { type: 'tool_end', toolCallId: tcId, toolName: tcName, result: { content: reason, isError: true }, isError: true, durationMs: 0 });
           messages = [...messages, { role: "tool" as const, tool_call_id: tcId, content: reason }];
         }
         toolCallsToRun = unique;
@@ -480,7 +484,9 @@ export class AgentLoop {
           if (decision.action === "block") {
             preBlocked.push(tc);
             yield { type: "tool_start", toolCallId: tc.id, toolName: tc.name, args: tc.args };
+            traceHub.publish(params.sessionId, requestId, { type: 'tool_start', toolCallId: tc.id, toolName: tc.name, args: tc.args });
             yield { type: "tool_end", toolCallId: tc.id, toolName: tc.name, result: { content: decision.message, isError: true }, isError: true, durationMs: 0 };
+            traceHub.publish(params.sessionId, requestId, { type: 'tool_end', toolCallId: tc.id, toolName: tc.name, result: { content: decision.message, isError: true }, isError: true, durationMs: 0 });
             messages = [...messages, { role: "tool" as const, tool_call_id: tc.id, content: decision.message }];
           } else {
             preAllowed.push(tc);
