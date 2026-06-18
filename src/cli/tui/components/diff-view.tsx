@@ -68,8 +68,22 @@ export function DiffView({ filename, before, after, columns = 80 }: DiffViewProp
       {lines.map((line, i) => {
         if (line.type === 'header') return <Text key={i} dimColor>{truncate(line.raw ?? '', maxLineLen)}</Text>
         if (line.type === 'hunk')   return <Text key={i} color="yellow" dimColor>{truncate(line.raw ?? '', maxLineLen)}</Text>
-        if (line.type === 'add')    return <Text key={i} color="green">{'+'}{truncate(line.content ?? '', maxLineLen - 1)}</Text>
-        if (line.type === 'remove') return <Text key={i} color="red">{'-'}{truncate(line.content ?? '', maxLineLen - 1)}</Text>
+        if (line.type === 'add') {
+          const content = '+' + truncate(line.content ?? '', maxLineLen - 1)
+          return (
+            <Text key={i} backgroundColor="blue" color="white">
+              {content.padEnd(maxLineLen)}
+            </Text>
+          )
+        }
+        if (line.type === 'remove') {
+          const content = '-' + truncate(line.content ?? '', maxLineLen - 1)
+          return (
+            <Text key={i} backgroundColor="red" color="white">
+              {content.padEnd(maxLineLen)}
+            </Text>
+          )
+        }
         return <Text key={i} dimColor>{'  '}{truncate(line.content ?? '', maxLineLen - 2)}</Text>
       })}
     </Box>
