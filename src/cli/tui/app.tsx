@@ -1,6 +1,7 @@
 // src/cli/tui/app.tsx
 import React, { useCallback, useEffect, useReducer, useRef } from 'react'
-import { render, Box, useApp, useStdout } from 'ink'
+import { render, Box, Text, useApp, useStdout, useStdin } from 'ink'
+import { useTerminalMode } from './hooks/use-terminal-mode.js'
 import { existsSync, readFileSync } from 'fs'
 import { join } from 'path'
 import os from 'os'
@@ -53,7 +54,9 @@ export interface TuiOptions {
 function App({ srv, opts }: { srv: ServerConfig; opts: TuiOptions }) {
   const { exit } = useApp()
   const { stdout } = useStdout()
+  const { stdin } = useStdin()
   const [state, dispatch] = useReducer(tuiReducer, initialTuiState({ sessionId: opts.sessionId }))
+  useTerminalMode()
   const cancelRef = useRef<(() => void) | null>(null)
   const elapsedTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const startMsRef = useRef(0)
@@ -68,6 +71,21 @@ function App({ srv, opts }: { srv: ServerConfig; opts: TuiOptions }) {
     stdout.on('resize', handleResize)
     return () => { stdout.off('resize', handleResize) }
   }, [stdout])
+
+  // ── Mouse wheel (SGR mouse byte parsing) ────────────────────────
+  useEffect(() => {
+    if (!stdin) return
+    const handleMouseData = (buf: Buffer) => {
+      const str = buf.toString('utf-8')
+      const sgrMouse = str.match(/\x1b\[<(\d+);(\d+);(\d+)([Mm])/)
+      if (!sgrMouse) return  // not a mouse event — let useInput handle it
+      const button = parseInt(sgrMouse[1], 10)
+      if (button === 64) dispatch({ type: 'SCROLL_UP', lines: 3 })
+      if (button === 65) dispatch({ type: 'SCROLL_DOWN', lines: 3 })
+    }
+    stdin.on('data', handleMouseData)
+    return () => { stdin.off('data', handleMouseData) }
+  }, [stdin, dispatch])
 
   // ── Initial system messages + file index + LSP ──────────────────
   useEffect(() => {
@@ -208,6 +226,11 @@ function App({ srv, opts }: { srv: ServerConfig; opts: TuiOptions }) {
       <Box flexShrink={0}>
         <Header state={headerState} columns={termSize.columns} />
       </Box>
+      {scrollOffset > 0 && (
+        <Box flexShrink={0}>
+          <Text dimColor>{'  ↑ scrolled '}{scrollOffset}{' lines — End key or send message to return'}</Text>
+        </Box>
+      )}
       <Box flexDirection="column" flexGrow={1} overflowY="hidden">
         <MessageList
           events={events}
@@ -235,6 +258,9 @@ function App({ srv, opts }: { srv: ServerConfig; opts: TuiOptions }) {
         }}
         onExit={exit}
         attachments={inputAttachments}
+        onScrollUp={() => dispatch({ type: 'SCROLL_UP', lines: 10 })}
+        onScrollDown={() => dispatch({ type: 'SCROLL_DOWN', lines: 10 })}
+        onScrollToBottom={() => dispatch({ type: 'SCROLL_TO_BOTTOM' })}
       />
       </Box>
     </Box>

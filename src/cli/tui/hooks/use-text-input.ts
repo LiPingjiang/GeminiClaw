@@ -131,6 +131,9 @@ export interface UseTextInputOpts {
   onCancel: () => void
   onExit: () => void
   onEscape?: () => void
+  onScrollUp?: () => void
+  onScrollDown?: () => void
+  onScrollToBottom?: () => void
 }
 
 export interface UseTextInputResult {
@@ -174,6 +177,20 @@ export function useTextInput(opts: UseTextInputOpts): UseTextInputResult {
         const moved = lineNav(value, cursor, 1)
         if (moved === null) { opts.onHistoryDown(); return }
         onChange(value, moved)
+        return
+      }
+
+      // ── Page scroll when input is empty ──────────────────────────
+      if (key.pageUp && value === '') {
+        opts.onScrollUp?.()
+        return
+      }
+      if (key.pageDown && value === '') {
+        opts.onScrollDown?.()
+        return
+      }
+      if (key.end && value === '') {
+        opts.onScrollToBottom?.()
         return
       }
 

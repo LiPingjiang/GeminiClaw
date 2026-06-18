@@ -15,12 +15,15 @@ export interface EditorProps {
   onCancel: () => void
   onExit: () => void
   attachments: InputAttachment[]
+  onScrollUp: () => void
+  onScrollDown: () => void
+  onScrollToBottom: () => void
 }
 
 const PROMPT = '> '
 const PROMPT_WIDTH = 2 // '> ' is 2 columns wide
 
-export function Editor({ value, cursor, columns, focus, dispatch, onSubmit, onCancel, onExit, attachments }: EditorProps) {
+export function Editor({ value, cursor, columns, focus, dispatch, onSubmit, onCancel, onExit, attachments, onScrollUp, onScrollDown, onScrollToBottom }: EditorProps) {
   // Bracketed paste: Ink 7 usePaste handles \x1b[200~...\x1b[201~ natively.
   // Pasted text is inserted at cursor position as a single string.
   usePaste(
@@ -83,6 +86,9 @@ export function Editor({ value, cursor, columns, focus, dispatch, onSubmit, onCa
         dispatch({ type: 'INPUT_CLEAR_ATTACHMENTS' })
       }
     },
+    onScrollUp,
+    onScrollDown,
+    onScrollToBottom,
   })
 
   if (!focus) {
