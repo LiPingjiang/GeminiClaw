@@ -11,6 +11,7 @@ import { Header } from './components/header.js'
 import { MessageList } from './components/message-list.js'
 import { Editor } from './components/editor.js'
 import { SuggestionOverlay } from './components/suggestion-overlay.js'
+import { BtwModal } from './components/btw-modal.js'
 import { tuiReducer, initialTuiState } from './state.js'
 import type { TuiEvent } from './types.js'
 import { filterCommands, COMMANDS } from './commands/registry.js'
@@ -64,6 +65,7 @@ function App({ srv, opts }: { srv: ServerConfig; opts: TuiOptions }) {
   // useInput with isActive=true (default) intercepts before the Editor's own useInput.
   // Without this, focus={false} on Editor disables useInput there, making Ctrl+C a no-op.
   const cancelRef = useRef<(() => void) | null>(null)
+  const btwCancelRef = useRef<(() => void) | null>(null)
   const isRunningRef = useRef(false)
   const exitRef = useRef(exit)
   const elapsedTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -263,6 +265,8 @@ function App({ srv, opts }: { srv: ServerConfig; opts: TuiOptions }) {
         exit,
         baseUrl: srv.baseUrl,
         authToken: srv.authToken,
+        setBtwCancel: (fn) => { btwCancelRef.current = fn },
+        getEvents: () => state.events,
       })
       return
     }
@@ -284,7 +288,7 @@ function App({ srv, opts }: { srv: ServerConfig; opts: TuiOptions }) {
 
   const { termSize, headerState, events, streamingContent, input, inputCursor, isRunning,
           thinkingContent, thinkingStartMs, thinkingDone, scrollOffset, inputAttachments,
-          bgRunning } = state
+          bgRunning, btwState } = state
 
   return (
     <Box flexDirection="column" height={termSize.rows}>
@@ -315,6 +319,7 @@ function App({ srv, opts }: { srv: ServerConfig; opts: TuiOptions }) {
         selectedSuggestion={selectedSuggestion}
         columns={termSize.columns}
       />
+      <BtwModal btwState={btwState} columns={termSize.columns} />
       <Box flexShrink={0}>
       <Editor
         value={input}
@@ -336,6 +341,14 @@ function App({ srv, opts }: { srv: ServerConfig; opts: TuiOptions }) {
         currentTool={headerState.currentTool}
         suggestions={suggestions}
         selectedSuggestion={selectedSuggestion}
+        btwState={btwState}
+        onBtwScrollUp={() => dispatch({ type: 'BTW_SCROLL', delta: 1 })}
+        onBtwScrollDown={() => dispatch({ type: 'BTW_SCROLL', delta: -1 })}
+        onBtwClose={() => {
+          btwCancelRef.current?.()
+          btwCancelRef.current = null
+          dispatch({ type: 'BTW_CLOSE' })
+        }}
         onHistoryUp={() => {
           if (suggestions.length > 0) {
             dispatch({ type: 'SUGGESTION_MOVE', delta: -1 })

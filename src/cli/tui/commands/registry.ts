@@ -1,6 +1,7 @@
 // src/cli/tui/commands/registry.ts
 import type React from 'react'
 import type { TuiAction } from '../state.js'
+import { btwHandler, bgHandler, copyHandler } from './handlers.js'
 
 export interface CommandContext {
   dispatch: React.Dispatch<TuiAction>
@@ -8,6 +9,8 @@ export interface CommandContext {
   exit: () => void
   baseUrl: string
   authToken?: string
+  setBtwCancel?: (fn: (() => void) | null) => void
+  getEvents?: () => import('../types.js').TuiEvent[]
 }
 
 export interface TuiCommand {
@@ -24,7 +27,7 @@ export const COMMANDS: TuiCommand[] = [
     prefix: '/btw',
     description: '旁路问题，不入主对话',
     argHint: '<question>',
-    handler: (_args, _ctx) => { /* wired in Task 4 */ },
+    handler: (args, ctx) => btwHandler(args, ctx),
   },
   {
     name: 'clear',
@@ -68,7 +71,7 @@ export const COMMANDS: TuiCommand[] = [
     name: 'copy',
     prefix: '/copy',
     description: '复制最后一条回复到剪贴板',
-    handler: (_args, ctx) => ctx.dispatch({ type: 'COPY_LAST' }),
+    handler: (_args, ctx) => copyHandler(ctx.getEvents?.() ?? [], ctx),
   },
   {
     name: 'diff',
@@ -91,11 +94,7 @@ export const COMMANDS: TuiCommand[] = [
     prefix: '/bg',
     description: '后台发送，不锁定输入',
     argHint: '<message>',
-    handler: (args, ctx) => {
-      if (!args.trim()) return
-      ctx.dispatch({ type: 'BG_START' })
-      // streamChat call wired in Task 4 handlers.ts
-    },
+    handler: (args, ctx) => bgHandler(args, ctx),
   },
   {
     name: 'help',

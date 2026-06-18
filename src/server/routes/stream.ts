@@ -25,6 +25,7 @@ interface StreamBody {
   sessionId?: string
   model?: string
   attachments?: Array<{ type: 'image'; mediaType: string; data: string }>
+  ephemeral?: boolean
 }
 
 interface StreamRouteOpts {
@@ -133,8 +134,8 @@ export async function streamRoute(
       sendEvent("error", { error: String(err) })
     }
 
-    // 存 memory
-    if (fullContent) {
+    // 存 memory (skip for ephemeral requests)
+    if (fullContent && !request.body.ephemeral) {
       try {
         await opts.strategy.appendTurn(
           sid,

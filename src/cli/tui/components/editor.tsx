@@ -3,7 +3,7 @@ import { Box, Text, usePaste } from 'ink'
 import { useTextInput } from '../hooks/use-text-input.js'
 import { snapPos } from '../lib/grapheme.js'
 import { readClipboardImage, readImageFile } from '../clipboard.js'
-import type { TuiAction, InputAttachment } from '../state.js'
+import type { TuiAction, InputAttachment, BtwPhase } from '../state.js'
 import type { TuiCommand } from '../commands/registry.js'
 
 export interface EditorProps {
@@ -25,12 +25,16 @@ export interface EditorProps {
   selectedSuggestion: number
   onHistoryUp: () => void
   onHistoryDown: () => void
+  btwState?: BtwPhase
+  onBtwScrollUp?: () => void
+  onBtwScrollDown?: () => void
+  onBtwClose?: () => void
 }
 
 const PROMPT = '> '
 const PROMPT_WIDTH = 2 // '> ' is 2 columns wide
 
-export function Editor({ value, cursor, columns, focus, dispatch, onSubmit, onCancel, onExit, attachments, onScrollUp, onScrollDown, onScrollToBottom, isRunning, currentTool, suggestions, selectedSuggestion, onHistoryUp, onHistoryDown }: EditorProps) {
+export function Editor({ value, cursor, columns, focus, dispatch, onSubmit, onCancel, onExit, attachments, onScrollUp, onScrollDown, onScrollToBottom, isRunning, currentTool, suggestions, selectedSuggestion, onHistoryUp, onHistoryDown, btwState, onBtwScrollUp, onBtwScrollDown, onBtwClose }: EditorProps) {
   // Bracketed paste: Ink 7 usePaste handles \x1b[200~...\x1b[201~ natively.
   // Pasted text is inserted at cursor position as a single string.
   usePaste(
@@ -108,6 +112,10 @@ export function Editor({ value, cursor, columns, focus, dispatch, onSubmit, onCa
     onCancel,
     onExit,
     onEscape: () => {
+      if (btwState && btwState.phase !== 'idle') {
+        onBtwClose?.()
+        return
+      }
       if (suggestions.length > 0) {
         dispatch({ type: 'SUGGESTION_CLEAR' })
         return
@@ -126,8 +134,8 @@ export function Editor({ value, cursor, columns, focus, dispatch, onSubmit, onCa
         }
       }
     },
-    onScrollUp,
-    onScrollDown,
+    onScrollUp: btwState && btwState.phase !== 'idle' ? (onBtwScrollUp ?? onScrollUp) : onScrollUp,
+    onScrollDown: btwState && btwState.phase !== 'idle' ? (onBtwScrollDown ?? onScrollDown) : onScrollDown,
     onScrollToBottom,
   })
 

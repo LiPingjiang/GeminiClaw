@@ -1,6 +1,11 @@
 import type { TuiEvent, HeaderState, TokenUsage } from './types.js'
 import type { TuiCommand } from './commands/registry.js'
 
+export type BtwPhase =
+  | { phase: 'idle' }
+  | { phase: 'loading'; question: string }
+  | { phase: 'showing'; question: string; content: string; scrollOffset: number }
+
 export interface InputAttachment {
   base64: string
   mediaType: 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp'
@@ -41,6 +46,8 @@ export interface TuiState {
   // Background task
   bgRunning: boolean
   bgContent: string
+  // Btw modal
+  btwState: BtwPhase
 }
 
 export type TuiAction =
@@ -75,6 +82,11 @@ export type TuiAction =
   | { type: 'BG_START' }
   | { type: 'BG_DELTA'; content: string }
   | { type: 'BG_DONE' }
+  | { type: 'BTW_START'; question: string }
+  | { type: 'BTW_DELTA'; content: string }
+  | { type: 'BTW_DONE' }
+  | { type: 'BTW_CLOSE' }
+  | { type: 'BTW_SCROLL'; delta: number }
   | { type: 'SET_NEW_SESSION' }
   | { type: 'LOAD_HISTORY'; events: TuiEvent[] }
 
@@ -111,6 +123,7 @@ export function initialTuiState(opts: InitialTuiStateOpts): TuiState {
     selectedSuggestion: -1,
     bgRunning: false,
     bgContent: '',
+    btwState: { phase: 'idle' },
   }
 }
 
@@ -327,6 +340,34 @@ export function tuiReducer(state: TuiState, action: TuiAction): TuiState {
         events: bgMsg ? [...state.events, { kind: 'response' as const, content: bgMsg }] : state.events,
       }
     }
+
+    case 'BTW_START':
+      return { ...state, btwState: { phase: 'loading', question: action.question } }
+
+    case 'BTW_DELTA':
+      if (state.btwState.phase === 'loading') {
+        return { ...state, btwState: { phase: 'showing', question: state.btwState.question, content: action.content, scrollOffset: 0 } }
+      }
+      if (state.btwState.phase === 'showing') {
+        return { ...state, btwState: { ...state.btwState, content: state.btwState.content + action.content } }
+      }
+      return state
+
+    case 'BTW_DONE':
+      if (state.btwState.phase === 'loading') {
+        return { ...state, btwState: { phase: 'showing', question: state.btwState.question, content: '(no response)', scrollOffset: 0 } }
+      }
+      return state
+
+    case 'BTW_CLOSE':
+      return { ...state, btwState: { phase: 'idle' } }
+
+    case 'BTW_SCROLL':
+      if (state.btwState.phase === 'showing') {
+        const newOffset = Math.max(0, state.btwState.scrollOffset + action.delta)
+        return { ...state, btwState: { ...state.btwState, scrollOffset: newOffset } }
+      }
+      return state
 
     case 'SET_NEW_SESSION':
       return {

@@ -274,6 +274,41 @@ describe('LOAD_HISTORY', () => {
   })
 })
 
+describe('btwState', () => {
+  it('BTW_START sets loading phase', () => {
+    const s = tuiReducer(base, { type: 'BTW_START', question: 'what?' })
+    expect(s.btwState.phase).toBe('loading')
+    if (s.btwState.phase === 'loading') expect(s.btwState.question).toBe('what?')
+  })
+
+  it('BTW_DELTA from loading transitions to showing', () => {
+    const s1 = tuiReducer(base, { type: 'BTW_START', question: 'q' })
+    const s2 = tuiReducer(s1, { type: 'BTW_DELTA', content: 'answer' })
+    expect(s2.btwState.phase).toBe('showing')
+    if (s2.btwState.phase === 'showing') expect(s2.btwState.content).toBe('answer')
+  })
+
+  it('BTW_DELTA accumulates in showing phase', () => {
+    const s1 = tuiReducer(base, { type: 'BTW_START', question: 'q' })
+    const s2 = tuiReducer(s1, { type: 'BTW_DELTA', content: 'part1' })
+    const s3 = tuiReducer(s2, { type: 'BTW_DELTA', content: ' part2' })
+    if (s3.btwState.phase === 'showing') expect(s3.btwState.content).toBe('part1 part2')
+  })
+
+  it('BTW_CLOSE resets to idle', () => {
+    const s1 = tuiReducer(base, { type: 'BTW_START', question: 'q' })
+    const s2 = tuiReducer(s1, { type: 'BTW_CLOSE' })
+    expect(s2.btwState.phase).toBe('idle')
+  })
+
+  it('BTW_SCROLL adjusts scrollOffset', () => {
+    const s1 = tuiReducer(base, { type: 'BTW_START', question: 'q' })
+    const s2 = tuiReducer(s1, { type: 'BTW_DELTA', content: 'x' })
+    const s3 = tuiReducer(s2, { type: 'BTW_SCROLL', delta: 3 })
+    if (s3.btwState.phase === 'showing') expect(s3.btwState.scrollOffset).toBe(3)
+  })
+})
+
 describe('SCROLL_UP with maxScrollOffset', () => {
   it('clamps at maxScrollOffset', () => {
     const s1 = tuiReducer(base, { type: 'SET_MAX_SCROLL_OFFSET', value: 10 })
