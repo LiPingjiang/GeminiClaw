@@ -113,18 +113,6 @@ function ToolEndItem({ event }: { event: Extract<TuiEvent, { kind: 'tool_end' }>
         <Text color={event.isError ? 'red' : 'green'} dimColor>
           {event.isError ? '✗' : '✓'}{' '}{event.name}{' '}{event.durationMs}ms
         </Text>
-        {isLong && (
-          <Text dimColor>
-            {' '}
-            <Text
-              color="cyan"
-              underline
-              // Ink 7 doesn't have onClick; use a visual hint instead
-            >
-              {'▶ expand'}
-            </Text>
-          </Text>
-        )}
       </Box>
       {event.result && (
         <Box paddingLeft={2}>

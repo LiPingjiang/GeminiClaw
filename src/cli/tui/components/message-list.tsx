@@ -2,6 +2,7 @@ import React, { useEffect } from 'react'
 import { Box } from 'ink'
 import { MessageItem } from './message-item.js'
 import { ThinkingLine } from './thinking-line.js'
+import { StreamingMd } from './streaming-md.js'
 import type { TuiEvent } from '../types.js'
 import type { TuiAction } from '../state.js'
 
@@ -31,7 +32,7 @@ export function MessageList({
     ...events.filter(e =>
       e.kind !== 'delta' && e.kind !== 'turn_end' && e.kind !== 'thinking_delta'
     ),
-    ...(streamingContent ? [{ kind: 'response' as const, content: streamingContent }] : []),
+    // streamingContent rendered separately below via StreamingMd
   ]
 
   const isThinking = thinkingContent.length > 0 && !thinkingDone
@@ -50,6 +51,11 @@ export function MessageList({
         {allItems.map((event, i) => (
           <MessageItem key={i} event={event} columns={columns} />
         ))}
+        {streamingContent && !isThinking && (
+          <Box paddingLeft={2} flexDirection="column">
+            <StreamingMd text={streamingContent} columns={columns - 2} />
+          </Box>
+        )}
         {isThinking && (
           <ThinkingLine
             elapsedMs={elapsedMs}
