@@ -23,7 +23,7 @@ import type { ExecutionStrategy, ContextMode } from "./types.js"
 // ── 配置 ──────────────────────────────────────────────────────────────────────
 
 /** 同一父 session 最大并行 run 数 */
-const MAX_CONCURRENT_RUNS_PER_PARENT = 3
+export const MAX_CONCURRENT_RUNS_PER_PARENT = 3
 
 /** 子任务默认超时（5 分钟） */
 const DEFAULT_TIMEOUT_MS = 5 * 60 * 1000
@@ -100,7 +100,8 @@ export function asyncExecute(
   const childSessionKey = `subagent:${runId}`
   const taskTitles = taskSpecs.map((t) => t.title)
 
-  // 注册到 registry
+  // 注册到 registry（含 per-run timeout 供 sweeper 使用）
+  const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS
   registerRun({
     runId,
     parentSessionId: options.parentSessionId,
@@ -111,6 +112,7 @@ export function asyncExecute(
     taskTitles,
     status: "running",
     startedAt: Date.now(),
+    timeoutMs,
   })
 
   // 发布 start 事件

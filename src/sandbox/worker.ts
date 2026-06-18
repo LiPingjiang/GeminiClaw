@@ -34,8 +34,8 @@ const POLL_WAIT_SECONDS = 30;
 const E2B_API_URL = 'https://api.sandbox.sankuai.com';
 const E2B_DOMAIN = 'sandbox.sankuai.com';
 
-/** 自定义模板（4C 8GB），仅 KEY1 有访问权限。 */
-const CUSTOM_TEMPLATE_ID = 'gaqgjsh2dh4i7dqr8ts7';
+/** 回测模板（含 /data/kline_3yr.parquet 三年K线数据），仅 KEY1 有访问权限。 */
+const CUSTOM_TEMPLATE_ID = 'lqp7omxamf1rwy27yrxb';
 
 /** 每个 key 的最大并发沙箱数。 */
 const MAX_CONCURRENCY_PER_KEY = 5;
@@ -95,6 +95,8 @@ interface Task {
   timeout?: number;
   /** 是否要求自定义模板（4C 8GB）。 */
   require_custom_template?: boolean;
+  /** 是否要求回测模板（兼容字段名，等同于 require_custom_template）。 */
+  require_backtest_template?: boolean;
   /** 自定义模板 id 覆盖。 */
   template?: string;
   /** 任意附加字段。 */
@@ -155,7 +157,7 @@ let rrCursor = 0;
  * 返回 null 表示当前没有可用容量。
  */
 function pickKey(task: Task): KeySlot | null {
-  const needsCustom = Boolean(task.require_custom_template);
+  const needsCustom = Boolean(task.require_custom_template || task.require_backtest_template);
 
   const eligible = KEYS.filter((k) => {
     if (k.active >= MAX_CONCURRENCY_PER_KEY) return false;
@@ -228,8 +230,10 @@ function loadE2bSdk(): Promise<SandboxSdk | null> {
 async function runInSandbox(task: Task, key: KeySlot): Promise<ExecOutput> {
   const timeoutSec = normalizeTimeout(task.timeout);
   const useCustom =
-    (task.require_custom_template || task.template === CUSTOM_TEMPLATE_ID) && key.canUseCustomTemplate;
+    (task.require_custom_template || task.require_backtest_template || task.template === CUSTOM_TEMPLATE_ID) && key.canUseCustomTemplate;
   const templateId = task.template ?? (useCustom ? CUSTOM_TEMPLATE_ID : 'base');
+
+  log(`template=${templateId} useCustom=${useCustom} (require_custom=${task.require_custom_template}, require_backtest=${task.require_backtest_template})`);
 
   // 给 E2B SDK / 远端读取的环境变量
   process.env.E2B_API_KEY = key.apiKey;
@@ -261,7 +265,13 @@ async function runViaSdk(
 
   log(`sandbox created: ${sandbox.sandboxId ?? 'unknown'} on ${key.id}`);
 
+  const isCustomTemplate = templateId === CUSTOM_TEMPLATE_ID;
   try {
+    // 回测模板需要 pyarrow（模板中未预装），首次使用时自动安装
+    if (isCustomTemplate) {
+      await runCommandViaSdk(sandbox, 'pip install --quiet pyarrow 2>/dev/null || true', Math.min(timeoutSec, 120));
+    }
+
     // 先安装依赖（仅 base 模板需要）
     if (Array.isArray(task.pip) && task.pip.length > 0) {
       const pipCmd = `pip install --quiet ${task.pip.map(shellQuote).join(' ')}`;

@@ -1,7 +1,7 @@
 ---
 name: strategy-backtest
 description: 策略回测探索 — 使用内置 3 年 K 线数据在沙箱中验证量化交易策略
-version: 1.1.0
+version: 1.2.0
 tags: [backtest, quant, strategy, kline, duckdb]
 ---
 
@@ -18,28 +18,27 @@ tags: [backtest, quant, strategy, kline, duckdb]
 | 属性 | 值 |
 |------|------|
 | 文件路径 | `/data/kline_3yr.parquet` |
-| 格式 | Parquet (ZSTD 压缩, 76.8 MB) |
+| 格式 | Parquet (ZSTD 压缩, ~77 MB) |
 | 行数 | 6,620,730 |
-| 时间范围 | 2023-01-01 ~ 2026-06-13 |
-| 市场 | SH(上证), SZ(深证), HK(港股), US(美股), INDEX(指数) |
+| 交易日 | 819 天 |
+| 时间范围 | 2023-06-01 ~ 2026-06-11 |
+| 市场 | SZ(深证 3680只), SH(上证 3396只), HK(港股 3136只), US(美股 256只), INDEX(指数 6只) |
 
 ### 字段说明
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
+| code | VARCHAR | 股票代码（如 600519、00700、AAPL） |
+| market | VARCHAR | 市场标识：SH / SZ / HK / US / INDEX |
 | date | VARCHAR | 日期 YYYY-MM-DD |
-| code | VARCHAR | 股票代码 |
-| market | VARCHAR | 市场标识 (SH/SZ/HK/US/INDEX) |
 | open | DOUBLE | 开盘价 |
 | high | DOUBLE | 最高价 |
 | low | DOUBLE | 最低价 |
 | close | DOUBLE | 收盘价 |
-| volume | BIGINT | 成交量 |
-| amount | DOUBLE | 成交额 |
-| turnover_rate | DOUBLE | 换手率 |
-| pe_ratio | DOUBLE | 市盈率 |
-| pb_ratio | DOUBLE | 市净率 |
-| market_cap | DOUBLE | 总市值 |
+| volume | DOUBLE | 成交量 |
+| turnover | DOUBLE | 成交额（部分市场为 NaN） |
+
+> **注意**：数据中**没有** pe_ratio、pb_ratio、market_cap、turnover_rate、pctChg 等衍生字段。涨跌幅需自行计算：`(close - prev_close) / prev_close`。
 
 ---
 
@@ -59,10 +58,12 @@ sandbox_exec({
 
 ### 沙箱环境
 
-- Python 3.11
-- 预装库：duckdb, pandas, numpy, scipy, matplotlib
-- DuckDB 可直接读取 Parquet 文件，无需 pyarrow
+- **Python 3.12**
+- 预装库：**duckdb 1.5**, pandas 2.2, numpy 1.26, scipy 1.13, matplotlib 3.10, requests
+- **pyarrow 未安装** — 必须用 DuckDB 读取 Parquet（`duckdb.sql("SELECT ... FROM '/data/kline_3yr.parquet'").df()`）
+- `pd.read_parquet()` 不可用，会报错
 - 沙箱有外网访问能力
+- 磁盘空间约 10GB 可用
 
 ---
 
@@ -82,10 +83,10 @@ START_DATE = '2024-01-01'
 END_DATE = '2025-12-31'
 INITIAL_CAPITAL = 1_000_000
 
-# ─── 加载数据 ───
+# ─── 加载数据（必须用 DuckDB） ───
 db = duckdb.connect()
 df = db.execute(f"""
-    SELECT date, open, high, low, close, volume, amount, turnover_rate
+    SELECT date, open, high, low, close, volume, turnover
     FROM '/data/kline_3yr.parquet'
     WHERE market='{MARKET}' AND code='{CODE}'
       AND date >= '{START_DATE}' AND date <= '{END_DATE}'
@@ -122,91 +123,107 @@ print(f"最大回撤:   {max_drawdown:.2f}%")
 print(f"交易天数:   {len(df)}")
 ```
 
-### 模板 2：多股票选股策略
+### 模板 2：全市场选股回测（DuckDB 向量化，高性能）
 
 ```python
 import duckdb
-import pandas as pd
 import numpy as np
 
 db = duckdb.connect()
 
-# ─── 选股：低 PE + 高换手 ───
-TARGET_DATE = '2025-01-02'
-df = db.execute(f"""
-    SELECT code, market, close, pe_ratio, pb_ratio, turnover_rate, market_cap
-    FROM '/data/kline_3yr.parquet'
-    WHERE market IN ('SH', 'SZ')
-      AND date = '{TARGET_DATE}'
-      AND pe_ratio > 0 AND pe_ratio < 30
-      AND turnover_rate > 3
-      AND market_cap > 10000000000
-    ORDER BY pe_ratio ASC
-    LIMIT 20
+# ─── 用 DuckDB 窗口函数做全市场计算（比 pandas 循环快 100x） ───
+db.execute("""
+CREATE TABLE kline AS 
+SELECT * FROM '/data/kline_3yr.parquet'
+WHERE market IN ('SH', 'SZ')
+ORDER BY code, date
+""")
+
+# 计算技术指标
+db.execute("""
+CREATE TABLE indicators AS
+SELECT code, date, open, close, volume,
+  ROW_NUMBER() OVER (PARTITION BY code ORDER BY date) as seq,
+  MIN(close) OVER (PARTITION BY code ORDER BY date ROWS BETWEEN 59 PRECEDING AND CURRENT ROW) as min60,
+  AVG(close) OVER (PARTITION BY code ORDER BY date ROWS BETWEEN 19 PRECEDING AND CURRENT ROW) as ma20,
+  AVG(close) OVER (PARTITION BY code ORDER BY date ROWS BETWEEN 4 PRECEDING AND CURRENT ROW) as ma5
+FROM kline
+""")
+
+# 选股信号：60日新低 + MA5 < MA20 + 价格3~15元
+db.execute("""
+CREATE TABLE signals AS
+SELECT code, date, close
+FROM indicators
+WHERE seq >= 65
+  AND close >= 3 AND close <= 15
+  AND close <= min60 * 1.001
+  AND ma5 < ma20
+""")
+
+sig_count = db.execute("SELECT count(*) FROM signals").fetchone()[0]
+print(f"信号数: {sig_count}")
+
+# 回测：T+1开盘买入，T+5收盘卖出
+db.execute("""
+CREATE TABLE kline_seq AS
+SELECT code, date, open, close,
+  ROW_NUMBER() OVER (PARTITION BY code ORDER BY date) as seq
+FROM kline
+""")
+
+trades = db.execute("""
+SELECT 
+  s.date as signal_date,
+  k1.date as buy_date,
+  k1.open as buy_price,
+  k5.close as sell_price,
+  (k5.close - k1.open) / k1.open as return
+FROM signals s
+JOIN kline_seq ks ON s.code = ks.code AND s.date = ks.date
+JOIN kline_seq k1 ON s.code = k1.code AND k1.seq = ks.seq + 1
+JOIN kline_seq k5 ON s.code = k5.code AND k5.seq = ks.seq + 5
+WHERE k1.open > 0
 """).df()
 
-print(f"选股结果 ({TARGET_DATE}):")
-print(df.to_string(index=False))
-
-# ─── 回测选出的股票组合未来 N 天表现 ───
-codes = df['code'].tolist()
-codes_str = ','.join([f"'{c}'" for c in codes])
-
-future = db.execute(f"""
-    SELECT code, date, close
-    FROM '/data/kline_3yr.parquet'
-    WHERE market IN ('SH', 'SZ')
-      AND code IN ({codes_str})
-      AND date >= '{TARGET_DATE}'
-    ORDER BY code, date
-""").df()
-
-# 计算每只股票的累计收益
-results = []
-for code in codes:
-    stock_df = future[future['code'] == code].reset_index(drop=True)
-    if len(stock_df) > 1:
-        ret = (stock_df['close'].iloc[-1] / stock_df['close'].iloc[0] - 1) * 100
-        results.append({'code': code, 'return_pct': ret, 'days': len(stock_df)})
-
-result_df = pd.DataFrame(results).sort_values('return_pct', ascending=False)
-print(f"\n组合表现 (持有至今):")
-print(result_df.to_string(index=False))
-print(f"\n等权组合平均收益: {result_df['return_pct'].mean():.2f}%")
+print(f"交易数: {len(trades)}")
+print(f"胜率: {(trades['return'] > 0).mean()*100:.1f}%")
+print(f"平均收益: {trades['return'].mean()*100:.2f}%")
 ```
 
 ### 模板 3：技术指标扫描
 
 ```python
 import duckdb
-import pandas as pd
 
 db = duckdb.connect()
 
-# ─── 全市场扫描：MACD 金叉 + 放量 ───
+# ─── 全市场扫描：均线多头排列 + 放量 ───
 df = db.execute("""
     WITH ranked AS (
-        SELECT code, market, date, close, volume, amount,
-               AVG(close) OVER (PARTITION BY code ORDER BY date ROWS 11 PRECEDING) as ema12,
-               AVG(close) OVER (PARTITION BY code ORDER BY date ROWS 25 PRECEDING) as ema26,
+        SELECT code, market, date, close, volume,
+               AVG(close) OVER (PARTITION BY code ORDER BY date ROWS 4 PRECEDING) as ma5,
+               AVG(close) OVER (PARTITION BY code ORDER BY date ROWS 9 PRECEDING) as ma10,
+               AVG(close) OVER (PARTITION BY code ORDER BY date ROWS 19 PRECEDING) as ma20,
                AVG(volume) OVER (PARTITION BY code ORDER BY date ROWS 4 PRECEDING) as vol_ma5,
                LAG(close) OVER (PARTITION BY code ORDER BY date) as prev_close
         FROM '/data/kline_3yr.parquet'
         WHERE market IN ('SH', 'SZ')
           AND date >= '2025-06-01'
     )
-    SELECT code, market, date, close, volume, vol_ma5,
-           ema12 - ema26 as dif,
+    SELECT code, market, date, close, volume,
+           ma5, ma10, ma20,
            (close - prev_close) / prev_close * 100 as change_pct
     FROM ranked
     WHERE date = (SELECT MAX(date) FROM ranked)
-      AND ema12 > ema26
+      AND ma5 > ma10 AND ma10 > ma20
       AND volume > vol_ma5 * 1.5
-    ORDER BY (close - prev_close) / prev_close DESC
+      AND close > 5
+    ORDER BY change_pct DESC
     LIMIT 30
 """).df()
 
-print(f"MACD 金叉 + 放量突破 (最新交易日):")
+print(f"均线多头 + 放量突破 (最新交易日):")
 print(df.to_string(index=False))
 ```
 
@@ -216,11 +233,18 @@ print(df.to_string(index=False))
 
 ### 回测流程
 
-1. **明确策略逻辑**：用户描述策略思路（如"均线交叉"、"低PE选股"、"动量突破"）
-2. **编写回测代码**：基于上述模板，用 DuckDB SQL 加载数据，用 pandas/numpy 计算信号
+1. **明确策略逻辑**：用户描述策略思路
+2. **编写回测代码**：用 DuckDB SQL 加载数据 + 窗口函数计算指标（高性能），用 pandas/numpy 做复杂逻辑
 3. **执行回测**：调用 `sandbox_exec` 并设置 `require_backtest_template: true`
 4. **分析结果**：解读收益率、夏普比率、最大回撤等指标
 5. **优化迭代**：调整参数、改进逻辑、重新回测
+
+### 性能建议
+
+- **优先用 DuckDB SQL + 窗口函数**做全市场计算，比 pandas groupby 循环快 100 倍
+- 全市场 7000 只股票的指标计算，DuckDB 通常 5-10 秒完成
+- Python 逐股票循环 7000 只会超时（>5分钟），必须避免
+- 如需 pandas，先用 DuckDB 过滤/聚合后再 `.df()` 转换
 
 ### 常用 DuckDB 查询模式
 
@@ -233,23 +257,28 @@ WHERE market='SH' AND code='600519' ORDER BY date;
 SELECT * FROM '/data/kline_3yr.parquet'
 WHERE date='2025-06-01' AND market IN ('SH','SZ');
 
--- 计算移动平均
+-- 计算移动平均（窗口函数）
 SELECT *, AVG(close) OVER (PARTITION BY code ORDER BY date ROWS 19 PRECEDING) as ma20
 FROM '/data/kline_3yr.parquet' WHERE market='SH' AND code='600519';
 
--- 跨市场对比
-SELECT market, AVG((close-open)/open*100) as avg_change
-FROM '/data/kline_3yr.parquet' WHERE date='2025-06-01'
-GROUP BY market;
+-- 计算涨跌幅
+SELECT *, (close - LAG(close) OVER (PARTITION BY code ORDER BY date)) 
+         / LAG(close) OVER (PARTITION BY code ORDER BY date) as pct_change
+FROM '/data/kline_3yr.parquet' WHERE market='SH' AND code='600519';
+
+-- 跨市场统计
+SELECT market, count(DISTINCT code) as symbols, count(*) as rows
+FROM '/data/kline_3yr.parquet' GROUP BY market;
 ```
 
 ### 注意事项
 
-- date 字段是 VARCHAR 格式，比较时直接用字符串即可
-- 回测时注意用 `shift(1)` 避免未来函数（look-ahead bias）
-- 大规模全市场扫描可能需要 30-60 秒，建议设置 `timeout: 300`
+- `date` 字段是 VARCHAR 格式，比较时直接用字符串即可
+- 回测时注意用 `shift(1)` 或 `LAG()` 避免未来函数（look-ahead bias）
+- **不要用 `pd.read_parquet()`**，会报错（无 pyarrow）。必须用 `duckdb.sql(...).df()`
+- 大规模全市场扫描建议设置 `timeout: 300`
 - 沙箱每次执行是独立的，不保留上次运行的状态
-- 如需绘图，可用 matplotlib 生成图片并 base64 输出
+- `turnover` 字段在 A 股大部分为 NaN，不可靠；如需换手率请自行用 volume 估算
 
 ---
 
@@ -258,6 +287,6 @@ GROUP BY market;
 - 验证用户提出的交易策略想法
 - 选股条件筛选和历史回测
 - 技术指标有效性验证
-- 多因子模型测试
+- 多因子模型测试（基于价量数据）
 - 市场统计分析（行业轮动、市场宽度等）
 - 风险指标计算（VaR、最大回撤、波动率等）

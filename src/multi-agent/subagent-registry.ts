@@ -30,6 +30,8 @@ export interface SubagentRunRecord {
   completedAt?: number
   result?: string
   error?: string
+  /** Per-run timeout override (ms). Falls back to MAX_RUN_DURATION_MS if not set. */
+  timeoutMs?: number
 }
 
 // ── DB interface (subset of better-sqlite3) ──────────────────────────────────
@@ -50,8 +52,8 @@ const runs = new Map<string, SubagentRunRecord>()
 /** Sweeper interval handle */
 let sweeperHandle: ReturnType<typeof setInterval> | null = null
 
-/** Max run duration before auto-abort (10 minutes) */
-const MAX_RUN_DURATION_MS = 10 * 60 * 1000
+/** Max run duration before auto-abort (default 30 minutes; was 10 min, caused premature kills) */
+const MAX_RUN_DURATION_MS = 30 * 60 * 1000
 
 /** Sweeper interval (30 seconds) */
 const SWEEPER_INTERVAL_MS = 30_000
@@ -360,8 +362,9 @@ function ensureSweeper(): void {
   sweeperHandle = setInterval(() => {
     const now = Date.now()
     for (const [runId, record] of runs) {
-      if (record.status === "running" && now - record.startedAt > MAX_RUN_DURATION_MS) {
-        abortRun(runId, `timeout: exceeded ${MAX_RUN_DURATION_MS / 1000}s`)
+      const effectiveTimeout = record.timeoutMs ?? MAX_RUN_DURATION_MS
+      if (record.status === "running" && now - record.startedAt > effectiveTimeout) {
+        abortRun(runId, `timeout: exceeded ${effectiveTimeout / 1000}s`)
       }
     }
     // Stop sweeper if no active runs

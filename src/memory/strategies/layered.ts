@@ -158,40 +158,61 @@ export class LayeredStrategy implements MemoryStrategy {
   }
 
   private getRecentHistory(sessionId: string): Message[] {
-    // 只加载 user/assistant 消息，跳过 tool 角色（中间工具结果）
-    // 原因：tool 消息缺少 tool_call_id 结构，LLM 无法理解；
-    // 且会占用 recentMessageLimit 配额，导致真正的对话上下文过少
+    // 加载所有角色的消息（user/assistant/tool），保留完整的工具调用链
+    // 这样 LLM 能看到正确的模式：assistant 调用工具 → tool 返回结果 → assistant 回复
     const raw = this.db.prepare(`
-      SELECT role, content FROM chat_messages
-      WHERE session_id = ? AND role IN ('user', 'assistant')
+      SELECT role, content, tool_calls, tool_call_id FROM chat_messages
+      WHERE session_id = ?
       ORDER BY id DESC LIMIT ?
-    `).all(sessionId, this.config.recentMessageLimit) as Message[]
+    `).all(sessionId, this.config.recentMessageLimit) as Array<{
+      role: string; content: string; tool_calls: string | null; tool_call_id: string | null
+    }>
 
-    // 去重：去除重复的 assistant 内容（防止 LLM 复制模式）
-    // 场景：旧数据中同一 tool-call 循环存储了多条相同 assistant 回复
-    const deduped: Message[] = []
+    // 构造完整的 Message 对象（包含 tool_calls 和 tool_call_id）
+    const messages: Message[] = []
     const seenAssistantContent = new Set<string>()
-    for (const msg of raw) {
-      if (msg.role === "assistant") {
-        const text = typeof msg.content === "string" ? msg.content : ""
-        // 跳过完全空的 assistant 消息
-        if (!text) continue
-        // 跳过已出现过的相同 assistant 内容（去重，仅对较长内容生效）
-        if (text.length > 50 && seenAssistantContent.has(text)) continue
+    for (const row of raw) {
+      if (row.role === "assistant") {
+        const text = row.content ?? ""
+        // 跳过完全空的 assistant 消息（除非有 tool_calls）
+        if (!text && !row.tool_calls) continue
+        // 去重：跳过已出现过的相同 assistant 内容
+        if (text.length > 50 && seenAssistantContent.has(text) && !row.tool_calls) continue
         if (text.length > 50) seenAssistantContent.add(text)
+
+        const msg: Message = { role: "assistant", content: text }
+        if (row.tool_calls) {
+          try {
+            msg.tool_calls = JSON.parse(row.tool_calls)
+          } catch { /* ignore parse errors */ }
+        }
+        messages.push(msg)
+      } else if (row.role === "tool") {
+        // tool 消息必须有 tool_call_id 才能被 LLM 理解
+        if (row.tool_call_id) {
+          messages.push({
+            role: "tool",
+            content: row.content ?? "",
+            tool_call_id: row.tool_call_id,
+          })
+        }
+        // 没有 tool_call_id 的 tool 消息跳过（旧数据兼容）
+      } else {
+        messages.push({ role: row.role as "user" | "system", content: row.content ?? "" })
       }
-      deduped.push(msg)
     }
-    return deduped
+    return messages
   }
 
   async appendMessages(sessionId: string, messages: Message[]): Promise<void> {
     await this.ensureSession(sessionId)
     const insert = this.db.prepare(
-      `INSERT INTO chat_messages (session_id, role, content) VALUES (?, ?, ?)`
+      `INSERT INTO chat_messages (session_id, role, content, tool_calls, tool_call_id) VALUES (?, ?, ?, ?, ?)`
     )
     for (const msg of messages) {
-      insert.run(sessionId, msg.role, msg.content)
+      const toolCallsJson = msg.tool_calls ? JSON.stringify(msg.tool_calls) : null
+      const toolCallId = msg.tool_call_id ?? null
+      insert.run(sessionId, msg.role, msg.content, toolCallsJson, toolCallId)
     }
     this.db.prepare(
       `UPDATE chat_sessions SET message_count = message_count + ?, updated_at = datetime('now') WHERE id = ?`

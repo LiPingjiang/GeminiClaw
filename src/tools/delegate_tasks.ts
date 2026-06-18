@@ -10,7 +10,7 @@
 // When sub-tasks complete, ResultInjector pushes results to the user via QQ/channel.
 
 import { registry } from "./registry.js"
-import { asyncExecute } from "../multi-agent/async-executor.js"
+import { asyncExecute, MAX_CONCURRENT_RUNS_PER_PARENT } from "../multi-agent/async-executor.js"
 import { getRunningForParent } from "../multi-agent/subagent-registry.js"
 import type { TaskSpec } from "../multi-agent/task-delegator.js"
 import type { TaskPriority, ExecutionStrategy, ContextMode } from "../multi-agent/types.js"
@@ -31,7 +31,13 @@ registry.register({
     "2) 耗时较长的任务（如浏览器爬取、大规模文件处理）；" +
     "3) 需要独立干净视角的子调查。" +
     "不要用于：单次工具调用即可完成的小事、需要与用户来回交互的任务。" +
-    "子 Agent 默认隔离（不读父对话、不能再次委派），完成后结果自动推送。",
+    "子 Agent 默认隔离（不读父对话、不能再次委派），完成后结果自动推送。" +
+    "\n\n❗ 系统能力边界（你 MUST NOT 对用户承诺超出这些限制的能力）：" +
+    `同一时间最多 ${MAX_CONCURRENT_RUNS_PER_PARENT} 个后台任务在运行（超出会被拒绝）；` +
+    `每次调用最多 ${MAX_TASKS_PER_CALL} 个子任务；` +
+    "如果用户要求的并发数超过系统上限，你 MUST 如实告知用户实际能力，而不是假装可以做到。" +
+    "正确做法：告诉用户'系统最多同时运行 3 个后台任务，我会分批执行'。" +
+    "\n\n💡 派发后如需查看子任务进度，使用 check_subagent_tasks 工具（不要凭记忆猜测状态）。",
   schema: {
     type: "object",
     properties: {
@@ -71,6 +77,10 @@ registry.register({
               description:
                 "可选，默认 leaf（不可再委派）。仅当确需再嵌套一层委派时设为 orchestrator。",
             },
+            context: {
+              type: "string",
+              description: "可选。补充上下文或约束条件，会追加到 description 后面一起传给子 Agent。",
+            },
             context_mode: {
               type: "string",
               enum: ["isolated", "fork", "lightweight"],
@@ -92,6 +102,13 @@ registry.register({
       max_concurrent: {
         type: "number",
         description: "可选，最大并发数，默认 4。",
+      },
+      timeout_seconds: {
+        type: "number",
+        description:
+          "可选，子任务整体超时（秒）。默认 300（5 分钟）。" +
+          "对于耗时较长的任务（如浏览器爬取、大规模文件处理），建议设为 600~1800。" +
+          "最小 60 秒，最大 3600 秒（1 小时）。",
       },
     },
     required: ["tasks"],
@@ -117,6 +134,15 @@ registry.register({
         ? Math.min(params["max_concurrent"] as number, 8)
         : DEFAULT_MAX_CONCURRENT
 
+    // Timeout: clamp to [60, 3600] seconds, default 300s (5 min)
+    const MIN_TIMEOUT_S = 60
+    const MAX_TIMEOUT_S = 3600
+    const DEFAULT_TIMEOUT_S = 300
+    const rawTimeout = typeof params["timeout_seconds"] === "number"
+      ? params["timeout_seconds"] as number
+      : DEFAULT_TIMEOUT_S
+    const timeoutMs = Math.max(MIN_TIMEOUT_S, Math.min(MAX_TIMEOUT_S, rawTimeout)) * 1000
+
     // Build task specs
     const taskSpecs: TaskSpec[] = rawTasks.map((t: Record<string, unknown>) => {
       const role = (t["role"] as string) === "orchestrator" ? "orchestrator" : "leaf"
@@ -128,9 +154,16 @@ registry.register({
           ? requestedTools.filter((name) => !LEAF_DENIED_TOOLS.includes(name))
           : requestedTools
 
+      // Merge context into description if provided
+      const baseDesc = String(t["description"] ?? "")
+      const extraContext = t["context"] ? String(t["context"]) : ""
+      const fullDescription = extraContext
+        ? `${baseDesc}\n\n**补充约束**: ${extraContext}`
+        : baseDesc
+
       return {
         title: String(t["title"] ?? "subtask"),
-        description: String(t["description"] ?? ""),
+        description: fullDescription,
         priority: (t["priority"] as TaskPriority) ?? "normal",
         allowedTools,
         maxTurns:
@@ -198,6 +231,7 @@ registry.register({
       parentUserId,
       strategy,
       maxConcurrent,
+      timeoutMs,
       parentContext,
       logger: ctx.logger,
     })
@@ -209,11 +243,10 @@ registry.register({
       }
     }
 
-    // Show current running tasks for context
+    // Show current running tasks for context — inject system capacity info
     const running = getRunningForParent(parentSessionId)
-    const runningInfo = running.length > 1
-      ? `\n当前共有 ${running.length} 个后台任务在运行。`
-      : ""
+    const slotsUsed = running.length
+    const slotsRemaining = MAX_CONCURRENT_RUNS_PER_PARENT - slotsUsed
 
     // Return immediately — parent agent is NOT blocked
     const taskList = taskSpecs.map((t, i) => `  ${i + 1}. ${t.title}`).join("\n")
@@ -223,11 +256,17 @@ registry.register({
         `✅ 已接受 ${taskSpecs.length} 个子任务，后台异步执行中。`,
         `任务ID: ${result.runId}`,
         `策略: ${strategy}`,
+        `超时: ${timeoutMs / 1000}s`,
         `任务列表:`,
         taskList,
         "",
+        `📊 系统状态: ${slotsUsed}/${MAX_CONCURRENT_RUNS_PER_PARENT} 后台槽位已占用，剩余 ${slotsRemaining} 个可用。`,
+        slotsRemaining === 0
+          ? `⚠️ 后台槽位已满，下次调用将被拒绝。需等待当前任务完成后才能启动新任务。`
+          : `还可以再启动 ${slotsRemaining} 个后台任务。`,
+        "",
         `子任务完成后结果会自动推送给用户，你无需等待。`,
-        `你现在可以继续回答用户的其他问题。${runningInfo}`,
+        `你现在可以继续回答用户的其他问题。`,
       ].join("\n"),
     }
   },
