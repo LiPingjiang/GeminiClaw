@@ -195,10 +195,13 @@ function App({ srv, opts }: { srv: ServerConfig; opts: TuiOptions }) {
 
   return (
     <Box flexDirection="column" height={termSize.rows}>
-      <Header state={headerState} />
-      <Box flexDirection="column" flexGrow={1} height={termSize.rows - 3}>
+      <Box flexShrink={0}>
+        <Header state={headerState} />
+      </Box>
+      <Box flexDirection="column" flexGrow={1} overflowY="hidden">
         <MessageList events={events} streamingContent={streamingContent} columns={termSize.columns} />
       </Box>
+      <Box flexShrink={0}>
       <Editor
         value={input}
         cursor={inputCursor}
@@ -212,6 +215,7 @@ function App({ srv, opts }: { srv: ServerConfig; opts: TuiOptions }) {
         }}
         onExit={exit}
       />
+      </Box>
     </Box>
   )
 }
