@@ -1,6 +1,7 @@
 import React from 'react'
 import { Box, Text, useCursor, usePaste } from 'ink'
 import { useTextInput } from '../hooks/use-text-input.js'
+import { snapPos } from '../lib/grapheme.js'
 import type { TuiAction } from '../state.js'
 
 export interface EditorProps {
@@ -26,7 +27,7 @@ export function Editor({ value, cursor, columns, focus, dispatch, onSubmit, onCa
     (text) => {
       if (!focus) return
       const newVal = value.slice(0, cursor) + text + value.slice(cursor)
-      const newCur = cursor + text.length
+      const newCur = snapPos(newVal, cursor + text.length)
       dispatch({ type: 'INPUT_CHANGE', value: newVal, cursor: newCur })
     },
     { isActive: focus },

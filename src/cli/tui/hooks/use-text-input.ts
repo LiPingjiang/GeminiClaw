@@ -235,9 +235,7 @@ export function useTextInput(opts: UseTextInputOpts): UseTextInputResult {
   )
 
   const rendered = renderWithCursor(value, cursor)
-  // Subtract 3 columns for the '> ' prompt prefix (2 chars + 1 space)
-  const inputCols = Math.max(1, columns - 3)
-  const { row, col } = computeCursorPosition(value, cursor, inputCols)
+  const { row, col } = computeCursorPosition(value, cursor, columns)
 
   return { rendered, cursorRow: row, cursorCol: col }
 }
