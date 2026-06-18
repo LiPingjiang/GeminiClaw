@@ -150,6 +150,14 @@ function App({ srv, opts }: { srv: ServerConfig; opts: TuiOptions }) {
       authToken: srv.authToken,
 
       onEvent: (event: TuiEvent) => {
+        if (event.kind === 'thinking_delta') {
+          dispatch({ type: 'THINKING_DELTA', delta: event.delta, nowMs: Date.now() })
+          return
+        }
+        if (event.kind === 'thinking_end') {
+          dispatch({ type: 'THINKING_DONE', content: event.content, durationMs: event.durationMs })
+          return
+        }
         if (event.kind === 'delta') {
           // Throttle: accumulate deltas, flush at most every 50ms
           pendingDeltaRef.current += event.content
@@ -191,7 +199,8 @@ function App({ srv, opts }: { srv: ServerConfig; opts: TuiOptions }) {
     })
   }, [state.isRunning, state.currentSessionId, srv, opts.model, exit])
 
-  const { termSize, headerState, events, streamingContent, input, inputCursor, isRunning } = state
+  const { termSize, headerState, events, streamingContent, input, inputCursor, isRunning,
+          thinkingContent, thinkingStartMs, thinkingDone, scrollOffset } = state
 
   return (
     <Box flexDirection="column" height={termSize.rows}>
@@ -199,7 +208,17 @@ function App({ srv, opts }: { srv: ServerConfig; opts: TuiOptions }) {
         <Header state={headerState} columns={termSize.columns} />
       </Box>
       <Box flexDirection="column" flexGrow={1} overflowY="hidden">
-        <MessageList events={events} streamingContent={streamingContent} columns={termSize.columns} />
+        <MessageList
+          events={events}
+          streamingContent={streamingContent}
+          columns={termSize.columns}
+          scrollOffset={scrollOffset}
+          visibleRows={termSize.rows - 4}
+          thinkingContent={thinkingContent}
+          thinkingStartMs={thinkingStartMs}
+          thinkingDone={thinkingDone}
+          elapsedMs={headerState.elapsedMs ?? 0}
+        />
       </Box>
       <Box flexShrink={0}>
       <Editor

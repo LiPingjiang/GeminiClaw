@@ -59,6 +59,7 @@ export interface ChatOptions {
   temperature?: number
   tools?: ToolDefinition[]
   tool_choice?: "auto" | "none" | "required" | { type: "function"; function: { name: string } }
+  thinking?: { type: 'enabled'; budget_tokens: number }
 }
 
 export interface TokenUsage {
@@ -77,6 +78,10 @@ export interface ChatResponse {
   tool_calls?: ToolCall[]
   /** The route actually used (e.g. "agnes/agnes-2.0-flash"). Present when fallback was triggered. */
   routeUsed?: string
+  /** Accumulated thinking text if thinking mode was enabled and the model returned a thinking block */
+  thinkingContent?: string
+  /** Duration from response receipt to end of thinking block extraction (ms) */
+  thinkingDurationMs?: number
 }
 
 export interface StreamChunk {

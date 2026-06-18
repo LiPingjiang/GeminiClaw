@@ -18,6 +18,20 @@ import { decideParallelization } from "./parallel-decision.js";
 import { truncateToolResult, enforceTurnBudget } from "./tool-result-truncation.js";
 import { EXECUTION_BIAS } from "./execution-bias.js";
 import { hookBus } from "../hooks/index.js";
+import { appendFileSync, mkdirSync } from "node:fs";
+import { join } from "node:path";
+
+// ── Tool Execution Audit Log ────────────────────────────────────────────────
+const AUDIT_DIR = join(process.env.HOME ?? "/tmp", ".gemeniclaw", "audit");
+try { mkdirSync(AUDIT_DIR, { recursive: true }); } catch {}
+
+function toolAudit(event: string, data: Record<string, unknown>) {
+  const ts = new Date().toISOString();
+  const line = JSON.stringify({ ts, event, ...data }) + "\n";
+  try {
+    appendFileSync(join(AUDIT_DIR, "tool_calls.jsonl"), line, "utf-8");
+  } catch {}
+}
 
 // ── Tools that are known to mutate state ────────────────────────────────────
 const MUTATING_TOOLS = new Set(["exec", "write", "edit", "file_write", "execute_script"]);
@@ -45,8 +59,8 @@ export type InternalMessage =
 
 export type ChatFn = (
   messages: InternalMessage[],
-  options?: { model?: string; tools?: unknown[] },
-) => Promise<{ content: string; tool_calls?: ToolCall[] }>;
+  options?: { model?: string; tools?: unknown[]; thinking?: { type: 'enabled'; budget_tokens: number } },
+) => Promise<{ content: string; tool_calls?: ToolCall[]; model?: string; usage?: { inputTokens: number; outputTokens: number; cacheReadInputTokens?: number; cacheCreationInputTokens?: number }; thinkingContent?: string; thinkingDurationMs?: number }>;
 
 type JSONSchema = Record<string, unknown>;
 
@@ -171,6 +185,8 @@ export class AgentLoop {
     this._toolContextExtra = params.toolContextExtra ?? {};
     let messages = [...params.messages];
     let turn = 0;
+    let lastModel: string | undefined;
+    let lastUsage: { inputTokens: number; outputTokens: number; cacheReadInputTokens?: number; cacheCreationInputTokens?: number } | undefined;
     const maxTurns = this.config.maxTurns;
 
     // ── Build system prompt with Execution Bias ──────────────────────────────
@@ -243,7 +259,7 @@ export class AgentLoop {
     let consecutiveIdleTurns = 0;
     while (budget.remaining > 0 || budget.canGrace) {
       if (params.signal?.aborted) {
-        yield { type: "agent_end", totalTurns: turn, stopReason: "aborted" };
+        yield { type: "agent_end", totalTurns: turn, stopReason: "aborted", model: lastModel, usage: lastUsage };
         return;
       }
 
@@ -264,6 +280,8 @@ export class AgentLoop {
 
         try {
           const response = await this.chatFn(messages, { model: params.model });
+          lastModel = response.model;
+          lastUsage = response.usage;
           if (response.content) {
             yield { type: "message_delta", delta: response.content };
           } else {
@@ -275,7 +293,7 @@ export class AgentLoop {
           yield { type: "message_delta", delta: `已执行 ${turn} 轮操作，处理过程中出现异常。如需继续请再次发送指令。` };
         }
 
-        yield { type: "agent_end", totalTurns: turn, stopReason: "max_turns" };
+        yield { type: "agent_end", totalTurns: turn, stopReason: "max_turns", model: lastModel, usage: lastUsage };
         return;
       }
 
@@ -300,7 +318,7 @@ export class AgentLoop {
         messages = [{ role: "system" as const, content: fullSystemPrompt }, ...messages];
       }
 
-      let response: { content: string; tool_calls?: ToolCall[] };
+      let response: { content: string; tool_calls?: ToolCall[]; model?: string; usage?: { inputTokens: number; outputTokens: number; cacheReadInputTokens?: number; cacheCreationInputTokens?: number }; thinkingContent?: string; thinkingDurationMs?: number };
       try {
         // ── Hook: pre_llm_call ──
         await hookBus.emit("pre_llm_call", {
@@ -312,7 +330,10 @@ export class AgentLoop {
         response = await this.chatFn(messages, {
           model: params.model,
           tools: toolSchemas,
+          ...(this.supportsThinking(params.model) ? { thinking: { type: 'enabled', budget_tokens: 8000 } } : {}),
         });
+        lastModel = response.model;
+        lastUsage = response.usage;
         // ── Hook: post_llm_call ──
         await hookBus.emit("post_llm_call", {
           model: params.model,
@@ -323,8 +344,14 @@ export class AgentLoop {
         });
       } catch (err) {
         this.logger.error("chatFn threw", err);
-        yield { type: "agent_end", totalTurns: turn, stopReason: "error" };
+        yield { type: "agent_end", totalTurns: turn, stopReason: "error", model: lastModel, usage: lastUsage };
         return;
+      }
+
+      // ── Emit thinking events if present ─────────────────────────────────────
+      if (response.thinkingContent) {
+        yield { type: "thinking_delta", delta: response.thinkingContent };
+        yield { type: "thinking_end", content: response.thinkingContent, durationMs: response.thinkingDurationMs ?? 0 };
       }
 
       // Pi 风格：只有最终轮（无工具调用）才 emit message_delta
@@ -402,7 +429,7 @@ export class AgentLoop {
             if (consecutiveIdleTurns >= 2) {
               this.logger.error("idle-loop detected: model promised action " + consecutiveIdleTurns + " times without tool calls, aborting");
               yield { type: "message_delta", delta: "（检测到空转：模型连续承诺但不执行，已终止。）" };
-              yield { type: "agent_end", totalTurns: turn, stopReason: "aborted" };
+              yield { type: "agent_end", totalTurns: turn, stopReason: "aborted", model: lastModel, usage: lastUsage };
               return;
             }
             messages = [
@@ -420,6 +447,8 @@ export class AgentLoop {
           type: "agent_end",
           totalTurns: turn,
           stopReason: "no_tool_calls",
+          model: lastModel,
+          usage: lastUsage,
         };
         return;
       }
@@ -580,6 +609,8 @@ export class AgentLoop {
             type: "agent_end",
             totalTurns: turn,
             stopReason: "aborted",
+            model: lastModel,
+            usage: lastUsage,
           };
           return;
         }
@@ -604,6 +635,8 @@ export class AgentLoop {
               type: "agent_end",
               totalTurns: turn,
               stopReason: "aborted",
+              model: lastModel,
+              usage: lastUsage,
             };
             return;
           }
@@ -638,7 +671,7 @@ export class AgentLoop {
       type: "message_delta",
       delta: `（任务已执行 ${turn} 轮，达到上限。如需继续请回复「继续」。）`,
     };
-    yield { type: "agent_end", totalTurns: turn, stopReason: "max_turns" };
+    yield { type: "agent_end", totalTurns: turn, stopReason: "max_turns", model: lastModel, usage: lastUsage };
   }
 
   // ── Interrupt point implementation ────────────────────────────────────────
@@ -651,6 +684,12 @@ export class AgentLoop {
     yield { type: "paused", pauseId, payload } as AgentEvent;
     const userInput = await waitForResume;
     return userInput;
+  }
+
+  // ── Thinking support detection ────────────────────────────────────────────
+  private supportsThinking(model?: string): boolean {
+    const m = model ?? ''
+    return m.includes('claude') && (m.includes('sonnet-4') || m.includes('opus-4') || m.includes('claude-4'))
   }
 
   // ── Plan extraction ───────────────────────────────────────────────────────
@@ -812,6 +851,7 @@ export class AgentLoop {
     }
 
     const startMs = Date.now();
+    toolAudit("TOOL_EXEC_START", { toolCallId: tc.id, toolName: tc.name, argsPreview: JSON.stringify(tc.args).slice(0, 500), sessionId });
     let toolResult: ToolResult;
     let isError = false;
     let multimodal: ContentPart[] | undefined;
@@ -860,6 +900,16 @@ export class AgentLoop {
     }
 
     const durationMs = Date.now() - startMs;
+    // 2026-06-17: 扩大审计日志存储范围，防止 P5 结果丢失
+    // 回滚方案：将 resultFull 改回 resultPreview: toolResult.content.slice(0, 300)
+    const AUDIT_RESULT_LIMIT = 5000;
+    toolAudit("TOOL_EXEC_END", {
+      toolCallId: tc.id, toolName: tc.name, durationMs, isError, sessionId,
+      resultPreview: toolResult.content.slice(0, 300),
+      resultFull: toolResult.content.length <= AUDIT_RESULT_LIMIT
+        ? toolResult.content
+        : toolResult.content.slice(0, AUDIT_RESULT_LIMIT) + `\n...[truncated, total ${toolResult.content.length} chars]`,
+    });
     // Smart truncation (Layer 1 + Layer 2)
     const truncationResult = truncateToolResult(toolResult.content, tc.name, sessionId);
     toolResult = { ...toolResult, content: truncationResult.content };

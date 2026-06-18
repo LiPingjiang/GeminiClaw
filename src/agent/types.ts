@@ -71,10 +71,14 @@ export type AgentEvent =
       type: "agent_end";
       totalTurns: number;
       stopReason: "no_tool_calls" | "max_turns" | "aborted" | "error";
+      model?: string;
+      usage?: { inputTokens: number; outputTokens: number; cacheReadInputTokens?: number; cacheCreationInputTokens?: number };
     }
   | { type: "paused"; pauseId: string; payload: PausePayload }
   | { type: "guardrail_warn"; toolName: string; message: string }
-  | { type: "guardrail_halt"; toolName: string; message: string };
+  | { type: "guardrail_halt"; toolName: string; message: string }
+  | { type: "thinking_delta"; delta: string }
+  | { type: "thinking_end"; content: string; durationMs: number };
 
 export interface ToolCall {
   id: string;
