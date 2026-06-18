@@ -178,7 +178,7 @@ async function sandboxExecHandler(params: any, _ctx: any) {
 
       // Still pending or running — continue polling
     } catch (err: any) {
-      // Network hiccup — retry
+      auditLog('POLL_ERROR', { taskId, codeHash, error: err.message, elapsedMs: Date.now() - startTime });
       if (Date.now() - startTime > maxWait - 5000) {
         return { type: 'error', error: `轮询超时，最后错误: ${err.message}` };
       }

@@ -176,9 +176,9 @@ export class LayeredStrategy implements MemoryStrategy {
         const text = row.content ?? ""
         // 跳过完全空的 assistant 消息（除非有 tool_calls）
         if (!text && !row.tool_calls) continue
-        // 去重：跳过已出现过的相同 assistant 内容
+        // 去重：跳过已出现过的相同 assistant 内容（仅对无 tool_calls 的消息去重）
         if (text.length > 50 && seenAssistantContent.has(text) && !row.tool_calls) continue
-        if (text.length > 50) seenAssistantContent.add(text)
+        if (text.length > 50 && !row.tool_calls) seenAssistantContent.add(text)
 
         const msg: Message = { role: "assistant", content: text }
         if (row.tool_calls) {
@@ -197,8 +197,8 @@ export class LayeredStrategy implements MemoryStrategy {
           })
         }
         // 没有 tool_call_id 的 tool 消息跳过（旧数据兼容）
-      } else {
-        messages.push({ role: row.role as "user" | "system", content: row.content ?? "" })
+      } else if (row.role === "user" || row.role === "system") {
+        messages.push({ role: row.role, content: row.content ?? "" })
       }
     }
     return messages

@@ -118,15 +118,12 @@ export function migrate(db: Db): void {
   }
 
   // SQLite cannot ALTER CHECK constraints, so we recreate the table if role constraint is too narrow.
-  // We detect this by trying to insert a 'tool' role — if it fails, we need to rebuild.
+  // Detect by reading the schema definition — avoids FK/CHECK ambiguity from INSERT-based tests.
   const needsRoleUpdate = (() => {
-    try {
-      db.exec(`INSERT INTO chat_messages (session_id, role, content) VALUES ('__migration_test__', 'tool', '')`)
-      db.exec(`DELETE FROM chat_messages WHERE session_id = '__migration_test__'`)
-      return false
-    } catch {
-      return true
-    }
+    const row = db.prepare(
+      `SELECT sql FROM sqlite_master WHERE type='table' AND name='chat_messages'`
+    ).get() as { sql: string } | undefined
+    return !row?.sql.includes("'tool'")
   })()
 
   if (needsRoleUpdate) {

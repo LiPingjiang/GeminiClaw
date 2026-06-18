@@ -25,16 +25,20 @@ export function stripToolXml(text: string): string {
       out += result.slice(i, s);
       const e = result.indexOf(close, s);
       if (e === -1) {
-        // Unclosed tag — strip from open tag to end
+        // Unclosed tag: intentionally drop everything from the opening tag onward.
+        // These are internal-reasoning tags; if the close is missing the content is
+        // incomplete internal state, not user-facing text.
         break;
       }
       i = e + close.length;
     }
     result = out;
   }
-  // Also strip via regex for variant casing (full open+content+close)
+  // Complementary regex pass: catches the same tag families with attributes
+  // (e.g. <thinking type="internal">), which the loop above misses because it
+  // only matches the exact bare form <tag>...</tag>.
   result = result.replace(/<(?:antThinking|thinking|internal_reasoning)[^>]*>[\s\S]*?<\/(?:antThinking|thinking|internal_reasoning)>/gi, "");
-  // Strip any remaining orphan tags
+  // Strip any remaining orphan open/close tags left by attribute variants.
   result = result.replace(/<\/?(?:antThinking|thinking|internal_reasoning)[^>]*>/gi, "");
   return result.trim();
 }
