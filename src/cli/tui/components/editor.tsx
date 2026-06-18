@@ -29,12 +29,14 @@ export interface EditorProps {
   onBtwScrollUp?: () => void
   onBtwScrollDown?: () => void
   onBtwClose?: () => void
+  elapsedMs?: number
+  totalOutputTokens?: number
 }
 
 const PROMPT = '> '
 const PROMPT_WIDTH = 2 // '> ' is 2 columns wide
 
-export function Editor({ value, cursor, columns, focus, dispatch, onSubmit, onCancel, onExit, attachments, onScrollUp, onScrollDown, onScrollToBottom, isRunning, currentTool, suggestions, selectedSuggestion, onHistoryUp, onHistoryDown, btwState, onBtwScrollUp, onBtwScrollDown, onBtwClose }: EditorProps) {
+export function Editor({ value, cursor, columns, focus, dispatch, onSubmit, onCancel, onExit, attachments, onScrollUp, onScrollDown, onScrollToBottom, isRunning, currentTool, suggestions, selectedSuggestion, onHistoryUp, onHistoryDown, btwState, onBtwScrollUp, onBtwScrollDown, onBtwClose, elapsedMs, totalOutputTokens }: EditorProps) {
   // Bracketed paste: Ink 7 usePaste handles \x1b[200~...\x1b[201~ natively.
   // Pasted text is inserted at cursor position as a single string.
   usePaste(
@@ -141,38 +143,73 @@ export function Editor({ value, cursor, columns, focus, dispatch, onSubmit, onCa
 
   if (!focus) {
     return (
-      <Box>
-        <Text color="gray" bold>{PROMPT}</Text>
-        <Text dimColor>{value || 'waiting for agent...'}</Text>
-      </Box>
+      <>
+        <Text dimColor>{'─'.repeat(columns)}</Text>
+        <Box>
+          <Text color="gray" bold>{PROMPT}</Text>
+          <Text dimColor>{value || 'waiting for agent...'}</Text>
+        </Box>
+      </>
     )
   }
 
   return (
-    <Box flexDirection="column">
-      {attachments.length > 0 && (
+    <>
+      <Text dimColor>{'─'.repeat(columns)}</Text>
+      <Box flexDirection="column">
+        {attachments.length > 0 && (
+          <Box>
+            {attachments.map((a, i) => (
+              <Text key={i} dimColor>{' [🖼 '}{a.filename}{' '}{formatBytes(a.sizeBytes)}{']'}</Text>
+            ))}
+            <Text dimColor>{'  · Esc to clear'}</Text>
+          </Box>
+        )}
         <Box>
-          {attachments.map((a, i) => (
-            <Text key={i} dimColor>{' [🖼 '}{a.filename}{' '}{formatBytes(a.sizeBytes)}{']'}</Text>
-          ))}
-          <Text dimColor>{'  · Esc to clear'}</Text>
+          <Text color="yellow" bold>{PROMPT}</Text>
+          {/* rendered contains ANSI escape sequences for cursor highlight */}
+          <Text>{rendered}</Text>
         </Box>
-      )}
-      <Box>
-        <Text color="yellow" bold>{PROMPT}</Text>
-        {/* rendered contains ANSI escape sequences for cursor highlight */}
-        <Text>{rendered}</Text>
+        <StatusBar
+          focus={focus}
+          isRunning={isRunning}
+          currentTool={currentTool}
+          inputEmpty={value === ''}
+          inputIsCommand={value.startsWith('/')}
+          columns={columns}
+          elapsedMs={elapsedMs}
+          totalOutputTokens={totalOutputTokens}
+        />
       </Box>
-      <StatusBar
-        focus={focus}
-        isRunning={isRunning}
-        currentTool={currentTool}
-        inputEmpty={value === ''}
-        inputIsCommand={value.startsWith('/')}
-        columns={columns}
-      />
-    </Box>
+    </>
   )
+}
+
+// ── Spinner constants (matching Claude Code's style) ──────────────────────────
+
+const SPINNER_GLYPHS = ['·', '✢', '✳', '✶', '✻', '✽']
+const SPINNER_GLYPHS_REV = [...SPINNER_GLYPHS].reverse()
+const SPINNER_CYCLE = [...SPINNER_GLYPHS, ...SPINNER_GLYPHS_REV]
+
+const SPINNER_VERBS = [
+  'Thinking', 'Working', 'Analyzing', 'Computing', 'Reasoning',
+  'Processing', 'Generating', 'Synthesizing', 'Orchestrating', 'Evaluating',
+  'Crunching', 'Deliberating', 'Calculating', 'Crafting', 'Pondering',
+  'Puttering', 'Musing', 'Ruminating', 'Cogitating', 'Scheming',
+  'Wrangling', 'Tinkering', 'Brewing', 'Cooking', 'Forging',
+]
+
+function formatDuration(ms: number): string {
+  if (ms < 60_000) return `${Math.floor(ms / 1000)}s`
+  const m = Math.floor(ms / 60_000)
+  const s = Math.floor((ms % 60_000) / 1000)
+  return s === 0 ? `${m}m` : `${m}m ${s}s`
+}
+
+function formatTokens(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}m`
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`
+  return String(n)
 }
 
 function StatusBar({
@@ -182,6 +219,8 @@ function StatusBar({
   inputEmpty,
   inputIsCommand,
   columns,
+  elapsedMs = 0,
+  totalOutputTokens = 0,
 }: {
   focus: boolean
   isRunning: boolean
@@ -189,15 +228,34 @@ function StatusBar({
   inputEmpty: boolean
   inputIsCommand: boolean
   columns: number
+  elapsedMs?: number
+  totalOutputTokens?: number
 }) {
+  const [frame, setFrame] = React.useState(0)
+  const [verbIdx, setVerbIdx] = React.useState(0)
+
+  React.useEffect(() => {
+    if (!isRunning) return
+    const glyphTimer = setInterval(() => setFrame(f => (f + 1) % SPINNER_CYCLE.length), 120)
+    const verbTimer  = setInterval(() => setVerbIdx(i => (i + 1) % SPINNER_VERBS.length), 2000)
+    return () => { clearInterval(glyphTimer); clearInterval(verbTimer) }
+  }, [isRunning])
+
   if (!focus) return null
 
   if (isRunning) {
-    const toolLabel = currentTool ? `⚡${currentTool}` : 'Thinking…'
+    const glyph  = SPINNER_CYCLE[frame % SPINNER_CYCLE.length] ?? '✻'
+    const verb   = SPINNER_VERBS[verbIdx % SPINNER_VERBS.length] ?? 'Working'
+    const label  = currentTool ? `${glyph} ${currentTool}…` : `${glyph} ${verb}…`
+    const timeStr  = elapsedMs > 0 ? formatDuration(elapsedMs) : ''
+    const tokenStr = totalOutputTokens > 0 ? `↓ ${formatTokens(totalOutputTokens)} tokens` : ''
+    const parts = [timeStr, tokenStr].filter(Boolean)
+    const suffix = parts.length > 0 ? ` (${parts.join(' · ')})` : ''
+
     return (
       <Box justifyContent="space-between">
-        <Text dimColor>{'  ● '}{toolLabel}</Text>
-        <Text dimColor>{'Ctrl+C interrupt  '}</Text>
+        <Text color="green">{label}</Text>
+        <Text dimColor>{suffix}{'  esc to interrupt'}</Text>
       </Box>
     )
   }
@@ -218,7 +276,6 @@ function StatusBar({
     )
   }
 
-  // idle + empty
   return (
     <Box justifyContent="space-between">
       <Text dimColor>{'  /btw · /clear · /model · /help'}</Text>

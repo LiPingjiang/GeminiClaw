@@ -399,6 +399,8 @@ function App({ srv, opts }: { srv: ServerConfig; opts: TuiOptions }) {
             dispatch({ type: 'INPUT_HISTORY_DOWN' })
           }
         }}
+        elapsedMs={headerState.elapsedMs ?? 0}
+        totalOutputTokens={headerState.totalOutputTokens ?? 0}
       />
       </Box>
     </Box>
