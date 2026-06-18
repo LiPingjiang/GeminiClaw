@@ -301,11 +301,29 @@ describe('btwState', () => {
     expect(s2.btwState.phase).toBe('idle')
   })
 
-  it('BTW_SCROLL adjusts scrollOffset', () => {
+  it('BTW_SCROLL adjusts scrollOffset within content bounds', () => {
+    // Need content with > 12 lines so maxScroll > 0
+    const longContent = Array.from({ length: 20 }, (_, i) => `line ${i}`).join('\n')
     const s1 = tuiReducer(base, { type: 'BTW_START', question: 'q' })
-    const s2 = tuiReducer(s1, { type: 'BTW_DELTA', content: 'x' })
+    const s2 = tuiReducer(s1, { type: 'BTW_DELTA', content: longContent })
     const s3 = tuiReducer(s2, { type: 'BTW_SCROLL', delta: 3 })
     if (s3.btwState.phase === 'showing') expect(s3.btwState.scrollOffset).toBe(3)
+  })
+
+  it('BTW_SCROLL clamps at content length', () => {
+    const longContent = Array.from({ length: 15 }, (_, i) => `line ${i}`).join('\n')
+    const s1 = tuiReducer(base, { type: 'BTW_START', question: 'q' })
+    const s2 = tuiReducer(s1, { type: 'BTW_DELTA', content: longContent })
+    // maxScroll = 15 - 12 = 3; scroll 10 should clamp at 3
+    const s3 = tuiReducer(s2, { type: 'BTW_SCROLL', delta: 10 })
+    if (s3.btwState.phase === 'showing') expect(s3.btwState.scrollOffset).toBe(3)
+  })
+
+  it('BTW_SCROLL clamps at 0 when content fits in viewport', () => {
+    const s1 = tuiReducer(base, { type: 'BTW_START', question: 'q' })
+    const s2 = tuiReducer(s1, { type: 'BTW_DELTA', content: 'short' })
+    const s3 = tuiReducer(s2, { type: 'BTW_SCROLL', delta: 3 })
+    if (s3.btwState.phase === 'showing') expect(s3.btwState.scrollOffset).toBe(0)
   })
 })
 
