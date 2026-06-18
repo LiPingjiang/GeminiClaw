@@ -7,6 +7,7 @@ import { join } from 'path'
 import os from 'os'
 import yaml from 'js-yaml'
 import { streamChat } from './sse-client.js'
+import { saveLastSessionId } from './session-store.js'
 import { Header } from './components/header.js'
 import { MessageList } from './components/message-list.js'
 import { Editor } from './components/editor.js'
@@ -164,6 +165,32 @@ function App({ srv, opts }: { srv: ServerConfig; opts: TuiOptions }) {
     })()
   }, [])
 
+  // ── History backfill — only runs once at startup if sessionId is provided ──
+  useEffect(() => {
+    const sid = opts.sessionId
+    if (!sid) return
+
+    const url = `${srv.baseUrl}/v1/sessions/${encodeURIComponent(sid)}/messages?limit=30`
+    fetch(url, {
+      headers: srv.authToken ? { Authorization: `Bearer ${srv.authToken}` } : {},
+    })
+      .then(r => r.ok ? r.json() : null)
+      .then((data: any) => {
+        if (!data?.messages?.length) return
+        const historyEvents = data.messages
+          .filter((m: any) => m.role === 'user' || m.role === 'assistant')
+          .map((m: any): TuiEvent => m.role === 'user'
+            ? { kind: 'user_message', content: String(m.content ?? '') }
+            : { kind: 'response', content: String(m.content ?? '') }
+          )
+        if (historyEvents.length > 0) {
+          dispatch({ type: 'LOAD_HISTORY', events: historyEvents })
+          dispatch({ type: 'SSE_EVENT', event: { kind: 'system', message: `↺ Loaded ${historyEvents.length} messages` } })
+        }
+      })
+      .catch(() => {}) // ignore failures — server may not be running yet
+  }, [])  // empty deps — run once at mount
+
   // ── Cleanup ─────────────────────────────────────────────────────
   useEffect(() => {
     return () => {
@@ -224,7 +251,10 @@ function App({ srv, opts }: { srv: ServerConfig; opts: TuiOptions }) {
         dispatch({ type: 'SSE_EVENT', event })
       },
 
-      onSessionId: (sid) => dispatch({ type: 'SESSION_ID', id: sid }),
+      onSessionId: (sid) => {
+        dispatch({ type: 'SESSION_ID', id: sid })
+        saveLastSessionId(sid)
+      },
 
       onDone: () => {
         if (elapsedTimerRef.current) { clearInterval(elapsedTimerRef.current); elapsedTimerRef.current = null }

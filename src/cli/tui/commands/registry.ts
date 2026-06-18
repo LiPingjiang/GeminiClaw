@@ -1,7 +1,7 @@
 // src/cli/tui/commands/registry.ts
 import type React from 'react'
 import type { TuiAction } from '../state.js'
-import { btwHandler, bgHandler, copyHandler } from './handlers.js'
+import { btwHandler, bgHandler, copyHandler, sessionHandler } from './handlers.js'
 
 export interface CommandContext {
   dispatch: React.Dispatch<TuiAction>
@@ -40,7 +40,7 @@ export const COMMANDS: TuiCommand[] = [
     prefix: '/session',
     description: '切换或列出 session',
     argHint: '[id]',
-    handler: (_args, _ctx) => { /* wired in Task 5 */ },
+    handler: (args, ctx) => sessionHandler(args, ctx),
   },
   {
     name: 'new',

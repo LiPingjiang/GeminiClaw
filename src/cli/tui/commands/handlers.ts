@@ -1,6 +1,7 @@
 // src/cli/tui/commands/handlers.ts
 import { execSync } from 'node:child_process'
 import { streamChat } from '../sse-client.js'
+import { saveLastSessionId } from '../session-store.js'
 import type { CommandContext } from './registry.js'
 
 export function btwHandler(question: string, ctx: CommandContext): void {
@@ -73,4 +74,61 @@ export function copyHandler(events: import('../types.js').TuiEvent[], ctx: Comma
   } catch {
     // Silently ignore pbcopy failures
   }
+}
+
+export function sessionHandler(args: string, ctx: CommandContext): void {
+  const id = args.trim()
+
+  if (!id) {
+    // List recent sessions
+    fetch(`${ctx.baseUrl}/v1/sessions?limit=5`, {
+      headers: ctx.authToken ? { Authorization: `Bearer ${ctx.authToken}` } : {},
+    })
+      .then(r => r.ok ? r.json() : null)
+      .then((data: any) => {
+        if (!data?.sessions?.length) {
+          ctx.dispatch({ type: 'SSE_EVENT', event: { kind: 'system', message: 'No sessions found.' } })
+          return
+        }
+        const lines = data.sessions.map((s: any) => {
+          const date = s.updated_at?.slice(0, 10) ?? '?'
+          const msgs = s.message_count ?? 0
+          const title = s.title ? ` "${s.title}"` : ''
+          return `  ${s.id.slice(0, 8)}  ${date}  ${msgs} msgs${title}`
+        })
+        ctx.dispatch({
+          type: 'SSE_EVENT',
+          event: { kind: 'system', message: `Sessions:\n${lines.join('\n')}\n(type /session <id> to switch)` },
+        })
+      })
+      .catch(() => ctx.dispatch({ type: 'SSE_EVENT', event: { kind: 'system', message: 'Could not fetch sessions.' } }))
+    return
+  }
+
+  // Switch to session — clear events, load history
+  ctx.dispatch({ type: 'CLEAR' })
+  ctx.dispatch({ type: 'SESSION_ID', id })
+
+  fetch(`${ctx.baseUrl}/v1/sessions/${encodeURIComponent(id)}/messages?limit=30`, {
+    headers: ctx.authToken ? { Authorization: `Bearer ${ctx.authToken}` } : {},
+  })
+    .then(r => r.ok ? r.json() : null)
+    .then((data: any) => {
+      if (!data?.messages?.length) {
+        ctx.dispatch({ type: 'SSE_EVENT', event: { kind: 'system', message: `Session ${id.slice(0, 8)} — no history.` } })
+        return
+      }
+      const historyEvents = data.messages
+        .filter((m: any) => m.role === 'user' || m.role === 'assistant')
+        .map((m: any) => m.role === 'user'
+          ? { kind: 'user_message' as const, content: String(m.content ?? '') }
+          : { kind: 'response' as const, content: String(m.content ?? '') }
+        )
+      ctx.dispatch({ type: 'LOAD_HISTORY', events: historyEvents })
+      ctx.dispatch({ type: 'SSE_EVENT', event: { kind: 'system', message: `↺ Switched to session ${id.slice(0, 8)}, loaded ${historyEvents.length} messages` } })
+
+      // Persist as last session
+      saveLastSessionId(id)
+    })
+    .catch(() => ctx.dispatch({ type: 'SSE_EVENT', event: { kind: 'system', message: `Session ${id.slice(0, 8)} not found.` } }))
 }
