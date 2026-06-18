@@ -562,11 +562,11 @@ Existing `console.log` calls in `loop.ts`, `qqbot/index.ts`, etc. are **not remo
 - `src/cli/tui/components/header.tsx` — remove border, text separator, thinking indicator
 - `src/cli/tui/components/editor.tsx` — image paste detection + attachment display
 - `src/cli/tui/components/message-list.tsx` — pass thinkingContent for ThinkingLine
-- `src/cli/tui/state.ts` — thinkingContent, thinkingDone, inputAttachments fields + new actions
+- `src/cli/tui/state.ts` — thinkingContent, thinkingDone, inputAttachments, scrollOffset fields + new actions
 - `src/cli/tui/state.test.ts` — new reducer tests
 - `src/cli/tui/types.ts` — new TuiEvent kinds (diff, thinking_delta, thinking_end)
 - `src/cli/tui/sse-client.ts` — translate thinking + diff events
-- `src/cli/tui/app.tsx` — pass attachments to streamChat, handle thinking state
+- `src/cli/tui/app.tsx` — pass attachments to streamChat, handle thinking state, mouse byte interception
 - `src/agent/loop.ts` — extended_thinking param, stream parsing, traceHub calls, requestId
 - `src/agent/types.ts` — new AgentEvent types for thinking
 - `src/trace/hub.ts` — global singleton, persistence
@@ -577,8 +577,146 @@ Existing `console.log` calls in `loop.ts`, `qqbot/index.ts`, etc. are **not remo
 
 ---
 
+---
+
+## Part 6: Mouse Wheel Scroll
+
+### Problem
+
+Ink 7 (public) has no mouse wheel support. The message list currently has `overflowY="hidden"` which clips content correctly but provides no way to scroll up to read earlier messages. The input bar must stay fixed at the bottom.
+
+### Approach
+
+Ink 7 does not expose mouse events, so we intercept raw stdin bytes ourselves — the same pattern used by `useTextInput` for keyboard handling. This coexists safely because mouse escape sequences start with `\x1b[<` (SGR mouse mode) which is distinct from keyboard escape sequences.
+
+### Mouse Tracking Protocol
+
+On TUI startup, write two escape sequences to stdout to enable SGR mouse tracking:
+
+```
+\x1b[?1000h   — enable VT200 mouse tracking (button + wheel events)
+\x1b[?1006h   — enable SGR extended coordinates (avoids 223-col limit)
+```
+
+On TUI exit (cleanup effect), restore:
+
+```
+\x1b[?1000l   — disable mouse tracking
+\x1b[?1006l   — disable SGR mode
+```
+
+These are added to `useTerminalMode` hook in `src/cli/tui/hooks/use-terminal-mode.ts` (new file, or inline in `app.tsx` useEffect).
+
+### SGR Mouse Escape Parsing
+
+SGR wheel events arrive as:
+
+```
+\x1b[<64;X;YM   — wheel up   (button=64)
+\x1b[<65;X;YM   — wheel down (button=65)
+```
+
+In `app.tsx` `stdin.on('data')` handler (runs alongside `useInput`), check raw buffer before any other processing:
+
+```typescript
+const str = buf.toString('utf-8')
+
+// SGR mouse event: \x1b[<Cb;Cx;CyM or ...m
+const sgrMouse = str.match(/\x1b\[<(\d+);(\d+);(\d+)([Mm])/)
+if (sgrMouse) {
+  const button = parseInt(sgrMouse[1])
+  if (button === 64) dispatch({ type: 'SCROLL_UP',   lines: 3 })
+  if (button === 65) dispatch({ type: 'SCROLL_DOWN', lines: 3 })
+  return  // don't pass mouse bytes to useInput
+}
+```
+
+3 lines per wheel tick is the default. No acceleration in V1.
+
+### Scroll State
+
+`TuiState` additions:
+
+```typescript
+scrollOffset: number   // lines scrolled up from bottom (0 = at bottom)
+```
+
+New `TuiAction` entries:
+
+```typescript
+| { type: 'SCROLL_UP';   lines: number }
+| { type: 'SCROLL_DOWN'; lines: number }
+| { type: 'SCROLL_TO_BOTTOM' }
+```
+
+Reducer:
+
+```typescript
+case 'SCROLL_UP':
+  return { ...state, scrollOffset: state.scrollOffset + action.lines }
+
+case 'SCROLL_DOWN':
+  return { ...state, scrollOffset: Math.max(0, state.scrollOffset - action.lines) }
+
+case 'SCROLL_TO_BOTTOM':
+  return { ...state, scrollOffset: 0 }
+```
+
+`STREAM_DELTA` and `SEND_MESSAGE` also reset `scrollOffset: 0` (auto-follow on new content).
+
+### Visible Window Computation
+
+`MessageList` receives `scrollOffset` and `visibleRows` (= `termSize.rows - headerRows - 1`).
+
+Instead of `overflowY="hidden"` clipping (which hides content with no scroll), we compute which events to show:
+
+```typescript
+// message-list.tsx
+const allItems = [
+  ...events.filter(e => e.kind !== 'delta' && e.kind !== 'turn_end'),
+  ...(streamingContent ? [{ kind: 'response', content: streamingContent }] : [])
+]
+
+// Each item occupies at least 1 row; approximate: 1 item = 1 row (conservative)
+// Show items from tail, offset by scrollOffset
+const endIdx = allItems.length
+const startIdx = Math.max(0, endIdx - visibleRows - scrollOffset)
+const visibleItems = allItems.slice(startIdx, endIdx - scrollOffset || undefined)
+```
+
+This is a line-based approximation. Long responses that wrap occupy more than 1 row — in V1 we accept that approximation (over-scrolling will just show fewer items). V2 can measure actual rendered heights.
+
+### Scroll Indicator
+
+When `scrollOffset > 0`, show a fixed indicator line above the message list:
+
+```
+  ↑ 12 lines above  (press End or send message to return)
+```
+
+Rendered as a `<Box>` with `dimColor` text, positioned between Header and MessageList.
+
+### Keyboard Scroll
+
+`useTextInput` already handles `PageUp`/`PageDown` for cursor movement within multiline input. When input is empty (single line), redirect:
+
+- `PageUp` / `Alt+↑` → `SCROLL_UP lines=visibleRows`
+- `PageDown` / `Alt+↓` → `SCROLL_DOWN lines=visibleRows`
+- `End` → `SCROLL_TO_BOTTOM`
+
+### Files Changed (additions to Part 5 file map)
+
+- `src/cli/tui/app.tsx` — stdin mouse byte interception, mouse tracking enable/disable
+- `src/cli/tui/state.ts` — scrollOffset field + SCROLL_* actions
+- `src/cli/tui/components/message-list.tsx` — visible window slice computation
+- `src/cli/tui/hooks/use-terminal-mode.ts` (new) — mouse tracking escape sequences in useEffect
+
+---
+
 ## What Is NOT Included
 
+- Mouse wheel acceleration (linear-only in V1, no velocity curve) — V2
+- Accurate per-item height measurement for scroll offset — V2 (V1 uses 1-item=1-row approximation)
 - Thinking expand/collapse interaction (Ctrl+T) — V2
 - Windows clipboard image support — V2
 - Log rotation / cleanup daemon — startup-time cleanup only
