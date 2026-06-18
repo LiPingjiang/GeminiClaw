@@ -1,5 +1,5 @@
 // src/cli/tui/components/message-item.tsx
-import React, { useState } from 'react'
+import React from 'react'
 import { Box, Text } from 'ink'
 import type { TuiEvent } from '../types.js'
 import { DiffView } from './diff-view.js'
@@ -105,8 +105,7 @@ export function MessageItem({ event, columns = COLUMNS_DEFAULT }: MessageItemPro
 
 /** Collapsible tool_end: short results inline, long results folded. */
 function ToolEndItem({ event }: { event: Extract<TuiEvent, { kind: 'tool_end' }> }) {
-  const [expanded, setExpanded] = useState(false)
-  const isLong = event.result.length > TOOL_RESULT_PREVIEW_LEN
+  const isLong = (event.result?.length ?? 0) > TOOL_RESULT_PREVIEW_LEN
 
   return (
     <Box paddingLeft={2} flexDirection="column">
@@ -122,7 +121,7 @@ function ToolEndItem({ event }: { event: Extract<TuiEvent, { kind: 'tool_end' }>
               underline
               // Ink 7 doesn't have onClick; use a visual hint instead
             >
-              {expanded ? '▼ collapse' : '▶ expand'}
+              {'▶ expand'}
             </Text>
           </Text>
         )}
@@ -130,7 +129,7 @@ function ToolEndItem({ event }: { event: Extract<TuiEvent, { kind: 'tool_end' }>
       {event.result && (
         <Box paddingLeft={2}>
           <Text dimColor wrap="wrap">
-            {isLong && !expanded
+            {isLong
               ? event.result.slice(0, TOOL_RESULT_PREVIEW_LEN) + '…'
               : event.result}
           </Text>
@@ -148,7 +147,6 @@ function ThinkingEndItem({
   event: Extract<TuiEvent, { kind: 'thinking_end' }>
   columns: number
 }) {
-  const [expanded, setExpanded] = useState(false)
   const seconds = Math.max(1, Math.round(event.durationMs / 1000))
 
   return (
@@ -159,16 +157,9 @@ function ThinkingEndItem({
           <Text dimColor>{' · '}</Text>
         )}
         {event.content && (
-          <Text dimColor italic>
-            {expanded ? '▼' : '▶ show'}
-          </Text>
+          <Text dimColor italic>{'▶ show'}</Text>
         )}
       </Box>
-      {expanded && event.content && (
-        <Box paddingLeft={2} marginTop={1} flexDirection="column">
-          {renderMarkdown(event.content, columns - 2)}
-        </Box>
-      )}
     </Box>
   )
 }
