@@ -18,21 +18,6 @@ import { decideParallelization } from "./parallel-decision.js";
 import { truncateToolResult, enforceTurnBudget } from "./tool-result-truncation.js";
 import { EXECUTION_BIAS } from "./execution-bias.js";
 import { hookBus } from "../hooks/index.js";
-import { appendFileSync, mkdirSync } from "node:fs";
-import { join } from "node:path";
-
-// ── Tool Execution Audit Log ────────────────────────────────────────────────
-const AUDIT_DIR = join(process.env.HOME ?? "/tmp", ".gemeniclaw", "audit");
-try { mkdirSync(AUDIT_DIR, { recursive: true }); } catch {}
-
-function toolAudit(event: string, data: Record<string, unknown>) {
-  const ts = new Date().toISOString();
-  const line = JSON.stringify({ ts, event, ...data }) + "\n";
-  try {
-    appendFileSync(join(AUDIT_DIR, "tool_calls.jsonl"), line, "utf-8");
-  } catch {}
-}
-
 // ── Tools that are known to mutate state ────────────────────────────────────
 const MUTATING_TOOLS = new Set(["exec", "write", "edit", "file_write", "execute_script"]);
 
@@ -851,7 +836,6 @@ export class AgentLoop {
     }
 
     const startMs = Date.now();
-    toolAudit("TOOL_EXEC_START", { toolCallId: tc.id, toolName: tc.name, argsPreview: JSON.stringify(tc.args).slice(0, 500), sessionId });
     let toolResult: ToolResult;
     let isError = false;
     let multimodal: ContentPart[] | undefined;
@@ -900,16 +884,6 @@ export class AgentLoop {
     }
 
     const durationMs = Date.now() - startMs;
-    // 2026-06-17: 扩大审计日志存储范围，防止 P5 结果丢失
-    // 回滚方案：将 resultFull 改回 resultPreview: toolResult.content.slice(0, 300)
-    const AUDIT_RESULT_LIMIT = 5000;
-    toolAudit("TOOL_EXEC_END", {
-      toolCallId: tc.id, toolName: tc.name, durationMs, isError, sessionId,
-      resultPreview: toolResult.content.slice(0, 300),
-      resultFull: toolResult.content.length <= AUDIT_RESULT_LIMIT
-        ? toolResult.content
-        : toolResult.content.slice(0, AUDIT_RESULT_LIMIT) + `\n...[truncated, total ${toolResult.content.length} chars]`,
-    });
     // Smart truncation (Layer 1 + Layer 2)
     const truncationResult = truncateToolResult(toolResult.content, tc.name, sessionId);
     toolResult = { ...toolResult, content: truncationResult.content };

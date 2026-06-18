@@ -170,6 +170,7 @@ export class AnthropicProvider implements Provider {
     const systemText = systemMessages.length > 0 ? systemMessages.map(m => m.content).join("\n") : undefined
     const cached = applyPromptCache({ system: systemText, messages: anthropicMessages })
 
+    const thinkingStartMs = Date.now()
     const response = await this.client.messages.create({
       model,
       max_tokens: options?.maxTokens ?? 4096,
@@ -188,7 +189,6 @@ export class AnthropicProvider implements Provider {
       throw new Error(`Provider returned stop_reason=error: ${errText?.type === "text" ? errText.text : "unknown error"}`)
     }
 
-    const thinkingStartMs = Date.now()
     const thinkingBlock = response.content.find(b => b.type === "thinking")
     const thinkingContent = thinkingBlock && (thinkingBlock as { type: 'thinking'; thinking: string }).thinking || undefined
 
