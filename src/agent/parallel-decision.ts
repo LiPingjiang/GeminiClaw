@@ -35,7 +35,7 @@ const ALWAYS_PARALLEL = new Set([
   "memory_search",
   "memory_inspect",
   "view_image",
-  "cloud_query",
+  "db_query",
   "dragon_api",
 ]);
 

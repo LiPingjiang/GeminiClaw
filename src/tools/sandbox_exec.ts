@@ -18,6 +18,23 @@
  */
 
 import { registry } from './registry.js';
+import { appendFileSync, mkdirSync } from 'node:fs';
+import { join } from 'node:path';
+import { createHash } from 'node:crypto';
+
+// ─── Audit Logger ─────────────────────────────────────────────────────────────
+
+const AUDIT_DIR = join(process.env.HOME ?? '/tmp', '.gemeniclaw', 'audit');
+try { mkdirSync(AUDIT_DIR, { recursive: true }); } catch {}
+
+function auditLog(event: string, data: Record<string, unknown>) {
+  const ts = new Date().toISOString();
+  const line = JSON.stringify({ ts, event, ...data }) + '\n';
+  try {
+    appendFileSync(join(AUDIT_DIR, 'sandbox_exec.jsonl'), line, 'utf-8');
+  } catch {}
+  console.log(`[AUDIT:sandbox_exec] ${event} ${JSON.stringify(data)}`);
+}
 
 // ─── Config ──────────────────────────────────────────────────────────────────
 
@@ -35,6 +52,7 @@ async function submitTask(input: {
   timeout: number;
   key_preference: string;
   require_backtest_template?: boolean;
+  require_15yr_template?: boolean;
 }): Promise<{ taskId: string }> {
   const res = await fetch(`${QUEUE_URL}/tasks`, {
     method: 'POST',
@@ -88,17 +106,24 @@ async function sandboxExecHandler(params: any, _ctx: any) {
   const timeout: number = params.timeout ?? DEFAULT_TIMEOUT;
   const keyPreference: string = params.key_preference ?? 'any';
   const requireBacktestTemplate: boolean = params.require_backtest_template ?? false;
+  const require15yrTemplate: boolean = params.require_15yr_template ?? false;
 
   if (!code || !code.trim()) {
     return { type: 'error', error: '需要提供 code 参数' };
   }
 
+  const codeHash = createHash('sha256').update(code).digest('hex').slice(0, 16);
+  const codePreview = code.slice(0, 200).replace(/\n/g, '⏎');
+  auditLog('SUBMIT', { codeHash, codeLen: code.length, codePreview, language, timeout, keyPreference, requireBacktestTemplate, require15yrTemplate });
+
   // 1. Submit task to queue
   let taskId: string;
   try {
-    const resp = await submitTask({ code, language, timeout, key_preference: keyPreference, require_backtest_template: requireBacktestTemplate });
+    const resp = await submitTask({ code, language, timeout, key_preference: keyPreference, require_backtest_template: requireBacktestTemplate, require_15yr_template: require15yrTemplate });
     taskId = resp.taskId;
+    auditLog('SUBMITTED', { taskId, codeHash });
   } catch (err: any) {
+    auditLog('SUBMIT_FAILED', { codeHash, error: err.message });
     return { type: 'error', error: `提交任务失败: ${err.message}` };
   }
 
@@ -114,8 +139,20 @@ async function sandboxExecHandler(params: any, _ctx: any) {
 
       if (task.status === 'completed' && task.result) {
         const { stdout, stderr, exitCode } = task.result;
+        const rawStdoutLen = (stdout || '').length;
+        const rawStderrLen = (stderr || '').length;
         let output = stdout || '';
         if (stderr) output += (output ? '\n' : '') + `STDERR:\n${stderr}`;
+
+        auditLog('COMPLETED', {
+          taskId,
+          codeHash,
+          exitCode,
+          stdoutLen: rawStdoutLen,
+          stderrLen: rawStderrLen,
+          stdoutPreview: (stdout || '').slice(0, 500),
+          durationMs: Date.now() - startTime,
+        });
 
         output = truncate(output);
 
@@ -132,6 +169,7 @@ async function sandboxExecHandler(params: any, _ctx: any) {
       }
 
       if (task.status === 'failed') {
+        auditLog('FAILED', { taskId, codeHash, error: task.error });
         return {
           type: 'error',
           error: `Sandbox 执行失败: ${task.error || 'unknown error'}`,
@@ -147,6 +185,7 @@ async function sandboxExecHandler(params: any, _ctx: any) {
     }
   }
 
+  auditLog('TIMEOUT', { taskId, codeHash, maxWaitMs: maxWait });
   return {
     type: 'error',
     error: `任务超时 (${Math.round(maxWait / 1000)}s)。taskId: ${taskId}，可稍后手动查询。`,
@@ -181,7 +220,11 @@ registry.register({
       },
       require_backtest_template: {
         type: 'boolean',
-        description: '是否要求使用回测模板（策略回测场景必须为 true）。回测模板预装 /data/kline_3yr.parquet（660万行3年K线，字段: code/market/date/open/high/low/close/volume/turnover）。必须用 duckdb 读取，pd.read_parquet 不可用。',
+        description: '是否要求使用 3 年回测模板。模板预装 /data/kline_3yr.parquet（660万行3年K线，字段: code/market/date/open/high/low/close/volume/turnover）。必须用 duckdb 读取。',
+      },
+      require_15yr_template: {
+        type: 'boolean',
+        description: '是否要求使用 15 年回测模板。模板预装 /data/kline_15yr.parquet（1821万行15年K线，10569只股票，2011~2026，市场: HK/SZ/SH/US/INDEX，字段: code/market/date/open/high/low/close/volume/turnover）+ /data/kline_3yr.parquet。必须用 duckdb 读取。',
       },
     },
     required: ['code'],

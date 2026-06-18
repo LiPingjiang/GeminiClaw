@@ -141,7 +141,7 @@ const ALWAYS_PARALLEL = new Set([
   "read", "web_search", "web_fetch", "grep", "repo_map",
   "list_agents", "list_sessions", "read_session",
   "memory_search", "memory_inspect", "view_image",
-  "cloud_query", "dragon_api",
+  "db_query", "dragon_api",
 ]);
 
 /** 永远不能并行的工具 */

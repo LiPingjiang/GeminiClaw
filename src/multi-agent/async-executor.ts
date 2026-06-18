@@ -100,7 +100,8 @@ export function asyncExecute(
   const childSessionKey = `subagent:${runId}`
   const taskTitles = taskSpecs.map((t) => t.title)
 
-  // 注册到 registry
+  // 注册到 registry（含 per-run timeout 供 sweeper 使用）
+  const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS
   registerRun({
     runId,
     parentSessionId: options.parentSessionId,
@@ -111,6 +112,7 @@ export function asyncExecute(
     taskTitles,
     status: "running",
     startedAt: Date.now(),
+    timeoutMs,
   })
 
   // 发布 start 事件
