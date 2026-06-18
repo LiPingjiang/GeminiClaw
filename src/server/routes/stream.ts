@@ -18,6 +18,7 @@ import type { FastifyInstance } from "fastify"
 import type { ProviderRouter } from "../../providers/router.js"
 import type { MemoryStrategy } from "../../memory/strategy.js"
 import type { AgentLoop } from "../../agent/loop.js"
+import type { ContentPart } from "../../providers/types.js"
 
 interface StreamBody {
   message: string
@@ -119,7 +120,7 @@ export async function streamRoute(
       try {
         await opts.strategy.appendTurn(
           sid,
-          { role: "user", content: message },
+          { role: "user" as const, content: userContent as string | ContentPart[] },
           { role: "assistant", content: fullContent },
         )
       } catch (err) {
