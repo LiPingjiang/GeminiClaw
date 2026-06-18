@@ -139,7 +139,7 @@ function ToolEndItem({ event }: { event: Extract<TuiEvent, { kind: 'tool_end' }>
   )
 }
 
-/** thinking_end: always show "∴ Thought for Xs", collapsed content below. */
+/** thinking_end: always show "∴ Thought for Xs" + first 300 chars of content. */
 function ThinkingEndItem({
   event,
   columns,
@@ -148,18 +148,20 @@ function ThinkingEndItem({
   columns: number
 }) {
   const seconds = Math.max(1, Math.round(event.durationMs / 1000))
+  const preview = event.content
+    ? event.content.length > 300
+      ? event.content.slice(0, 300) + '…'
+      : event.content
+    : null
 
   return (
     <Box marginTop={1} flexDirection="column">
-      <Box>
-        <Text dimColor italic>{'∴ Thought for '}{seconds}{'s'}</Text>
-        {event.content && (
-          <Text dimColor>{' · '}</Text>
-        )}
-        {event.content && (
-          <Text dimColor italic>{'▶ show'}</Text>
-        )}
-      </Box>
+      <Text dimColor italic>{'∴ Thought for '}{seconds}{'s'}</Text>
+      {preview && (
+        <Box paddingLeft={2} marginTop={1} flexDirection="column">
+          {renderMarkdown(preview, columns - 2)}
+        </Box>
+      )}
     </Box>
   )
 }
