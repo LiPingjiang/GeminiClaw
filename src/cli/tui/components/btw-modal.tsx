@@ -23,7 +23,7 @@ export function BtwModal({ btwState, columns }: BtwModalProps) {
   if (btwState.phase === 'idle') return null
 
   const border = '╌'.repeat(Math.max(0, columns))
-  const question = btwState.phase === 'loading' ? btwState.question : btwState.question
+  const question = btwState.question
 
   return (
     <Box flexDirection="column" flexShrink={0}>

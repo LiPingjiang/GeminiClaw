@@ -364,7 +364,9 @@ export function tuiReducer(state: TuiState, action: TuiAction): TuiState {
 
     case 'BTW_SCROLL':
       if (state.btwState.phase === 'showing') {
-        const newOffset = Math.max(0, state.btwState.scrollOffset + action.delta)
+        const lines = state.btwState.content.split('\n').length
+        const maxScroll = Math.max(0, lines - 12)  // 12 = MAX_HEIGHT in BtwModal
+        const newOffset = Math.min(maxScroll, Math.max(0, state.btwState.scrollOffset + action.delta))
         return { ...state, btwState: { ...state.btwState, scrollOffset: newOffset } }
       }
       return state
