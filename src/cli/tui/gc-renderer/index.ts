@@ -45,9 +45,9 @@ export function render(element: React.ReactElement): RenderResult {
     false,
     null,
     '',
-    () => {},
-    () => {},
-    () => {},
+    (err: unknown) => { process.stderr.write('[gc-renderer] uncaught: ' + String(err) + '\n') },
+    (err: unknown) => { process.stderr.write('[gc-renderer] caught: ' + String(err) + '\n') },
+    (err: unknown) => { process.stderr.write('[gc-renderer] recoverable: ' + String(err) + '\n') },
     () => {},
   )
 
@@ -116,8 +116,10 @@ export function render(element: React.ReactElement): RenderResult {
   // Enter alt screen
   terminal.enterAltScreen(true)
 
-  // Initial render
-  reconciler.updateContainer(element, fiberRoot, null, null)
+  // Force initial synchronous render so the screen is painted immediately
+  reconciler.flushSync(() => {
+    reconciler.updateContainer(element, fiberRoot, null, null)
+  })
 
   const handleSignal = (): void => { cleanup(); process.exit(0) }
   process.once('SIGTERM', handleSignal)

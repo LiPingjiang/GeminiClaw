@@ -1,6 +1,6 @@
 // src/cli/tui/app.tsx
 import React, { useCallback, useEffect, useReducer, useRef } from 'react'
-import { render, Box, Text, useApp, useStdout, useStdin, useInput } from './gc-renderer/index.js'
+import { render, Box, Text, useApp, useStdout, useInput } from './gc-renderer/index.js'
 import { existsSync, readFileSync } from 'fs'
 import { join } from 'path'
 import os from 'os'
@@ -57,7 +57,6 @@ export interface TuiOptions {
 function App({ srv, opts }: { srv: ServerConfig; opts: TuiOptions }) {
   const { exit } = useApp()
   const { stdout } = useStdout()
-  const { stdin } = useStdin()
   const [state, dispatch] = useReducer(tuiReducer, initialTuiState({ sessionId: opts.sessionId }))
 
   // Global Ctrl+C / Ctrl+D handler — always active regardless of focus or isRunning.
@@ -107,21 +106,6 @@ function App({ srv, opts }: { srv: ServerConfig; opts: TuiOptions }) {
     stdout.on('resize', handleResize)
     return () => { stdout.off('resize', handleResize) }
   }, [stdout])
-
-  // ── Mouse wheel (SGR mouse byte parsing) ────────────────────────
-  useEffect(() => {
-    if (!stdin) return
-    const handleMouseData = (buf: Buffer) => {
-      const str = buf.toString('utf-8')
-      const sgrMouse = str.match(/\x1b\[<(\d+);(\d+);(\d+)([Mm])/)
-      if (!sgrMouse) return  // not a mouse event — let useInput handle it
-      const button = parseInt(sgrMouse[1], 10)
-      if (button === 64) dispatch({ type: 'SCROLL_UP', lines: 1 })
-      if (button === 65) dispatch({ type: 'SCROLL_DOWN', lines: 1 })
-    }
-    stdin.on('data', handleMouseData)
-    return () => { stdin.off('data', handleMouseData) }
-  }, [stdin, dispatch])
 
   // ── Initial system messages + file index + LSP ──────────────────
   useEffect(() => {

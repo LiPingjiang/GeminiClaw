@@ -40,14 +40,18 @@ const reconciler = createReconciler<
   prepareForCommit: () => null,
 
   resetAfterCommit(container: GCContainer) {
-    const screen = screenMap.get(container)
-    if (!screen) return
-    const { root, cols, rows } = container
-    root.computedX = 0; root.computedY = 0
-    root.computedWidth = cols; root.computedHeight = rows
-    layoutTree(root, { x: 0, y: 0, availableWidth: cols, availableHeight: rows })
-    renderTree(root, screen)
-    screen.commit()
+    try {
+      const screen = screenMap.get(container)
+      if (!screen) return
+      const { root, cols, rows } = container
+      root.computedX = 0; root.computedY = 0
+      root.computedWidth = cols; root.computedHeight = rows
+      layoutTree(root, { x: 0, y: 0, availableWidth: cols, availableHeight: rows })
+      renderTree(root, screen)
+      screen.commit()
+    } catch (err) {
+      process.stderr.write('[gc-renderer] resetAfterCommit error: ' + String(err) + '\n')
+    }
   },
 
   createInstance(type: string, props: AnyObj): GCNode { return makeNode(type, props) },

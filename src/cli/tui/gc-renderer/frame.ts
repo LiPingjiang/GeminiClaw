@@ -1,3 +1,5 @@
+import React from 'react'
+
 type FrameCb = (t: number) => void
 
 class FrameScheduler {
@@ -37,8 +39,6 @@ class FrameScheduler {
 export const frameScheduler = new FrameScheduler()
 
 export function useAnimationFrame(callback?: (t: number) => void): number {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const React = require('react') as typeof import('react')
   const [time, setTime] = React.useState(0)
   React.useEffect(() => {
     return frameScheduler.subscribe((t) => {
