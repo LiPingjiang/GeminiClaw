@@ -1,6 +1,8 @@
 // src/cli/tui/app.tsx
 import React, { useCallback, useEffect, useReducer, useRef } from 'react'
 import { render, Box, Text, useApp, useStdout, useInput } from '../../ink.js'
+import { AlternateScreen } from '../../ink/components/AlternateScreen.js'
+import { isFullscreenEnvEnabled } from '../../utils/fullscreen.js'
 import { existsSync, readFileSync } from 'fs'
 import { join } from 'path'
 import os from 'os'
@@ -308,7 +310,9 @@ function App({ srv, opts }: { srv: ServerConfig; opts: TuiOptions }) {
           thinkingContent, thinkingStartMs, thinkingDone, scrollOffset, inputAttachments,
           bgRunning, btwState } = state
 
-  return (
+  const fullscreen = isFullscreenEnvEnabled()
+
+  const content = (
     <Box flexDirection="column" height={termSize.rows}>
       <Box flexShrink={0}>
         <Header state={headerState} columns={termSize.columns} />
@@ -388,6 +392,12 @@ function App({ srv, opts }: { srv: ServerConfig; opts: TuiOptions }) {
       </Box>
     </Box>
   )
+
+  return fullscreen ? (
+    <AlternateScreen mouseTracking>
+      {content}
+    </AlternateScreen>
+  ) : content
 }
 
 export async function runTui(opts: TuiOptions = {}): Promise<void> {
