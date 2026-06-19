@@ -407,14 +407,20 @@ export async function runTui(opts: TuiOptions = {}): Promise<void> {
     const { REPL } = await import('../../screens/REPL.js') as any
     const React = (await import('react')).default
     const { AlternateScreen } = await import('../../ink/components/AlternateScreen.js')
+    const { NotificationsProvider } = await import('../../context/notifications.js')
+    const { ThemeProvider } = await import('../../components/design-system/ThemeProvider.js')
     const { waitUntilExit } = await render(
-      React.createElement(AlternateScreen, { mouseTracking: true },
-        React.createElement(REPL, {
-          commands: [],
-          debug: false,
-          initialTools: [],
-          thinkingConfig: { type: 'disabled' },
-        } as any),
+      React.createElement(ThemeProvider, null,
+        React.createElement(NotificationsProvider, null,
+          React.createElement(AlternateScreen, { mouseTracking: true },
+            React.createElement(REPL, {
+              commands: [],
+              debug: false,
+              initialTools: [],
+              thinkingConfig: { type: 'disabled' },
+            } as any),
+          ),
+        ),
       ),
     )
     await waitUntilExit()
