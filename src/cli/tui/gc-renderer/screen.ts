@@ -1,14 +1,29 @@
 import stringWidth from 'string-width'
 import stripAnsi from 'strip-ansi'
+import wrapAnsi from 'wrap-ansi'
 
 export function cursorTo(col: number, row: number): string {
   return `\x1b[${row + 1};${col + 1}H`
 }
 
 export function padAnsiLine(line: string, targetWidth: number): string {
+  if (targetWidth <= 0) return ''
+  if (!line) return ' '.repeat(targetWidth)
+
   const visible = stringWidth(stripAnsi(line))
+
   if (visible === targetWidth) return line
-  if (visible > targetWidth) return stripAnsi(line).slice(0, targetWidth)
+
+  if (visible > targetWidth) {
+    // wrapAnsi with hard:true breaks at exactly targetWidth visible chars.
+    // Taking the first line gives us the ANSI-safe truncated string.
+    const wrapped = wrapAnsi(line, targetWidth, { hard: true, trim: false })
+    const firstLine = wrapped.split('\n')[0] ?? ''
+    // Always close any open ANSI codes after truncation.
+    return firstLine + '\x1b[0m'
+  }
+
+  // Pad with spaces after resetting ANSI to prevent bleed.
   return line + '\x1b[0m' + ' '.repeat(targetWidth - visible)
 }
 
