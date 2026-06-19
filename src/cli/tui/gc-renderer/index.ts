@@ -11,6 +11,7 @@ import type { KeyEvent, MouseEvent } from './terminal.js'
 
 export { Box, Text, AnsiBlock, Separator, useInput, useApp, useStdout, useStdin, type KeyLike } from './components.js'
 export { useAnimationFrame } from './frame.js'
+export { setCursor } from './cursor-state.js'
 
 export interface RenderResult {
   waitUntilExit(): Promise<void>

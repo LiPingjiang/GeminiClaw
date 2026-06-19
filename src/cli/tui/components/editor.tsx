@@ -1,5 +1,5 @@
-import React from 'react'
-import { Box, Text } from '../gc-renderer/index.js'
+import React, { useEffect } from 'react'
+import { Box, Text, setCursor } from '../gc-renderer/index.js'
 import { useTextInput } from '../hooks/use-text-input.js'
 import type { TuiAction, InputAttachment, BtwPhase } from '../state.js'
 import type { TuiCommand } from '../commands/registry.js'
@@ -8,6 +8,7 @@ export interface EditorProps {
   value: string
   cursor: number
   columns: number
+  rows: number
   focus: boolean
   dispatch: React.Dispatch<TuiAction>
   onSubmit: (message: string) => void
@@ -34,10 +35,10 @@ export interface EditorProps {
 const PROMPT = '> '
 const PROMPT_WIDTH = 2 // '> ' is 2 columns wide
 
-export function Editor({ value, cursor, columns, focus, dispatch, onSubmit, onCancel, onExit, attachments, onScrollUp, onScrollDown, onScrollToBottom, isRunning, currentTool, suggestions, selectedSuggestion, onHistoryUp, onHistoryDown, btwState, onBtwScrollUp, onBtwScrollDown, onBtwClose, elapsedMs, totalOutputTokens }: EditorProps) {
+export function Editor({ value, cursor, columns, rows, focus, dispatch, onSubmit, onCancel, onExit, attachments, onScrollUp, onScrollDown, onScrollToBottom, isRunning, currentTool, suggestions, selectedSuggestion, onHistoryUp, onHistoryDown, btwState, onBtwScrollUp, onBtwScrollDown, onBtwClose, elapsedMs, totalOutputTokens }: EditorProps) {
   const inputCols = Math.max(1, columns - PROMPT_WIDTH)
 
-  const { rendered } = useTextInput({
+  const { rendered, cursorCol, cursorRow, totalRows } = useTextInput({
     value,
     cursor,
     columns: inputCols,
@@ -93,6 +94,20 @@ export function Editor({ value, cursor, columns, focus, dispatch, onSubmit, onCa
     onScrollUp: btwState && btwState.phase !== 'idle' ? (onBtwScrollUp ?? onScrollUp) : onScrollUp,
     onScrollDown: btwState && btwState.phase !== 'idle' ? (onBtwScrollDown ?? onScrollDown) : onScrollDown,
     onScrollToBottom,
+  })
+
+  // Position terminal cursor at the input caret after each render.
+  // Layout: status bar at rows-1, last input line at rows-2. The cursor
+  // sits (totalRows-1-cursorRow) lines above the last input line.
+  useEffect(() => {
+    if (focus) {
+      const inputLastRow = rows - 2
+      const absRow = inputLastRow - (totalRows - 1 - cursorRow)
+      // col: PROMPT_WIDTH (2 for "> ") + cursorCol within the input area
+      setCursor(PROMPT_WIDTH + cursorCol, absRow, true)
+    } else {
+      setCursor(0, -1, false)
+    }
   })
 
   if (!focus) {

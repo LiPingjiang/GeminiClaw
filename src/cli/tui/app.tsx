@@ -343,6 +343,7 @@ function App({ srv, opts }: { srv: ServerConfig; opts: TuiOptions }) {
         value={input}
         cursor={inputCursor}
         columns={termSize.columns}
+        rows={termSize.rows}
         focus={!isRunning && !bgRunning}
         dispatch={dispatch}
         onSubmit={sendMessage}

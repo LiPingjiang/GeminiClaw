@@ -4,6 +4,7 @@ import { ConcurrentRoot } from 'react-reconciler/constants.js'
 import type { GCNode, GCContainer } from './types.js'
 import { layoutTree, renderTree } from './layout.js'
 import type { ScreenBuffer } from './screen.js'
+import { cursor } from './cursor-state.js'
 
 function makeNode(type: string, props: Record<string, unknown>): GCNode {
   return {
@@ -49,6 +50,11 @@ const reconciler = createReconciler<
       layoutTree(root, { x: 0, y: 0, availableWidth: cols, availableHeight: rows })
       renderTree(root, screen)
       screen.commit()
+      if (cursor.visible && cursor.row >= 0) {
+        screen.showCursorAt(cursor.col, cursor.row)
+      } else {
+        screen.hideCursor()
+      }
     } catch (err) {
       process.stderr.write('[gc-renderer] resetAfterCommit error: ' + String(err) + '\n')
     }

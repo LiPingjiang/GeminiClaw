@@ -79,6 +79,17 @@ export class ScreenBuffer {
     this.prev = Array(this.rows).fill('\x00')
   }
 
+  /** Move the terminal cursor to (col, row) and show it. Call after commit() for input components. */
+  showCursorAt(col: number, row: number): void {
+    if (row < 0 || row >= this.rows || col < 0 || col >= this.cols) return
+    process.stdout.write(`\x1b[?25h${cursorTo(col, row)}`)
+  }
+
+  /** Hide cursor (call when entering non-input state) */
+  hideCursor(): void {
+    process.stdout.write('\x1b[?25l')
+  }
+
   get width(): number { return this.cols }
   get height(): number { return this.rows }
 }

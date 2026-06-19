@@ -1,4 +1,4 @@
-import { useInput } from 'ink'
+import { useInput } from '../gc-renderer/index.js'
 import {
   prevPos, nextPos,
   wordLeft, wordRight, lineNav,
@@ -143,6 +143,7 @@ export interface UseTextInputResult {
   rendered: string
   cursorRow: number
   cursorCol: number
+  totalRows: number
 }
 
 export function useTextInput(opts: UseTextInputOpts): UseTextInputResult {
@@ -274,6 +275,8 @@ export function useTextInput(opts: UseTextInputOpts): UseTextInputResult {
 
   const rendered = renderWithCursor(value, cursor)
   const { row, col } = computeCursorPosition(value, cursor, columns)
+  const { row: lastRow } = computeCursorPosition(value, value.length, columns)
+  const totalRows = lastRow + 1
 
-  return { rendered, cursorRow: row, cursorCol: col }
+  return { rendered, cursorRow: row, cursorCol: col, totalRows }
 }
