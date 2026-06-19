@@ -1,2 +1,4 @@
-export const _stub: any = undefined; export function stub(..._args: any[]): any { return undefined as any }; export type AnyType = any
-export function getMemoryFiles(..._args: any[]): any { return undefined as any }
+export async function getMemoryFiles(): Promise<any[]> { return [] }
+export function getClaudeMd(..._args: any[]): any { return '' }
+export function loadClaudeMd(..._args: any[]): any { return null }
+export function isAutoManagedMemoryFile(..._args: any[]): boolean { return false }
