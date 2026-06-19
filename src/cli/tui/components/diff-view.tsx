@@ -1,6 +1,6 @@
 // src/cli/tui/components/diff-view.tsx
 import React, { useState } from 'react'
-import { Box, Text } from 'ink'
+import { Box, Text } from '../gc-renderer/index.js'
 import { createTwoFilesPatch } from 'diff'
 
 export type DiffLineType = 'add' | 'remove' | 'context' | 'hunk' | 'header'

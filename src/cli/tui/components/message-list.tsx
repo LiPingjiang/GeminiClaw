@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react'
-import { Box } from 'ink'
+import { Box } from '../gc-renderer/index.js'
 import { MessageItem } from './message-item.js'
 import { ThinkingLine } from './thinking-line.js'
 import { StreamingMd } from './streaming-md.js'

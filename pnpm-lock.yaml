@@ -11,6 +11,9 @@ importers:
       '@anthropic-ai/sdk':
         specifier: ^0.39.0
         version: 0.39.0
+      '@types/react-reconciler':
+        specifier: ^0.33.0
+        version: 0.33.0(@types/react@19.2.17)
       better-sqlite3:
         specifier: ^12.9.0
         version: 12.9.0
@@ -44,6 +47,9 @@ importers:
       react:
         specifier: ^19.2.7
         version: 19.2.7
+      react-reconciler:
+        specifier: ^0.33.0
+        version: 0.33.0(react@19.2.7)
       string-width:
         specifier: ^8.2.1
         version: 8.2.1
@@ -531,6 +537,11 @@ packages:
 
   '@types/node@22.19.17':
     resolution: {integrity: sha1-Cccfs0uiUQ+KyGU2Gx/LlVK4pYE=, tarball: https://registry.npmmirror.com/@types/node/download/@types/node-22.19.17.tgz}
+
+  '@types/react-reconciler@0.33.0':
+    resolution: {integrity: sha1-0n7auQeZiz2fGLwk5CLZqsNLdB0=, tarball: http://r.npm.sankuai.com/@types/react-reconciler/download/@types/react-reconciler-0.33.0.tgz}
+    peerDependencies:
+      '@types/react': '*'
 
   '@types/react@19.2.17':
     resolution: {integrity: sha1-3MrDZbqg8XNOwnD/S1HIlGXo3H8=, tarball: http://r.npm.sankuai.com/@types/react/download/@types/react-19.2.17.tgz}
@@ -1982,6 +1993,10 @@ snapshots:
   '@types/node@22.19.17':
     dependencies:
       undici-types: 6.21.0
+
+  '@types/react-reconciler@0.33.0(@types/react@19.2.17)':
+    dependencies:
+      '@types/react': 19.2.17
 
   '@types/react@19.2.17':
     dependencies:

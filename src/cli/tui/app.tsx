@@ -1,7 +1,6 @@
 // src/cli/tui/app.tsx
 import React, { useCallback, useEffect, useReducer, useRef } from 'react'
-import { render, Box, Text, useApp, useStdout, useStdin, useInput } from 'ink'
-import { useTerminalMode } from './hooks/use-terminal-mode.js'
+import { render, Box, Text, useApp, useStdout, useStdin, useInput } from './gc-renderer/index.js'
 import { existsSync, readFileSync } from 'fs'
 import { join } from 'path'
 import os from 'os'
@@ -60,7 +59,6 @@ function App({ srv, opts }: { srv: ServerConfig; opts: TuiOptions }) {
   const { stdout } = useStdout()
   const { stdin } = useStdin()
   const [state, dispatch] = useReducer(tuiReducer, initialTuiState({ sessionId: opts.sessionId }))
-  useTerminalMode()
 
   // Global Ctrl+C / Ctrl+D handler — always active regardless of focus or isRunning.
   // useInput with isActive=true (default) intercepts before the Editor's own useInput.
@@ -409,6 +407,6 @@ function App({ srv, opts }: { srv: ServerConfig; opts: TuiOptions }) {
 
 export async function runTui(opts: TuiOptions = {}): Promise<void> {
   const srv = loadServerConfig()
-  const { waitUntilExit } = render(<App srv={srv} opts={opts} />, { exitOnCtrlC: false })
+  const { waitUntilExit } = render(<App srv={srv} opts={opts} />)
   await waitUntilExit()
 }

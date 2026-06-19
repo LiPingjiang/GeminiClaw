@@ -1,5 +1,5 @@
 import React, { memo } from 'react'
-import { Box, Text } from 'ink'
+import { Box, Text } from '../gc-renderer/index.js'
 import { markdownToAnsiLines } from './ansi-markdown.js'
 
 interface AnsiBlockProps {

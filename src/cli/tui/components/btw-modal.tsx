@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { Box, Text } from 'ink'
+import { Box, Text } from '../gc-renderer/index.js'
 import type { BtwPhase } from '../state.js'
 
 const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏']
