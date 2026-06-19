@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect } from 'vitest'
 import { layoutTree, renderTree, naturalWidth } from './layout.js'
 import { ScreenBuffer } from './screen.js'
 import stripAnsi from 'strip-ansi'

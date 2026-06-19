@@ -169,11 +169,12 @@ export function layoutTree(node: GCNode, c: LayoutConstraints): void {
   const pTop   = (node.props['paddingTop']    as number) ?? 0
   const pBot   = (node.props['paddingBottom'] as number) ?? 0
   const pLeft  = (node.props['paddingLeft']   as number) ?? 0
+  const pRight = (node.props['paddingRight']  as number) ?? 0
   const mTop   = (node.props['marginTop']     as number) ?? 0
   const mBot   = (node.props['marginBottom']  as number) ?? 0
 
   const innerX = c.x + pLeft
-  const innerW = Math.max(1, c.availableWidth - pLeft)
+  const innerW = Math.max(1, c.availableWidth - pLeft - pRight)
   const innerH = Math.max(0, c.availableHeight - pTop - pBot - mTop - mBot)
   const innerY = c.y + pTop + mTop
 
