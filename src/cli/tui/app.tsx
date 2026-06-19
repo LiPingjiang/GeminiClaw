@@ -402,6 +402,6 @@ function App({ srv, opts }: { srv: ServerConfig; opts: TuiOptions }) {
 
 export async function runTui(opts: TuiOptions = {}): Promise<void> {
   const srv = loadServerConfig()
-  const { waitUntilExit } = render(<App srv={srv} opts={opts} />)
+  const { waitUntilExit } = await render(<App srv={srv} opts={opts} />)
   await waitUntilExit()
 }

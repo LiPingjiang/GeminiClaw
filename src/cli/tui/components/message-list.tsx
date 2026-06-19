@@ -32,7 +32,7 @@ export function MessageList({
   dispatch,
 }: MessageListProps) {
   // Animation tick — forces re-render for spinner animation
-  useAnimationFrame()
+  useAnimationFrame(50)  // 50ms tick for spinner — ignore return value
 
   const isThinking = thinkingContent.length > 0 && !thinkingDone
 
