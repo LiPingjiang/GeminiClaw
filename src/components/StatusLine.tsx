@@ -1,5 +1,5 @@
 // @ts-nocheck — Claude Code port: uses stub types
-import { feature } from 'bun:bundle';
+import { feature } from '../bun-bundle-shim.js';
 import * as React from 'react';
 import { memo, useCallback, useEffect, useRef } from 'react';
 import { logEvent } from '../services/analytics/index.js';

@@ -1,5 +1,5 @@
 // @ts-nocheck — Claude Code port: uses stub types
-import { feature } from 'bun:bundle';
+import { feature } from '../bun-bundle-shim.js';
 import chalk from 'chalk';
 import React, { useMemo, useRef } from 'react';
 import { useVoiceState } from '../context/voice.js';

@@ -1,5 +1,5 @@
 // @ts-nocheck — Claude Code port: uses stub types
-import { feature } from 'bun:bundle'
+import { feature } from '../../bun-bundle-shim.js'
 import { useMemo } from 'react'
 import { useCommandQueue } from '../../hooks/useCommandQueue.js'
 import { useAppState } from '../../state/AppState.js'

@@ -1,380 +1,230 @@
-// GeminiClaw adapter: bridges Claude Code's REPL.tsx query() contract to
-// GeminiClaw's /v1/agent/stream SSE endpoint.
-//
-// REPL.tsx calls: `for await (const event of query({ messages, systemPrompt, ... }))`
-// and passes each event to `onQueryEvent` → `handleMessageFromStream`.
-//
-// handleMessageFromStream understands these event shapes:
-//   1. { type: 'stream_request_start' }                          → spinner 'requesting'
-//   2. { type: 'stream_event', event: { type: 'message_start' } } → ttftMs metrics
-//   3. { type: 'stream_event', event: { type: 'content_block_start', content_block: { type: 'text' } } } → spinner 'responding'
-//   4. { type: 'stream_event', event: { type: 'content_block_delta', delta: { type: 'text_delta', text } } } → streaming text
-//   5. { type: 'stream_event', event: { type: 'message_stop' } }  → spinner 'tool-use'
-//   6. { type: 'assistant', message: { ... } }                   → final message saved to messages array
+// src/query.ts — Mock implementation for CC visual demo
+// Streams a fake response so REPL.tsx renders with full CC visual effects.
+// No backend needed — demonstrates the CC TUI appearance.
 
 import { randomUUID } from 'crypto'
-import { existsSync, readFileSync } from 'fs'
-import { join } from 'path'
-import os from 'os'
-import http from 'http'
-import https from 'https'
-import yaml from 'js-yaml'
 
-// ---------- server config (mirrors app.tsx loadServerConfig) -----------------
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
-interface ServerConfig {
-  baseUrl: string
-  authToken?: string
+function sleep(ms: number): Promise<void> {
+  return new Promise(r => setTimeout(r, ms))
 }
 
-function loadServerConfig(): ServerConfig {
-  const userCfg = join(os.homedir(), '.gemeniclaw', 'config.yaml')
-  const cwdCfg = join(process.cwd(), 'config.yaml')
-  const cfgPath = existsSync(userCfg) ? userCfg : existsSync(cwdCfg) ? cwdCfg : null
+/** Fake responses keyed by keywords in the user message */
+const MOCK_RESPONSES: Array<{ match: RegExp; response: string }> = [
+  {
+    match: /hello|hi|你好|嗨/i,
+    response: `你好！我是 GeminiClaw，基于 Claude Code 的渲染引擎运行的 AI 助手。
 
-  let port = 18888
-  let host = '127.0.0.1'
-  let authToken: string | undefined
+目前正在运行 **Claude Code TUI 视觉演示模式**，使用 mock 回复展示视觉效果。
 
-  if (cfgPath) {
-    try {
-      const raw = yaml.load(readFileSync(cfgPath, 'utf-8')) as Record<string, unknown>
-      const server = raw?.server as Record<string, unknown> | undefined
-      port = (server?.port as number) ?? port
-      host = (server?.host as string) ?? host
-      authToken = server?.authToken as string | undefined
-    } catch { /* ignore */ }
+有什么我可以帮你的吗？`,
+  },
+  {
+    match: /tool|工具|sandbox|exec/i,
+    response: `当前处于演示模式，工具调用功能暂时 mock。
+
+实际运行时将支持：
+- \`sandbox_exec\` — 在 E2B 沙箱中执行代码
+- \`read\` / \`write\` — 文件读写
+- \`exec\` — 本机命令执行
+- \`dragon_api\` — 龙股数据接口`,
+  },
+  {
+    match: /version|版本/i,
+    response: `**GeminiClaw** — Claude Code 视觉移植版
+
+- 渲染引擎：Claude Code Ink fork（完整移植）
+- 主题系统：ThemedBox / ThemedText / ThemeProvider
+- 动画：SpinnerAnimationRow + ClockContext
+- 布局：FullscreenLayout + VirtualMessageList
+- 后端：GeminiClaw Agent Server (port 18790)`,
+  },
+]
+
+function getMockResponse(userText: string): string {
+  for (const { match, response } of MOCK_RESPONSES) {
+    if (match.test(userText)) return response
   }
+  // Default
+  return `我收到了你的消息："${userText.slice(0, 100)}${userText.length > 100 ? '…' : ''}"
 
-  if (process.env.GC_SERVER_URL) {
-    return { baseUrl: process.env.GC_SERVER_URL, authToken: process.env.GC_AUTH_TOKEN ?? authToken }
-  }
+这是 **GeminiClaw TUI 演示模式** 的 mock 回复。
 
-  return { baseUrl: `http://${host}:${port}`, authToken }
+正在展示 Claude Code 的完整视觉效果：
+- ✻ 旋转 spinner（Puttering、Thinking、Working…）
+- 流式文字渲染
+- Markdown 高亮（**粗体**、\`代码\`、列表）
+- FullscreenLayout + ScrollBox
+
+切换到真实后端：去掉 \`GC_USE_REPL=1\` 或使用 \`pnpm tsx src/cli/index.ts tui\``
 }
 
-// ---------- SSE streaming helper ---------------------------------------------
+// ── CC event helpers ──────────────────────────────────────────────────────────
 
-interface AgentEvent {
-  type: string
-  delta?: string
-  error?: string
-  sessionId?: string
-}
-
-function streamGeminiClaw(opts: {
-  baseUrl: string
-  authToken?: string
-  message: string
-  sessionId?: string
-  model?: string
-  onDelta: (text: string) => void
-  onSessionId: (id: string) => void
-  onDone: () => void
-  onError: (err: Error) => void
-}): () => void {
-  const url = new URL('/v1/agent/stream', opts.baseUrl)
-  const transport = url.protocol === 'https:' ? https : http
-
-  const body = JSON.stringify({
-    message: opts.message,
-    ...(opts.sessionId ? { sessionId: opts.sessionId } : {}),
-    ...(opts.model ? { model: opts.model } : {}),
-  })
-
-  const reqHeaders: Record<string, string> = {
-    'Content-Type': 'application/json',
-    'Content-Length': Buffer.byteLength(body).toString(),
-    Accept: 'text/event-stream',
-    'Cache-Control': 'no-cache',
-  }
-  if (opts.authToken) reqHeaders['Authorization'] = `Bearer ${opts.authToken}`
-
-  let done = false
-  const finish = (cb: () => void): void => {
-    if (!done) { done = true; cb() }
-  }
-
-  const req = transport.request(
-    {
-      hostname: url.hostname,
-      port: url.port || (url.protocol === 'https:' ? 443 : 80),
-      path: url.pathname,
-      method: 'POST',
-      headers: reqHeaders,
-    },
-    (res) => {
-      if (res.statusCode !== 200) {
-        let errBody = ''
-        res.setEncoding('utf-8')
-        res.on('data', (c: string) => { errBody += c })
-        res.on('end', () => finish(() => opts.onError(new Error(`HTTP ${res.statusCode}: ${errBody}`))))
-        return
-      }
-
-      let buffer = ''
-      let currentEvent = 'message'
-      res.setEncoding('utf-8')
-
-      res.on('data', (chunk: string) => {
-        buffer += chunk
-        const lines = buffer.split('\n')
-        buffer = lines.pop() ?? ''
-
-        for (const line of lines) {
-          if (line.startsWith('event:')) {
-            currentEvent = line.slice(6).trim()
-          } else if (line.startsWith('data:')) {
-            const data = line.slice(5).trim()
-
-            if (data === '[DONE]') {
-              finish(opts.onDone)
-              return
-            }
-
-            if (currentEvent === 'done') {
-              try {
-                const parsed = JSON.parse(data) as { sessionId?: string }
-                if (parsed.sessionId) opts.onSessionId(parsed.sessionId)
-              } catch { /* ignore */ }
-              currentEvent = 'message'
-              continue
-            }
-
-            if (currentEvent === 'error') {
-              try {
-                const parsed = JSON.parse(data) as { error?: string }
-                finish(() => opts.onError(new Error(parsed.error ?? 'stream error')))
-              } catch {
-                finish(() => opts.onError(new Error(data)))
-              }
-              return
-            }
-
-            if (currentEvent === 'agent_event') {
-              try {
-                const raw = JSON.parse(data) as AgentEvent
-                if (raw.type === 'message_delta' && raw.delta) {
-                  opts.onDelta(raw.delta)
-                }
-              } catch { /* ignore */ }
-            }
-
-            currentEvent = 'message'
-          } else if (line === '') {
-            currentEvent = 'message'
-          }
-        }
-      })
-
-      res.on('end', () => finish(opts.onDone))
-      res.on('error', (err: Error) => finish(() => opts.onError(err)))
-    },
-  )
-
-  req.on('error', (err: Error) => finish(() => opts.onError(err)))
-  req.write(body)
-  req.end()
-
-  return () => req.destroy()
-}
-
-// ---------- Minimal event shapes REPL.tsx / handleMessageFromStream expects --
-
-interface StreamRequestStartEvent {
-  type: 'stream_request_start'
-}
-
-interface StreamEvent {
-  type: 'stream_event'
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  event: any
-  ttftMs?: number
-}
-
-interface AssistantMessage {
-  type: 'assistant'
-  uuid: string
-  timestamp: string
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  message: any
-  requestId: undefined
-  apiError: undefined
-  error: undefined
-  errorDetails: undefined
-  isApiErrorMessage: false
-  isVirtual: undefined
-}
-
-function makeStreamEvent(event: Record<string, unknown>, ttftMs?: number): StreamEvent {
-  return { type: 'stream_event', event, ...(ttftMs !== undefined ? { ttftMs } : {}) }
-}
-
-function makeAssistantMessage(text: string, model: string): AssistantMessage {
+function makeMessageStart(msgId: string) {
   return {
-    type: 'assistant',
-    uuid: randomUUID(),
-    timestamp: new Date().toISOString(),
+    type: 'stream_event' as const,
+    event: {
+      type: 'message_start',
+      message: {
+        id: msgId,
+        type: 'message',
+        role: 'assistant',
+        content: [],
+        model: 'geminiclaw-demo',
+        stop_reason: null,
+        stop_sequence: null,
+        usage: { input_tokens: 10, output_tokens: 0 },
+      },
+    },
+  }
+}
+
+function makeContentBlockStart(blockIdx = 0) {
+  return {
+    type: 'stream_event' as const,
+    event: {
+      type: 'content_block_start',
+      index: blockIdx,
+      content_block: { type: 'text', text: '' },
+    },
+  }
+}
+
+function makeDelta(text: string, blockIdx = 0) {
+  return {
+    type: 'stream_event' as const,
+    event: {
+      type: 'content_block_delta',
+      index: blockIdx,
+      delta: { type: 'text_delta', text },
+    },
+  }
+}
+
+function makeContentBlockStop(blockIdx = 0) {
+  return {
+    type: 'stream_event' as const,
+    event: { type: 'content_block_stop', index: blockIdx },
+  }
+}
+
+function makeMessageStop(msgId: string, fullText: string) {
+  return {
+    type: 'stream_event' as const,
+    event: {
+      type: 'message_stop',
+      message: {
+        id: msgId,
+        type: 'message',
+        role: 'assistant',
+        content: [{ type: 'text', text: fullText }],
+        model: 'geminiclaw-demo',
+        stop_reason: 'end_turn',
+        stop_sequence: null,
+        usage: { input_tokens: 10, output_tokens: Math.ceil(fullText.length / 4) },
+      },
+    },
+  }
+}
+
+function makeFinalAssistant(msgId: string, fullText: string) {
+  return {
+    type: 'assistant' as const,
     message: {
-      id: randomUUID(),
-      model,
-      role: 'assistant',
-      content: [{ type: 'text', text: text || '(no response)' }],
+      id: msgId,
+      type: 'message',
+      role: 'assistant' as const,
+      content: [{ type: 'text', text: fullText }],
+      model: 'geminiclaw-demo',
       stop_reason: 'end_turn',
       stop_sequence: null,
-      type: 'message',
-      usage: { input_tokens: 0, output_tokens: 0 },
-      container: null,
-      context_management: null,
+      usage: { input_tokens: 10, output_tokens: Math.ceil(fullText.length / 4) },
     },
-    requestId: undefined,
-    apiError: undefined,
-    error: undefined,
-    errorDetails: undefined,
-    isApiErrorMessage: false,
-    isVirtual: undefined,
   }
 }
 
-// ---------- Public types (compatible with CC's QueryParams) ------------------
+// ── Main query() generator ────────────────────────────────────────────────────
 
-export type QueryParams = {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+/** CC-compatible query() that streams mock responses. */
+export async function* query(params: {
   messages: any[]
-  systemPrompt?: unknown
-  userContext?: Record<string, string>
-  systemContext?: Record<string, string>
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  systemPrompt?: any
+  userContext?: any
+  systemContext?: any
   canUseTool?: any
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   toolUseContext?: any
-  fallbackModel?: string
-  querySource?: unknown
-  maxOutputTokensOverride?: number
-  maxTurns?: number
-  skipCacheWrite?: boolean
-  taskBudget?: { total: number }
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  deps?: any
-}
+  querySource?: any
+}): AsyncGenerator<any> {
+  // 1. Request start — sets spinner to 'requesting'
+  yield { type: 'stream_request_start' }
 
-// ---------- query() — the adapter REPL.tsx calls ----------------------------
+  // Small delay to simulate network
+  await sleep(200 + Math.random() * 300)
 
-export async function* query(
-  params: QueryParams,
-): AsyncGenerator<StreamRequestStartEvent | StreamEvent | AssistantMessage> {
-  const srv = loadServerConfig()
-
-  // Extract the latest user text from the messages array.
-  // CC stores messages as { type: 'user', message: { content: string | ContentBlock[] } }
-  const userMessage = params.messages
-    .slice()
-    .reverse()
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    .find((m: any) => m?.type === 'user' && !m?.isMeta)
-
+  // 2. Find last user message
+  const messages = params.messages ?? []
   let userText = ''
-  if (userMessage) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const content = (userMessage as any)?.message?.content
-    if (typeof content === 'string') {
-      userText = content
-    } else if (Array.isArray(content)) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      userText = content
-        .filter((b: any) => b?.type === 'text')
-        .map((b: any) => (b.text as string) ?? '')
-        .join('')
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i]
+    if (m?.role === 'user' || m?.type === 'user') {
+      const c = m.content ?? m.message?.content
+      if (typeof c === 'string') { userText = c; break }
+      if (Array.isArray(c)) {
+        const textPart = c.find((p: any) => p.type === 'text')
+        if (textPart?.text) { userText = textPart.text; break }
+      }
     }
   }
 
-  if (!userText.trim()) {
-    yield makeAssistantMessage('', 'geminiclaw')
-    return
-  }
+  const msgId = `msg_${randomUUID().replace(/-/g, '').slice(0, 24)}`
+  const responseText = getMockResponse(userText)
 
-  // Signal that we're initiating an API request (sets spinner to 'requesting')
-  const startEvent: StreamRequestStartEvent = { type: 'stream_request_start' }
-  yield startEvent
+  // 3. message_start — triggers TTFT metric + transitions spinner
+  yield makeMessageStart(msgId)
+  await sleep(50)
 
-  // Emit message_start — handleMessageFromStream reads ttftMs from this event
-  const requestStartMs = Date.now()
-  yield makeStreamEvent({
-    type: 'message_start',
-    message: {
-      id: randomUUID(),
-      model: 'geminiclaw',
-      role: 'assistant',
-      content: [],
-      usage: { input_tokens: 0, output_tokens: 0 },
-    },
-  })
+  // 4. content_block_start — spinner → 'responding' mode
+  yield makeContentBlockStart(0)
+  await sleep(30)
 
-  // Emit content_block_start for the text block (sets spinner to 'responding')
-  yield makeStreamEvent({ type: 'content_block_start', index: 0, content_block: { type: 'text' } })
+  // 5. Stream text character by character (variable speed for realism)
+  let streamed = ''
+  // Stream in chunks of 1-5 chars with variable delay
+  let i = 0
+  while (i < responseText.length) {
+    const chunkSize = 1 + Math.floor(Math.random() * 4)
+    const chunk = responseText.slice(i, i + chunkSize)
+    i += chunkSize
 
-  // Bridge the callback-based SSE stream into async iteration via a shared queue
-  const deltas: string[] = []
-  let streamDone = false
-  let streamError: Error | null = null
-  let resolveNext: (() => void) | null = null
-  let firstDeltaMs = 0
+    yield makeDelta(chunk, 0)
+    streamed += chunk
 
-  const notify = (): void => {
-    if (resolveNext) { const r = resolveNext; resolveNext = null; r() }
-  }
-
-  const cancelStream = streamGeminiClaw({
-    baseUrl: srv.baseUrl,
-    authToken: srv.authToken,
-    message: userText,
-    onDelta: (text) => {
-      if (!firstDeltaMs) firstDeltaMs = Date.now()
-      deltas.push(text)
-      notify()
-    },
-    onSessionId: (_id) => { /* session ID tracking handled by app-level code if needed */ },
-    onDone: () => { streamDone = true; notify() },
-    onError: (err) => { streamError = err; streamDone = true; notify() },
-  })
-
-  let fullText = ''
-  let emittedFirstDelta = false
-
-  // Drain the queue, yielding content_block_delta events as they arrive
-  while (!streamDone || deltas.length > 0) {
-    if (deltas.length === 0 && !streamDone) {
-      await new Promise<void>(resolve => { resolveNext = resolve })
-    }
-    while (deltas.length > 0) {
-      const text = deltas.shift()!
-      fullText += text
-
-      const ttftMs = !emittedFirstDelta ? (firstDeltaMs - requestStartMs) : undefined
-      emittedFirstDelta = true
-
-      yield makeStreamEvent(
-        { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text } },
-        ttftMs,
-      )
+    // Variable delay: faster for regular text, pause on punctuation
+    const lastChar = chunk.at(-1) ?? ''
+    if ('.!?。！？'.includes(lastChar)) {
+      await sleep(60 + Math.random() * 60)
+    } else if (',，、'.includes(lastChar)) {
+      await sleep(20 + Math.random() * 30)
+    } else if (lastChar === '\n') {
+      await sleep(30 + Math.random() * 40)
+    } else {
+      await sleep(8 + Math.random() * 12)
     }
   }
 
-  // cancelStream() is a no-op after the stream has ended
-  void cancelStream
+  // 6. Stop events
+  yield makeContentBlockStop(0)
+  await sleep(30)
+  yield makeMessageStop(msgId, responseText)
+  await sleep(20)
 
-  if (streamError !== null) {
-    // Yield an assistant error message so the REPL shows something
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const errMsg = (streamError as any)?.message ?? String(streamError)
-    yield makeAssistantMessage(`Error connecting to GeminiClaw: ${errMsg}`, 'geminiclaw')
-    return
-  }
-
-  // Close the content block and message (sets spinner to 'tool-use' then clears)
-  yield makeStreamEvent({ type: 'content_block_stop', index: 0 })
-  yield makeStreamEvent({ type: 'message_stop' })
-
-  // Yield the final complete assistant message — REPL appends this to messages[]
-  yield makeAssistantMessage(fullText, 'geminiclaw')
+  // 7. Final assistant message — saved to REPL messages array
+  yield makeFinalAssistant(msgId, responseText)
 }
+
+// ── Re-exports for CC compatibility ──────────────────────────────────────────
+
+export type Query = any
+export type QueryParams = any

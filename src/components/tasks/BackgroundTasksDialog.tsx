@@ -1,6 +1,6 @@
 // @ts-nocheck — pre-compiled React Compiler output
 import { c as _c } from "react/compiler-runtime";
-import { feature } from 'bun:bundle';
+import { feature } from '../../bun-bundle-shim.js';
 import figures from 'figures';
 import React, { type ReactNode, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react';
 import { isCoordinatorMode } from '../../coordinator/coordinatorMode.js';

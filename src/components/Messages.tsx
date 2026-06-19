@@ -1,6 +1,6 @@
 // @ts-nocheck — pre-compiled React Compiler output
 import { c as _c } from "react/compiler-runtime";
-import { feature } from 'bun:bundle';
+import { feature } from '../bun-bundle-shim.js';
 import chalk from 'chalk';
 import type { UUID } from 'crypto';
 import type { RefObject } from 'react';

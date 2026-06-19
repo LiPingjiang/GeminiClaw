@@ -1,6 +1,6 @@
 // @ts-nocheck — pre-compiled React Compiler output
 import { c as _c } from "react/compiler-runtime";
-import { feature } from 'bun:bundle';
+import { feature } from '../bun-bundle-shim.js';
 import { dirname } from 'path';
 import React from 'react';
 import { useTerminalSize } from '../hooks/useTerminalSize.js';

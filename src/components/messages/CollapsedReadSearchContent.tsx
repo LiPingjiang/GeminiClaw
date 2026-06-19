@@ -1,6 +1,6 @@
 // @ts-nocheck — pre-compiled React Compiler output
 import { c as _c } from "react/compiler-runtime";
-import { feature } from 'bun:bundle';
+import { feature } from '../../bun-bundle-shim.js';
 import { basename } from 'path';
 import React, { useRef } from 'react';
 import { useMinDisplayTime } from '../../hooks/useMinDisplayTime.js';
