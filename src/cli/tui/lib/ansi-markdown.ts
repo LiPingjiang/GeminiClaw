@@ -42,7 +42,7 @@ function formatInline(tokens: Token[] | undefined): string {
     switch (tok.type) {
       case 'strong':    return c.bold(formatInline((tok as Tokens.Strong).tokens))
       case 'em':        return c.italic(formatInline((tok as Tokens.Em).tokens))
-      case 'strong_em': return c.boldItalic(formatInline((tok as Tokens.Strong).tokens))
+      case 'strong_em': return c.boldItalic(formatInline((tok as Tokens.Strong).tokens ?? []))
       case 'codespan':  return c.code((tok as Tokens.Codespan).text)
       case 'link':      return c.link((tok as Tokens.Link).text)
       case 'text':      return (tok as Tokens.Text).text
@@ -83,10 +83,20 @@ function tokenToLines(token: Token, columns: number, indent = 0): string[] {
       for (const line of codeLines) {
         // Truncate long code lines to available width
         const stripped = stripAnsi(line)
-        const display = stripped.length > available
-          ? stripped.slice(0, available - 1) + '…'
-          : stripped
-        lines.push(c.codeBlock(display))
+        if (stringWidth(stripped) > available) {
+          // Slice by characters until visible width fits
+          let truncated = ''
+          let w = 0
+          for (const char of stripped) {
+            const cw = stringWidth(char)
+            if (w + cw > available - 1) break
+            truncated += char
+            w += cw
+          }
+          lines.push(c.codeBlock(truncated + '…'))
+        } else {
+          lines.push(c.codeBlock(stripped))
+        }
       }
       return lines
     }

@@ -16,7 +16,7 @@ export const AnsiBlock = memo(function AnsiBlock({ lines, columns }: AnsiBlockPr
   return (
     <Box flexDirection="column" width={columns}>
       {lines.map((line, i) => (
-        <Text key={i}>{line}</Text>
+        <Text key={i} wrap="truncate">{line}</Text>
       ))}
     </Box>
   )
