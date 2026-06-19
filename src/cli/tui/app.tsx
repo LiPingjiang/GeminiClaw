@@ -401,6 +401,26 @@ function App({ srv, opts }: { srv: ServerConfig; opts: TuiOptions }) {
 }
 
 export async function runTui(opts: TuiOptions = {}): Promise<void> {
+  // GC_USE_REPL=1 opts into the CC REPL.tsx frontend (experimental).
+  // Default remains the native GeminiClaw TUI.
+  if (process.env.GC_USE_REPL === '1') {
+    const { REPL } = await import('../../screens/REPL.js') as any
+    const React = (await import('react')).default
+    const { AlternateScreen } = await import('../../ink/components/AlternateScreen.js')
+    const { waitUntilExit } = await render(
+      React.createElement(AlternateScreen, { mouseTracking: true },
+        React.createElement(REPL, {
+          commands: [],
+          debug: false,
+          initialTools: [],
+          thinkingConfig: { type: 'disabled' },
+        } as any),
+      ),
+    )
+    await waitUntilExit()
+    return
+  }
+
   const srv = loadServerConfig()
   const { waitUntilExit } = await render(<App srv={srv} opts={opts} />)
   await waitUntilExit()
