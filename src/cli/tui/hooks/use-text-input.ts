@@ -1,4 +1,4 @@
-import { useInput } from '../gc-renderer/index.js'
+import { useInput } from '../../../ink.js'
 import {
   prevPos, nextPos,
   wordLeft, wordRight, lineNav,

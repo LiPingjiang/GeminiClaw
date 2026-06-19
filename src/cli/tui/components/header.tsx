@@ -1,6 +1,6 @@
 // src/cli/tui/components/header.tsx
 import React from 'react'
-import { Box, Text } from '../gc-renderer/index.js'
+import { Box, Text } from '../../../ink.js'
 import type { HeaderState } from '../types.js'
 
 interface HeaderProps {

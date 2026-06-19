@@ -8,18 +8,33 @@ importers:
 
   .:
     dependencies:
+      '@alcalzone/ansi-tokenize':
+        specifier: ^0.3.0
+        version: 0.3.0
       '@anthropic-ai/sdk':
         specifier: ^0.39.0
         version: 0.39.0
       '@types/react-reconciler':
         specifier: ^0.33.0
         version: 0.33.0(@types/react@19.2.17)
+      auto-bind:
+        specifier: ^5.0.1
+        version: 5.0.1
       better-sqlite3:
         specifier: ^12.9.0
         version: 12.9.0
+      bidi-js:
+        specifier: ^1.0.3
+        version: 1.0.3
       chalk:
         specifier: ^5.6.2
         version: 5.6.2
+      cli-boxes:
+        specifier: ^4.0.1
+        version: 4.0.1
+      code-excerpt:
+        specifier: ^4.0.0
+        version: 4.0.0
       commander:
         specifier: ^15.0.0
         version: 15.0.0
@@ -29,15 +44,27 @@ importers:
       e2b:
         specifier: ^2.29.1
         version: 2.29.1
+      emoji-regex:
+        specifier: ^10.6.0
+        version: 10.6.0
       fastify:
         specifier: ^5.3.2
         version: 5.8.5
+      get-east-asian-width:
+        specifier: ^1.6.0
+        version: 1.6.0
+      indent-string:
+        specifier: ^5.0.0
+        version: 5.0.0
       ink:
         specifier: ^7.0.6
         version: 7.0.6(@types/react@19.2.17)(react@19.2.7)
       js-yaml:
         specifier: ^4.1.0
         version: 4.1.1
+      lodash-es:
+        specifier: ^4.18.1
+        version: 4.18.1
       marked:
         specifier: ^18.0.5
         version: 18.0.5
@@ -47,21 +74,45 @@ importers:
       react:
         specifier: ^19.2.7
         version: 19.2.7
+      react-compiler-runtime:
+        specifier: ^1.0.0
+        version: 1.0.0(react@19.2.7)
       react-reconciler:
         specifier: ^0.33.0
         version: 0.33.0(react@19.2.7)
+      semver:
+        specifier: ^7.8.4
+        version: 7.8.4
+      signal-exit:
+        specifier: ^4.1.0
+        version: 4.1.0
+      stack-utils:
+        specifier: ^2.0.6
+        version: 2.0.6
       string-width:
         specifier: ^8.2.1
         version: 8.2.1
       strip-ansi:
         specifier: ^7.2.0
         version: 7.2.0
+      supports-hyperlinks:
+        specifier: ^4.4.0
+        version: 4.4.0
+      type-fest:
+        specifier: ^5.7.0
+        version: 5.7.0
+      usehooks-ts:
+        specifier: ^3.1.1
+        version: 3.1.1(react@19.2.7)
       wrap-ansi:
         specifier: ^10.0.0
         version: 10.0.0
       ws:
         specifier: ^8.18.0
         version: 8.21.0
+      yoga-layout-prebuilt:
+        specifier: ^1.10.0
+        version: 1.10.0
       zod:
         specifier: ^3.24.4
         version: 3.25.76
@@ -84,6 +135,12 @@ importers:
       '@types/react':
         specifier: ^19.2.17
         version: 19.2.17
+      '@types/semver':
+        specifier: ^7.7.1
+        version: 7.7.1
+      '@types/stack-utils':
+        specifier: ^2.0.3
+        version: 2.0.3
       '@types/ws':
         specifier: ^8.5.14
         version: 8.18.1
@@ -546,8 +603,17 @@ packages:
   '@types/react@19.2.17':
     resolution: {integrity: sha1-3MrDZbqg8XNOwnD/S1HIlGXo3H8=, tarball: http://r.npm.sankuai.com/@types/react/download/@types/react-19.2.17.tgz}
 
+  '@types/semver@7.7.1':
+    resolution: {integrity: sha1-POOvGlUk7zJ9Lank/YttlcjXBSg=, tarball: http://r.npm.sankuai.com/@types/semver/download/@types/semver-7.7.1.tgz}
+
+  '@types/stack-utils@2.0.3':
+    resolution: {integrity: sha1-YgkyHrLBcSp+dGZCK4yx/A2d1dg=, tarball: http://r.npm.sankuai.com/@types/stack-utils/download/@types/stack-utils-2.0.3.tgz}
+
   '@types/ws@8.18.1':
     resolution: {integrity: sha1-SEZOS/Ld/RfbE9hFRn9gcP/qSqk=, tarball: https://registry.npmmirror.com/@types/ws/download/@types/ws-8.18.1.tgz}
+
+  '@types/yoga-layout@1.9.2':
+    resolution: {integrity: sha1-76+emRpzkNwIGgtnkYWXmoOpY5o=, tarball: http://r.npm.sankuai.com/@types/yoga-layout/download/@types/yoga-layout-1.9.2.tgz}
 
   '@vitest/coverage-v8@3.2.4':
     resolution: {integrity: sha512-EyF9SXU6kS5Ku/U82E259WSnvg6c8KTjppUncuNdm5QHpe17mwREHnjDzozC8x9MZ0xfBUFSaLkRv4TMA75ALQ==}
@@ -666,6 +732,9 @@ packages:
   better-sqlite3@12.9.0:
     resolution: {integrity: sha1-MkmMmbo/s29gT7tccGZ8X2jABBQ=, tarball: https://registry.npmmirror.com/better-sqlite3/download/better-sqlite3-12.9.0.tgz}
     engines: {node: 20.x || 22.x || 23.x || 24.x || 25.x}
+
+  bidi-js@1.0.3:
+    resolution: {integrity: sha1-b4vPPId8TZIg3fSbm7aTDIj4d9I=, tarball: http://r.npm.sankuai.com/bidi-js/download/bidi-js-1.0.3.tgz}
 
   bindings@1.5.0:
     resolution: {integrity: sha1-EDU8npRTNLwFEabZCzj7x8nFBN8=, tarball: https://registry.npmmirror.com/bindings/download/bindings-1.5.0.tgz}
@@ -823,11 +892,14 @@ packages:
   eastasianwidth@0.2.0:
     resolution: {integrity: sha512-I88TYZWc9XiYHRQ4/3c5rjjfgkjhLyW2luGIheGERbNQ6OY7yTybanSpDXZa8y7VUP9YmDcYa+eyq4ca7iLqWA==}
 
+  emoji-regex@10.6.0:
+    resolution: {integrity: sha1-vz1uj3+P0ipl2XA0dbwBRzV6aw0=, tarball: http://r.npm.sankuai.com/emoji-regex/download/emoji-regex-10.6.0.tgz}
+
   emoji-regex@8.0.0:
-    resolution: {integrity: sha1-6Bj9ac5cz8tARZT4QpY79TFkzDc=, tarball: https://registry.npmmirror.com/emoji-regex/download/emoji-regex-8.0.0.tgz}
+    resolution: {integrity: sha1-6Bj9ac5cz8tARZT4QpY79TFkzDc=, tarball: http://r.npm.sankuai.com/emoji-regex/download/emoji-regex-8.0.0.tgz}
 
   emoji-regex@9.2.2:
-    resolution: {integrity: sha512-L18DaJsXSUk2+42pv8mLs5jJT2hqFkFE4j21wOmgbUqsZ2hL72NsUU785g9RXgo3s0ZNgVl42TiHp3ZtOv/Vyg==}
+    resolution: {integrity: sha1-hAyIA7DYBH9P8M+WMXazLU7z7XI=, tarball: http://r.npm.sankuai.com/emoji-regex/download/emoji-regex-9.2.2.tgz}
 
   end-of-stream@1.4.5:
     resolution: {integrity: sha1-c0TXEd6kDgt0q8LtSXeHQ8ztsIw=, tarball: https://registry.npmmirror.com/end-of-stream/download/end-of-stream-1.4.5.tgz}
@@ -988,6 +1060,10 @@ packages:
     resolution: {integrity: sha512-EykJT/Q1KjTWctppgIAgfSO0tKVuZUjhgMr17kqTumMl6Afv3EISleU7qZUzoXDFTAHTDC4NOoG/ZxU3EvlMPQ==}
     engines: {node: '>=8'}
 
+  has-flag@5.0.1:
+    resolution: {integrity: sha1-VIPbKuAqRy0dBpFGL8WH0YQ82UA=, tarball: http://r.npm.sankuai.com/has-flag/download/has-flag-5.0.1.tgz}
+    engines: {node: '>=12'}
+
   has-symbols@1.1.0:
     resolution: {integrity: sha1-/JxqeDoISVHQuXH+EBjegTcHozg=, tarball: https://registry.npmmirror.com/has-symbols/download/has-symbols-1.1.0.tgz}
     engines: {node: '>= 0.4'}
@@ -1093,6 +1169,12 @@ packages:
 
   light-my-request@6.6.0:
     resolution: {integrity: sha1-yUSHcjI/ZfM3IPtZeceEHxQGCt0=, tarball: https://registry.npmmirror.com/light-my-request/download/light-my-request-6.6.0.tgz}
+
+  lodash-es@4.18.1:
+    resolution: {integrity: sha1-uWLuuA2dmDqQC/NClh+3QYyhCx0=, tarball: http://r.npm.sankuai.com/lodash-es/download/lodash-es-4.18.1.tgz}
+
+  lodash.debounce@4.0.8:
+    resolution: {integrity: sha1-gteb/zCmfEAF/9XiUVMArZyk168=, tarball: http://r.npm.sankuai.com/lodash.debounce/download/lodash.debounce-4.0.8.tgz}
 
   loupe@3.2.1:
     resolution: {integrity: sha1-AJXPVtxbepp8CP9bGoeW7IrRfnY=, tarball: https://registry.npmmirror.com/loupe/download/loupe-3.2.1.tgz}
@@ -1290,6 +1372,11 @@ packages:
     resolution: {integrity: sha1-zZJL9SAKB1uDwYjNa54hG3/A0+0=, tarball: https://registry.npmmirror.com/rc/download/rc-1.2.8.tgz}
     hasBin: true
 
+  react-compiler-runtime@1.0.0:
+    resolution: {integrity: sha1-7lZcLNNDekHn/DHYq2xmL2tWj8A=, tarball: http://r.npm.sankuai.com/react-compiler-runtime/download/react-compiler-runtime-1.0.0.tgz}
+    peerDependencies:
+      react: ^17.0.0 || ^18.0.0 || ^19.0.0 || ^0.0.0-experimental
+
   react-reconciler@0.33.0:
     resolution: {integrity: sha1-ndICCNRbqlsLRwF4H4WCNmV/FeE=, tarball: http://r.npm.sankuai.com/react-reconciler/download/react-reconciler-0.33.0.tgz}
     engines: {node: '>=0.10.0'}
@@ -1313,7 +1400,7 @@ packages:
     engines: {node: '>=0.10.0'}
 
   require-from-string@2.0.2:
-    resolution: {integrity: sha1-iaf92TgmEmcxjq/hT5wy5ZjDaQk=, tarball: https://registry.npmmirror.com/require-from-string/download/require-from-string-2.0.2.tgz}
+    resolution: {integrity: sha1-iaf92TgmEmcxjq/hT5wy5ZjDaQk=, tarball: http://r.npm.sankuai.com/require-from-string/download/require-from-string-2.0.2.tgz}
     engines: {node: '>=0.10.0'}
 
   resolve-pkg-maps@1.0.0:
@@ -1356,8 +1443,8 @@ packages:
   secure-json-parse@4.1.0:
     resolution: {integrity: sha1-Txq0HGehNJfqG5Exu0GDoihlR3w=, tarball: https://registry.npmmirror.com/secure-json-parse/download/secure-json-parse-4.1.0.tgz}
 
-  semver@7.7.4:
-    resolution: {integrity: sha1-KEZONgYOmR+noR0CedLT87V6foo=, tarball: https://registry.npmmirror.com/semver/download/semver-7.7.4.tgz}
+  semver@7.8.4:
+    resolution: {integrity: sha1-xz7O664GFpNL6N/yin/XB1fI5pY=, tarball: http://r.npm.sankuai.com/semver/download/semver-7.8.4.tgz}
     engines: {node: '>=10'}
     hasBin: true
 
@@ -1443,9 +1530,17 @@ packages:
   strip-literal@3.1.0:
     resolution: {integrity: sha1-IiskPdLUnAvNDeiQatvYQXcZYDI=, tarball: https://registry.npmmirror.com/strip-literal/download/strip-literal-3.1.0.tgz}
 
+  supports-color@10.2.2:
+    resolution: {integrity: sha1-RmwpeMxc0AUtVCoLV2RhwrgC67Q=, tarball: http://r.npm.sankuai.com/supports-color/download/supports-color-10.2.2.tgz}
+    engines: {node: '>=18'}
+
   supports-color@7.2.0:
     resolution: {integrity: sha512-qpCAvRl9stuOHveKsn7HncJRvv501qIacKzQlO/+Lwxc9+0q2wLyv4Dfvt80/DPn2pqOBsJdDiogXGR9+OvwRw==}
     engines: {node: '>=8'}
+
+  supports-hyperlinks@4.4.0:
+    resolution: {integrity: sha1-sl7Y5e9nOI0c4egwKcB98Z02uHA=, tarball: http://r.npm.sankuai.com/supports-hyperlinks/download/supports-hyperlinks-4.4.0.tgz}
+    engines: {node: '>=20'}
 
   tagged-tag@1.0.0:
     resolution: {integrity: sha1-oLWRfChky6VIQUlav6P2sT7c9NY=, tarball: http://r.npm.sankuai.com/tagged-tag/download/tagged-tag-1.0.0.tgz}
@@ -1532,6 +1627,12 @@ packages:
   undici@7.27.2:
     resolution: {integrity: sha1-+PrpaO5oN3z8YXE9nNFSdzcWgE8=, tarball: http://r.npm.sankuai.com/undici/download/undici-7.27.2.tgz}
     engines: {node: '>=20.18.1'}
+
+  usehooks-ts@3.1.1:
+    resolution: {integrity: sha1-C7fzjzb4IZ7kUJzF6USuYQ+5dlY=, tarball: http://r.npm.sankuai.com/usehooks-ts/download/usehooks-ts-3.1.1.tgz}
+    engines: {node: '>=16.15.0'}
+    peerDependencies:
+      react: ^16.8.0  || ^17 || ^18 || ^19 || ^19.0.0-rc
 
   util-deprecate@1.0.2:
     resolution: {integrity: sha1-RQ1Nyfpw3nMnYvvS1KKJgUGaDM8=, tarball: https://registry.npmmirror.com/util-deprecate/download/util-deprecate-1.0.2.tgz}
@@ -1684,6 +1785,10 @@ packages:
   yargs@17.7.2:
     resolution: {integrity: sha1-mR3zmspnWhkrgW4eA2P5110qomk=, tarball: https://registry.npmmirror.com/yargs/download/yargs-17.7.2.tgz}
     engines: {node: '>=12'}
+
+  yoga-layout-prebuilt@1.10.0:
+    resolution: {integrity: sha1-KTb7r0s2KO4LPjsd9Ek21sFG+qY=, tarball: http://r.npm.sankuai.com/yoga-layout-prebuilt/download/yoga-layout-prebuilt-1.10.0.tgz}
+    engines: {node: '>=8'}
 
   yoga-layout@3.2.1:
     resolution: {integrity: sha1-0tG6BvDoHC62UMPlrYsLSt3h6EM=, tarball: http://r.npm.sankuai.com/yoga-layout/download/yoga-layout-3.2.1.tgz}
@@ -2002,9 +2107,15 @@ snapshots:
     dependencies:
       csstype: 3.2.3
 
+  '@types/semver@7.7.1': {}
+
+  '@types/stack-utils@2.0.3': {}
+
   '@types/ws@8.18.1':
     dependencies:
       '@types/node': 22.19.17
+
+  '@types/yoga-layout@1.9.2': {}
 
   '@vitest/coverage-v8@3.2.4(vitest@3.2.4(@types/node@22.19.17)(tsx@4.21.0))':
     dependencies:
@@ -2133,6 +2244,10 @@ snapshots:
     dependencies:
       bindings: 1.5.0
       prebuild-install: 7.1.3
+
+  bidi-js@1.0.3:
+    dependencies:
+      require-from-string: 2.0.2
 
   bindings@1.5.0:
     dependencies:
@@ -2282,6 +2397,8 @@ snapshots:
 
   eastasianwidth@0.2.0: {}
 
+  emoji-regex@10.6.0: {}
+
   emoji-regex@8.0.0: {}
 
   emoji-regex@9.2.2: {}
@@ -2388,7 +2505,7 @@ snapshots:
       process-warning: 5.0.0
       rfdc: 1.4.1
       secure-json-parse: 4.1.0
-      semver: 7.7.4
+      semver: 7.8.4
       toad-cache: 3.7.0
 
   fastq@1.20.1:
@@ -2483,6 +2600,8 @@ snapshots:
   gopd@1.2.0: {}
 
   has-flag@4.0.0: {}
+
+  has-flag@5.0.1: {}
 
   has-symbols@1.1.0: {}
 
@@ -2605,6 +2724,10 @@ snapshots:
       process-warning: 4.0.1
       set-cookie-parser: 2.7.2
 
+  lodash-es@4.18.1: {}
+
+  lodash.debounce@4.0.8: {}
+
   loupe@3.2.1: {}
 
   lru-cache@10.4.3: {}
@@ -2623,7 +2746,7 @@ snapshots:
 
   make-dir@4.0.0:
     dependencies:
-      semver: 7.7.4
+      semver: 7.8.4
 
   marked@18.0.5: {}
 
@@ -2669,7 +2792,7 @@ snapshots:
 
   node-abi@3.90.0:
     dependencies:
-      semver: 7.7.4
+      semver: 7.8.4
 
   node-domexception@1.0.0: {}
 
@@ -2791,6 +2914,10 @@ snapshots:
       minimist: 1.2.8
       strip-json-comments: 2.0.1
 
+  react-compiler-runtime@1.0.0(react@19.2.7):
+    dependencies:
+      react: 19.2.7
+
   react-reconciler@0.33.0(react@19.2.7):
     dependencies:
       react: 19.2.7
@@ -2866,7 +2993,7 @@ snapshots:
 
   secure-json-parse@4.1.0: {}
 
-  semver@7.7.4: {}
+  semver@7.8.4: {}
 
   set-cookie-parser@2.7.2: {}
 
@@ -2946,9 +3073,16 @@ snapshots:
     dependencies:
       js-tokens: 9.0.1
 
+  supports-color@10.2.2: {}
+
   supports-color@7.2.0:
     dependencies:
       has-flag: 4.0.0
+
+  supports-hyperlinks@4.4.0:
+    dependencies:
+      has-flag: 5.0.1
+      supports-color: 10.2.2
 
   tagged-tag@1.0.0: {}
 
@@ -3030,6 +3164,11 @@ snapshots:
   undici-types@6.21.0: {}
 
   undici@7.27.2: {}
+
+  usehooks-ts@3.1.1(react@19.2.7):
+    dependencies:
+      lodash.debounce: 4.0.8
+      react: 19.2.7
 
   util-deprecate@1.0.2: {}
 
@@ -3173,6 +3312,10 @@ snapshots:
       string-width: 4.2.3
       y18n: 5.0.8
       yargs-parser: 21.1.1
+
+  yoga-layout-prebuilt@1.10.0:
+    dependencies:
+      '@types/yoga-layout': 1.9.2
 
   yoga-layout@3.2.1: {}
 

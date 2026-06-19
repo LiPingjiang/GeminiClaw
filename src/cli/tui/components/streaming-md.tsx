@@ -1,5 +1,5 @@
 import React, { memo, useRef } from 'react'
-import { Box, Text } from '../gc-renderer/index.js'
+import { Box, Text } from '../../../ink.js'
 import { findStableBoundary } from '../lib/streaming-boundary.js'
 import { markdownToAnsiLines } from '../lib/ansi-markdown.js'
 import { AnsiBlock } from '../lib/markdown-render.js'

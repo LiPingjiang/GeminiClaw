@@ -1,6 +1,6 @@
 // src/cli/tui/components/message-item.tsx
 import React from 'react'
-import { Box, Text } from '../gc-renderer/index.js'
+import { Box, Text } from '../../../ink.js'
 import type { TuiEvent } from '../types.js'
 import { DiffView } from './diff-view.js'
 import { renderMarkdown } from '../lib/markdown-render.js'

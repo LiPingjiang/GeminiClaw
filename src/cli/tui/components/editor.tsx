@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react'
-import { Box, Text, setCursor } from '../gc-renderer/index.js'
+import { Box, Text, setCursor } from '../../../ink.js'
 import { useTextInput } from '../hooks/use-text-input.js'
 import type { TuiAction, InputAttachment, BtwPhase } from '../state.js'
 import type { TuiCommand } from '../commands/registry.js'

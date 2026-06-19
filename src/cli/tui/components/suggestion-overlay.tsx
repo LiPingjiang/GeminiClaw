@@ -1,6 +1,6 @@
 // src/cli/tui/components/suggestion-overlay.tsx
 import React from 'react'
-import { Box, Text } from '../gc-renderer/index.js'
+import { Box, Text } from '../../../ink.js'
 import type { TuiCommand } from '../commands/registry.js'
 
 interface SuggestionOverlayProps {

@@ -1,6 +1,6 @@
 // src/cli/tui/components/thinking-line.tsx
 import React, { useEffect, useState } from 'react'
-import { Box, Text } from '../gc-renderer/index.js'
+import { Box, Text } from '../../../ink.js'
 
 const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏']
 

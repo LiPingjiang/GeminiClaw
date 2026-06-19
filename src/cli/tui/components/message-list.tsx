@@ -3,12 +3,12 @@
 // No more marginTop hack. Only visible lines reach the screen buffer.
 
 import React, { useMemo } from 'react'
-import { AnsiBlock } from '../gc-renderer/index.js'
+import { AnsiBlock } from '../../../ink.js'
 import { renderEventToAnsiLines, renderThinkingLine } from '../lib/event-renderer.js'
 import { markdownToAnsiLines } from '../lib/ansi-markdown.js'
 import type { TuiEvent } from '../types.js'
 import type { TuiAction } from '../state.js'
-import { useAnimationFrame } from '../gc-renderer/index.js'
+import { useAnimationFrame } from '../../../ink.js'
 
 type Dispatch = React.Dispatch<TuiAction>
 

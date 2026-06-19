@@ -1,6 +1,6 @@
 // src/cli/tui/app.tsx
 import React, { useCallback, useEffect, useReducer, useRef } from 'react'
-import { render, Box, Text, useApp, useStdout, useInput } from './gc-renderer/index.js'
+import { render, Box, Text, useApp, useStdout, useInput } from '../../ink.js'
 import { existsSync, readFileSync } from 'fs'
 import { join } from 'path'
 import os from 'os'
