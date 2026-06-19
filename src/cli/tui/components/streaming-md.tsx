@@ -1,7 +1,8 @@
 import React, { memo, useRef } from 'react'
-import { Box } from 'ink'
+import { Box, Text } from 'ink'
 import { findStableBoundary } from '../lib/streaming-boundary.js'
-import { renderMarkdown } from '../lib/markdown-render.js'
+import { markdownToAnsiLines } from '../lib/ansi-markdown.js'
+import { AnsiBlock } from '../lib/markdown-render.js'
 
 interface StreamingMdProps {
   text: string
@@ -16,7 +17,6 @@ export const StreamingMd = memo(function StreamingMd({ text, columns }: Streamin
   }
 
   const boundary = findStableBoundary(text)
-
   if (boundary > stablePrefixRef.current.length) {
     stablePrefixRef.current = text.slice(0, boundary)
   }
@@ -24,17 +24,19 @@ export const StreamingMd = memo(function StreamingMd({ text, columns }: Streamin
   const stable = stablePrefixRef.current
   const unstable = text.slice(stable.length)
 
-  if (!stable) return <>{renderMarkdown(unstable, columns)}</>
-  if (!unstable) return <StableBlock text={stable} columns={columns} />
-
   return (
-    <Box flexDirection="column">
-      <StableBlock text={stable} columns={columns} />
-      {renderMarkdown(unstable, columns)}
+    <Box flexDirection="column" width={columns}>
+      {stable && <StableBlock text={stable} columns={columns} />}
+      {unstable && (
+        <Box width={columns}>
+          <Text wrap="wrap">{unstable}</Text>
+        </Box>
+      )}
     </Box>
   )
 })
 
 const StableBlock = memo(function StableBlock({ text, columns }: { text: string; columns: number }) {
-  return <>{renderMarkdown(text, columns)}</>
+  const lines = markdownToAnsiLines(text, columns)
+  return <AnsiBlock lines={lines} columns={columns} />
 })

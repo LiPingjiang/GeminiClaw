@@ -46,8 +46,8 @@ export function MessageList({
   }, [maxScroll, dispatch])
 
   return (
-    <Box height={visibleRows} overflowY="hidden">
-      <Box flexDirection="column" marginTop={-scrollOffset}>
+    <Box height={visibleRows} overflowY="hidden" width={columns}>
+      <Box flexDirection="column" marginTop={-scrollOffset} width={columns}>
         {allItems.map((event, i) => (
           <MessageItem key={i} event={event} columns={columns} />
         ))}

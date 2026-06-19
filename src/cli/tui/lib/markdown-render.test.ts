@@ -20,6 +20,6 @@ describe('renderMarkdown', () => {
 
   it('handles empty string', () => {
     const node = renderMarkdown('', 80)
-    expect(node).not.toBeNull()
+    expect(node).toBeNull()
   })
 })

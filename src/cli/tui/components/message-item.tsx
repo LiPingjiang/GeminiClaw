@@ -17,7 +17,7 @@ export function MessageItem({ event, columns = COLUMNS_DEFAULT }: MessageItemPro
   switch (event.kind) {
     case 'user_message':
       return (
-        <Box marginTop={1}>
+        <Box marginTop={1} width={columns}>
           <Text bold color="yellow">{'❯ '}</Text>
           <Text bold wrap="wrap">{event.content}</Text>
         </Box>
@@ -25,7 +25,7 @@ export function MessageItem({ event, columns = COLUMNS_DEFAULT }: MessageItemPro
 
     case 'response':
       return (
-        <Box marginTop={1} paddingLeft={2} flexDirection="column">
+        <Box marginTop={1} paddingLeft={2} flexDirection="column" width={columns}>
           {renderMarkdown(event.content, columns - 2)}
         </Box>
       )
