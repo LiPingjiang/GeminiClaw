@@ -1,14 +1,9 @@
 // src/cli/tui/gc-renderer/reconciler.ts
-import { appendFileSync } from 'fs'
 import createReconciler from 'react-reconciler'
 import { ConcurrentRoot } from 'react-reconciler/constants.js'
 import type { GCNode, GCContainer } from './types.js'
 import { layoutTree, renderTree } from './layout.js'
 import type { ScreenBuffer } from './screen.js'
-
-function dbg(msg: string): void {
-  try { appendFileSync('/tmp/gc-debug.log', msg + '\n') } catch {}
-}
 
 function makeNode(type: string, props: Record<string, unknown>): GCNode {
   return {
@@ -47,19 +42,15 @@ const reconciler = createReconciler<
   resetAfterCommit(container: GCContainer) {
     try {
       const screen = screenMap.get(container)
-      dbg(`[resetAfterCommit] called, screen=${!!screen}, root.children=${container.root.children.length}`)
       if (!screen) return
       const { root, cols, rows } = container
       root.computedX = 0; root.computedY = 0
       root.computedWidth = cols; root.computedHeight = rows
       layoutTree(root, { x: 0, y: 0, availableWidth: cols, availableHeight: rows })
-      dbg(`[resetAfterCommit] layoutTree done`)
       renderTree(root, screen)
-      dbg(`[resetAfterCommit] renderTree done`)
       screen.commit()
     } catch (err) {
       process.stderr.write('[gc-renderer] resetAfterCommit error: ' + String(err) + '\n')
-      dbg(`[resetAfterCommit] ERROR: ${String(err)}`)
     }
   },
 
