@@ -1,2 +1,2 @@
-export function useSessionBackgrounding(..._args: any[]): any { return undefined }
+export function useSessionBackgrounding(..._: any[]): any { return { handleBackgroundSession: () => {}, handleBackgroundQuery: () => {}, handleBackgroundSession: () => {}, status: "idle", isLoading: false, error: null, enabled: false, queue: [], isActive: false, recommendation: null, push: () => {}, pop: () => undefined, onBeforeQuery: undefined, onTurnComplete: undefined } }
 export default useSessionBackgrounding

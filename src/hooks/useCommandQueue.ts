@@ -1,2 +1,2 @@
-export function useCommandQueue(..._args: any[]): any { return undefined }
+export function useCommandQueue(): any[] { return [] }
 export default useCommandQueue

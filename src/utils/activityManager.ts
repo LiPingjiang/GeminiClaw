@@ -1,2 +1,7 @@
-export const _stub: any = undefined; export function stub(..._args: any[]): any { return undefined as any }; export type AnyType = any
-export function activityManager(..._args: any[]): any { return undefined as any }
+export const activityManager = {
+  recordUserActivity: (): void => {},
+  recordActivity: (): void => {},
+  getLastActivityTime: (): number => Date.now(),
+  isActive: (): boolean => false,
+}
+export default activityManager
