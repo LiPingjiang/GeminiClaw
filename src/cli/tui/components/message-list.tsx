@@ -39,7 +39,7 @@ export function MessageList({
   // ── Pre-render all events to ANSI lines (memoized) ─────────────────────────
   const eventLines = useMemo(() =>
     events
-      .filter(e => e.kind !== 'delta' && e.kind !== 'turn_end' && e.kind !== 'thinking_delta')
+      .filter(e => e.kind !== 'delta' && e.kind !== 'turn_end' && e.kind !== 'thinking_delta' && e.kind !== 'turn_start')
       .flatMap(e => renderEventToAnsiLines(e, columns))
   , [events, columns])
 

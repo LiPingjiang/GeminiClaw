@@ -109,8 +109,9 @@ export function naturalWidth(node: GCNode, availWidth: number): number {
 function naturalHeight(node: GCNode, availWidth: number): number {
   const mTop = (node.props['marginTop']    as number) ?? 0
   const mBot = (node.props['marginBottom'] as number) ?? 0
-  const pLeft = (node.props['paddingLeft'] as number) ?? 0
-  const innerW = Math.max(1, availWidth - pLeft)
+  const pLeft  = (node.props['paddingLeft']  as number) ?? 0
+  const pRight = (node.props['paddingRight'] as number) ?? 0
+  const innerW = Math.max(1, availWidth - pLeft - pRight)
 
   switch (node.nodeType) {
     case 'gc-ansi':
