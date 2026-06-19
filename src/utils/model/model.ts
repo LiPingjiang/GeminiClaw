@@ -6,3 +6,6 @@ export function renderModelName(..._args: any[]): any { return undefined as any 
 export function getMainLoopModel(..._args: any[]): any { return undefined as any }
 export function isOpus1mMergeEnabled(..._args: any[]): any { return false }
 export function modelDisplayString(..._args: any[]): any { return undefined as any }
+export function getDefaultMainLoopModel(..._args: any[]): any { return undefined as any }
+export function parseUserSpecifiedModel(..._args: any[]): any { return undefined as any }
+export function getDefaultSonnetModel(..._args: any[]): any { return undefined as any }

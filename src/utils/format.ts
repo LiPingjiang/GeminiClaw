@@ -7,4 +7,7 @@ export function padAligned(..._args: any[]): any { return undefined as any }
 export function formatDuration(..._args: any[]): any { return undefined as any }
 export function formatNumber(..._args: any[]): any { return undefined as any }
 export function formatFileSize(..._args: any[]): any { return undefined as any }
-export function formatRelativeTime(..._args: any[]): any { return undefined as any }
+export function formatRelativeTime(..._args: any[]): any { return undefined as any }export function formatTokens(..._args: any[]): any { return undefined as any }
+export function truncate(..._args: any[]): any { return undefined as any }
+export function truncatePathMiddle(..._args: any[]): any { return undefined as any }
+export function formatSecondsShort(..._args: any[]): any { return undefined as any }

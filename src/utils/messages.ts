@@ -269,3 +269,23 @@ export function handleMessageFromStream(
       return
   }
 }
+export function extractTag(..._args: any[]): any { return undefined as any }
+export function isEmptyMessageText(..._args: any[]): any { return undefined as any }
+export function isSyntheticMessage(..._args: any[]): any { return undefined as any }
+export function isToolUseResultMessage(..._args: any[]): any { return undefined as any }
+export function stripPromptXMLTags(..._args: any[]): any { return undefined as any }
+export function getUserMessageText(..._args: any[]): any { return undefined as any }
+export function SYNTHETIC_MESSAGES(..._args: any[]): any { return undefined as any }
+export function NO_RESPONSE_REQUESTED(..._args: any[]): any { return undefined as any }
+export function INTERRUPT_MESSAGE(..._args: any[]): any { return undefined as any }
+export function INTERRUPT_MESSAGE_FOR_TOOL_USE(..._args: any[]): any { return undefined as any }
+export function EMPTY_STRING_SET(..._args: any[]): any { return undefined as any }
+export function getProgressMessagesFromLookup(..._args: any[]): any { return undefined as any }
+export function getSiblingToolUseIDsFromLookup(..._args: any[]): any { return undefined as any }
+export function getToolUseID(..._args: any[]): any { return undefined as any }
+export function deriveUUID(..._args: any[]): any { return undefined as any }
+export function getToolUseIDs(..._args: any[]): any { return undefined as any }
+export function hasUnresolvedHooksFromLookup(..._args: any[]): any { return undefined as any }
+export function isNotEmptyMessage(..._args: any[]): any { return undefined as any }
+export function reorderMessagesInUI(..._args: any[]): any { return undefined as any }
+export function shouldShowUserMessage(..._args: any[]): any { return undefined as any }

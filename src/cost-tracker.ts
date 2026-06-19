@@ -6,3 +6,6 @@ export function getTotalInputTokens(..._args: any[]): any { return 0 }
 export function getTotalLinesAdded(..._args: any[]): any { return 0 }
 export function getTotalLinesRemoved(..._args: any[]): any { return 0 }
 export function getTotalOutputTokens(..._args: any[]): any { return 0 }
+export function getStoredSessionCosts(..._args: any[]): any { return undefined as any }
+export function resetCostState(..._args: any[]): any { return undefined as any }
+export function saveCurrentSessionCosts(..._args: any[]): any { return undefined as any }

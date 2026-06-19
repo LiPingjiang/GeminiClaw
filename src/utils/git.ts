@@ -5,3 +5,4 @@ export function getIsGit(..._args: any[]): any { return undefined as any }
 export type GitFileStatus = any
 export type GitRepoState = any
 export function stashToCleanState(..._args: any[]): any { return undefined as any }
+export function getBranch(..._args: any[]): any { return undefined as any }

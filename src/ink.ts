@@ -75,3 +75,9 @@ export { RawAnsi as AnsiBlock } from './ink/components/RawAnsi.js'
 export type ClickEvent = any
 export type DOMElement = any
 export type Key = any
+export function useTerminalFocus(..._args: any[]): any { return undefined as any }
+export function Link(..._args: any[]): any { return undefined as any }
+export function wrapText(..._args: any[]): any { return undefined as any }
+export function useInterval(..._args: any[]): any { return undefined as any }
+export function useTabStatus(..._args: any[]): any { return undefined as any }
+export function useTerminalTitle(..._args: any[]): any { return undefined as any }

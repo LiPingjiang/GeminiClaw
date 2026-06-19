@@ -57,3 +57,4 @@ export function getCurrentTurnTokenBudget(): number { return 0 }
 export function getTurnOutputTokens(): number { return 0 }
 export function getBudgetContinuationCount(): number { return 0 }
 export function getTotalInputTokens(): number { return 0 }
+export function getSlowOperations(..._args: any[]): any { return undefined as any }
