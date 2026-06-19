@@ -1,3 +1,4 @@
+// @ts-nocheck — Claude Code port: uses stub types
 import { basename, sep } from 'path';
 import React, { type ReactNode } from 'react';
 import { getOriginalCwd } from '../../bootstrap/state.js';

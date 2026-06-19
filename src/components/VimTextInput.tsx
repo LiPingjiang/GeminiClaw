@@ -1,3 +1,4 @@
+// @ts-nocheck — pre-compiled React Compiler output
 import { c as _c } from "react/compiler-runtime";
 import chalk from 'chalk';
 import React from 'react';

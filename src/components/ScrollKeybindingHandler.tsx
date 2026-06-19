@@ -1,3 +1,4 @@
+// @ts-nocheck — Claude Code port: uses stub types
 import React, { type RefObject, useEffect, useRef } from 'react';
 import { useNotifications } from '../context/notifications.js';
 import { useCopyOnSelect, useSelectionBgColor } from '../hooks/useCopyOnSelect.js';

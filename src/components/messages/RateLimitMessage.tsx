@@ -1,3 +1,4 @@
+// @ts-nocheck — pre-compiled React Compiler output
 import { c as _c } from "react/compiler-runtime";
 import React, { useEffect, useMemo, useState } from 'react';
 import { extraUsage } from '../../commands/extra-usage/index.js';

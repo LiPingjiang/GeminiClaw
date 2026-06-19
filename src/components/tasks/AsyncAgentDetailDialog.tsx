@@ -1,3 +1,4 @@
+// @ts-nocheck — pre-compiled React Compiler output
 import { c as _c } from "react/compiler-runtime";
 import React, { useMemo } from 'react';
 import type { DeepImmutable } from '../../types/utils.js';

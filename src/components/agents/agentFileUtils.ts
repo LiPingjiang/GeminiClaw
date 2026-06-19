@@ -1,3 +1,4 @@
+// @ts-nocheck — Claude Code port: uses stub types
 import { mkdir, open, unlink } from 'fs/promises'
 import { join } from 'path'
 import type { SettingSource } from '../../utils/settings/constants.js'

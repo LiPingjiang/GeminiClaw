@@ -1,3 +1,4 @@
+// @ts-nocheck — Claude Code port: uses stub types
 import * as React from 'react';
 import { useMemoryUsage } from '../hooks/useMemoryUsage.js';
 import { Box, Text } from '../ink.js';

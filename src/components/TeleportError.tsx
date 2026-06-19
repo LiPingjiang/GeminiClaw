@@ -1,3 +1,4 @@
+// @ts-nocheck — pre-compiled React Compiler output
 import { c as _c } from "react/compiler-runtime";
 import React, { useCallback, useEffect, useState } from 'react';
 import { checkIsGitClean, checkNeedsClaudeAiLogin } from '../utils/background/remote/preconditions.js';

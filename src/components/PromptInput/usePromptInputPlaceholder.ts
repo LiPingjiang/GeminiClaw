@@ -1,3 +1,4 @@
+// @ts-nocheck — Claude Code port: uses stub types
 import { feature } from 'bun:bundle'
 import { useMemo } from 'react'
 import { useCommandQueue } from '../../hooks/useCommandQueue.js'

@@ -1,3 +1,4 @@
+// @ts-nocheck — Claude Code port: uses stub types
 import React from 'react';
 import { Text } from '../../ink.js';
 import type { Tools } from '../../Tool.js';

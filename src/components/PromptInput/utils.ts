@@ -1,3 +1,4 @@
+// @ts-nocheck — Claude Code port: uses stub types
 import {
   hasUsedBackslashReturn,
   isShiftEnterKeyBindingInstalled,

@@ -1,3 +1,4 @@
+// @ts-nocheck — Claude Code port: uses stub types
 import * as React from 'react';
 import { useEffect, useRef, useState } from 'react';
 import { logEvent } from '../services/analytics/index.js';

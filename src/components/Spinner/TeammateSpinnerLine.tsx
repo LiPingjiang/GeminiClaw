@@ -1,3 +1,4 @@
+// @ts-nocheck — Claude Code port: uses stub types
 import figures from 'figures';
 import sample from 'lodash-es/sample.js';
 import * as React from 'react';

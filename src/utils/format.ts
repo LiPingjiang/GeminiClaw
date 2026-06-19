@@ -1,2 +1,10 @@
 export function formatString(..._args: any[]): any { return undefined as any }
 export function format(..._args: any[]): any { return undefined as any }
+export function formatRelativeTimeAgo(..._args: any[]): any { return undefined as any }
+export function truncateToWidth(..._args: any[]): any { return undefined as any }
+export function formatToken(..._args: any[]): any { return undefined as any }
+export function padAligned(..._args: any[]): any { return undefined as any }
+export function formatDuration(..._args: any[]): any { return undefined as any }
+export function formatNumber(..._args: any[]): any { return undefined as any }
+export function formatFileSize(..._args: any[]): any { return undefined as any }
+export function formatRelativeTime(..._args: any[]): any { return undefined as any }

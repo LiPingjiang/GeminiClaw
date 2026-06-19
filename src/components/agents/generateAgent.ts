@@ -1,3 +1,4 @@
+// @ts-nocheck — Claude Code port: uses stub types
 import type { ContentBlock } from '@anthropic-ai/sdk/resources/index.mjs'
 import { getUserContext } from '../../context.js'
 import { queryModelWithoutStreaming } from '../../services/api/claude.js'

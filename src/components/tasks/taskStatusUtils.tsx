@@ -1,3 +1,4 @@
+// @ts-nocheck — Claude Code port: uses stub types
 /**
  * Shared utilities for displaying task status across different task types.
  */

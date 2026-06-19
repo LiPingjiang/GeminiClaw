@@ -1,3 +1,4 @@
+// @ts-nocheck — Claude Code port: uses stub types
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useDynamicConfig } from '../../hooks/useDynamicConfig.js';
 import { isFeedbackSurveyDisabled } from '../../services/analytics/config.js';

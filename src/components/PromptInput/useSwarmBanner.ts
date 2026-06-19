@@ -1,3 +1,4 @@
+// @ts-nocheck — Claude Code port: uses stub types
 import * as React from 'react'
 import { useAppState, useAppStateStore } from '../../state/AppState.js'
 import {

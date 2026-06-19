@@ -70,3 +70,8 @@ export function setCursor(_col: number, _row: number, _visible: boolean): void {
 
 // AnsiBlock = RawAnsi (our internal alias)
 export { RawAnsi as AnsiBlock } from './ink/components/RawAnsi.js'
+
+// Type stubs for Claude Code compatibility
+export type ClickEvent = any
+export type DOMElement = any
+export type Key = any

@@ -1,3 +1,4 @@
+// @ts-nocheck — Claude Code port: uses stub types
 import { join } from 'path';
 import React, { useCallback, useState } from 'react';
 import type { ExitState } from '../hooks/useExitOnCtrlCDWithKeybindings.js';

@@ -1,3 +1,4 @@
+// @ts-nocheck — Claude Code port: uses stub types
 import { useMemo } from 'react'
 import { useRegisterOverlay } from '../../context/overlayContext.js'
 import type { InputEvent } from '../../ink/events/input-event.js'

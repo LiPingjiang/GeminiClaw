@@ -1,3 +1,4 @@
+// @ts-nocheck — pre-compiled React Compiler output
 import { c as _c } from "react/compiler-runtime";
 import partition from 'lodash-es/partition.js';
 import React, { useCallback } from 'react';

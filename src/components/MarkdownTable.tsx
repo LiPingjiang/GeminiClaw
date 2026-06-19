@@ -1,3 +1,4 @@
+// @ts-nocheck — Claude Code port: uses stub types
 import type { Token, Tokens } from 'marked';
 import React from 'react';
 import stripAnsi from 'strip-ansi';

@@ -1,3 +1,4 @@
+// @ts-nocheck — Claude Code port: uses stub types
 import chalk from 'chalk';
 import figures from 'figures';
 import * as React from 'react';

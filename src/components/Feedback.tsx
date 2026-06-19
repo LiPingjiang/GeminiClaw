@@ -1,3 +1,4 @@
+// @ts-nocheck — Claude Code port: uses stub types
 import axios from 'axios';
 import { readFile, stat } from 'fs/promises';
 import * as React from 'react';

@@ -1,3 +1,4 @@
+// @ts-nocheck — Claude Code port: uses stub types
 import { feature } from 'bun:bundle';
 import * as React from 'react';
 import { memo, useCallback, useEffect, useRef } from 'react';
