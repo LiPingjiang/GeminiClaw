@@ -20,6 +20,8 @@ import { EXECUTION_BIAS } from "./execution-bias.js";
 import { hookBus } from "../hooks/index.js";
 import { traceHub } from "../trace/hub.js";
 import { auditConversation } from "./audit.js";
+import { getContextPercent, shouldCompact, shouldWarn, fmtTokens } from "./context-window.js";
+import { compactConversation } from "./compact.js";
 // ── Tools that are known to mutate state ────────────────────────────────────
 const MUTATING_TOOLS = new Set(["exec", "write", "edit", "file_write", "execute_script"]);
 
@@ -47,7 +49,7 @@ export type InternalMessage =
 export type ChatFn = (
   messages: InternalMessage[],
   options?: { model?: string; tools?: unknown[]; thinking?: { type: 'enabled'; budget_tokens: number } },
-) => Promise<{ content: string; tool_calls?: ToolCall[]; model?: string; usage?: { inputTokens: number; outputTokens: number; cacheReadInputTokens?: number; cacheCreationInputTokens?: number }; thinkingContent?: string; thinkingDurationMs?: number }>;
+) => Promise<{ content: string; tool_calls?: ToolCall[]; model?: string; usage?: { inputTokens: number; outputTokens: number; cacheReadInputTokens?: number; cacheCreationInputTokens?: number }; thinkingContent?: string; thinkingDurationMs?: number; stopReason?: string }>;
 
 type JSONSchema = Record<string, unknown>;
 
@@ -308,18 +310,12 @@ export class AgentLoop {
         input_schema: t.schema,
       }));
 
-      // DEBUG: log tool count and delegate_to presence (remove after verification)
-      if (turn === 1) {
-        const toolNames = toolSchemas.map((t) => t.name);
-        console.log(`[AgentLoop] Turn 1: ${toolSchemas.length} tools passed to LLM. delegate_to present: ${toolNames.includes("delegate_to")}. All: ${toolNames.join(", ")}`);
-      }
-
       // Guard: ensure system message is always present at position 0
       if (fullSystemPrompt && messages.length > 0 && messages[0].role !== "system") {
         messages = [{ role: "system" as const, content: fullSystemPrompt }, ...messages];
       }
 
-      let response: { content: string; tool_calls?: ToolCall[]; model?: string; usage?: { inputTokens: number; outputTokens: number; cacheReadInputTokens?: number; cacheCreationInputTokens?: number }; thinkingContent?: string; thinkingDurationMs?: number };
+      let response: { content: string; tool_calls?: ToolCall[]; model?: string; usage?: { inputTokens: number; outputTokens: number; cacheReadInputTokens?: number; cacheCreationInputTokens?: number }; thinkingContent?: string; thinkingDurationMs?: number; stopReason?: string };
       try {
         // ── Hook: pre_llm_call ──
         await hookBus.emit("pre_llm_call", {
@@ -335,14 +331,58 @@ export class AgentLoop {
         });
         lastModel = response.model;
         lastUsage = response.usage;
+        const llmDurationMs = Date.now() - llmStartMs;
+
+        // ── Per-turn logging ──────────────────────────────────────────────────
+        const inputTok  = lastUsage?.inputTokens  ?? 0;
+        const outputTok = lastUsage?.outputTokens ?? 0;
+        const ctxPct    = getContextPercent(inputTok, lastModel);
+        console.log(
+          `[AgentLoop] req=${requestId} turn=${turn} ` +
+          `input=${fmtTokens(inputTok)} output=${fmtTokens(outputTok)} ` +
+          `ctx=${ctxPct}% llm=${llmDurationMs}ms stop=${response.stopReason ?? "?"}`
+        );
+
         // ── Hook: post_llm_call ──
         await hookBus.emit("post_llm_call", {
           model: params.model,
           contentLength: response.content?.length ?? 0,
           toolCallCount: response.tool_calls?.length ?? 0,
-          durationMs: Date.now() - llmStartMs,
+          durationMs: llmDurationMs,
           sessionId: params.sessionId,
         });
+
+        // ── Handle max_tokens (response truncated by API) ─────────────────────
+        if (response.stopReason === "max_tokens") {
+          const msg =
+            "\n\n⚠️ **回复被截断**：本次回复因超出模型输出限制而被截断。" +
+            `当前上下文已用 ${ctxPct}%（约 ${fmtTokens(inputTok)} tokens）。` +
+            "\n\n如需完整回复，请：①回复「继续」让我接着说 ②或新建会话减少历史负担。";
+          if (response.content) yield { type: "message_delta", delta: response.content };
+          yield { type: "message_delta", delta: msg };
+          yield { type: "agent_end", totalTurns: turn, stopReason: "max_tokens", model: lastModel, usage: lastUsage };
+          traceHub.publish(params.sessionId, requestId, { type: 'agent_end', totalTurns: turn, stopReason: 'max_tokens', model: lastModel, usage: lastUsage });
+          auditConversation({ sessionId: params.sessionId, requestId, userMessage: firstUserMessage.slice(0, 500), totalTurns: turn, stopReason: 'max_tokens', model: lastModel ?? '', inputTokens: inputTok, outputTokens: outputTok, cacheReadTokens: lastUsage?.cacheReadInputTokens ?? 0, durationMs: Date.now() - loopStartMs });
+          return;
+        }
+
+        // ── Context window management ─────────────────────────────────────────
+        if (shouldCompact(inputTok, lastModel)) {
+          console.log(`[AgentLoop] req=${requestId} ctx=${ctxPct}% — auto-compact triggered`);
+          try {
+            const { messages: compacted, savedMessages, summary } = await compactConversation(
+              messages, this.chatFn, lastModel
+            );
+            messages = compacted;
+            yield { type: "compacted", savedMessages, summaryLength: summary.length } as AgentEvent;
+            console.log(`[AgentLoop] req=${requestId} compact done: −${savedMessages} msgs, summary=${summary.length}chars`);
+          } catch (compactErr) {
+            this.logger.error("Auto-compact failed", compactErr);
+          }
+        } else if (shouldWarn(inputTok, lastModel)) {
+          console.log(`[AgentLoop] req=${requestId} ctx=${ctxPct}% — context warning`);
+          yield { type: "context_warning", usedPercent: ctxPct, inputTokens: inputTok } as AgentEvent;
+        }
       } catch (err) {
         this.logger.error("chatFn threw", err);
         yield { type: "agent_end", totalTurns: turn, stopReason: "error", model: lastModel, usage: lastUsage };

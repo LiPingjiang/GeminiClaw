@@ -82,6 +82,8 @@ export interface ChatResponse {
   thinkingContent?: string
   /** Duration from response receipt to end of thinking block extraction (ms) */
   thinkingDurationMs?: number
+  /** Why the model stopped: 'end_turn' | 'max_tokens' | 'tool_use' | 'stop_sequence' */
+  stopReason?: string
 }
 
 export interface StreamChunk {

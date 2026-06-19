@@ -120,6 +120,14 @@ export async function chatRoute(
               fullContent += event.delta
               const data = JSON.stringify({ choices: [{ delta: { content: event.delta } }] })
               raw.write(`data: ${data}\n\n`)
+            } else if (event.type === "context_warning") {
+              const notice = `\n\n⚠️ *上下文已用 ${event.usedPercent}%（约 ${Math.round(event.inputTokens / 1000)}k tokens），对话历史较长，建议在本轮完成后开始新会话。*`
+              const data = JSON.stringify({ choices: [{ delta: { content: notice } }] })
+              raw.write(`data: ${data}\n\n`)
+            } else if (event.type === "compacted") {
+              const notice = `\n\n🗜️ *上下文已自动压缩（节省 ${event.savedMessages} 条旧消息），继续工作中…*\n\n`
+              const data = JSON.stringify({ choices: [{ delta: { content: notice } }] })
+              raw.write(`data: ${data}\n\n`)
             }
           }
 
@@ -163,7 +171,11 @@ export async function chatRoute(
 
       const collectEvents = async () => {
         for await (const event of eventStream) {
-          if (event.type === "message_delta") {
+          if (event.type === "context_warning") {
+            fullContent += `\n\n⚠️ *上下文已用 ${event.usedPercent}%，建议在本轮完成后开始新会话。*`
+          } else if (event.type === "compacted") {
+            fullContent += `\n\n🗜️ *上下文已自动压缩（节省 ${event.savedMessages} 条旧消息）。*\n\n`
+          } else if (event.type === "message_delta") {
             fullContent += event.delta
           }
         }

@@ -70,7 +70,7 @@ export type AgentEvent =
   | {
       type: "agent_end";
       totalTurns: number;
-      stopReason: "no_tool_calls" | "max_turns" | "aborted" | "error";
+      stopReason: "no_tool_calls" | "max_turns" | "aborted" | "error" | "max_tokens";
       model?: string;
       usage?: { inputTokens: number; outputTokens: number; cacheReadInputTokens?: number; cacheCreationInputTokens?: number };
     }
@@ -78,7 +78,11 @@ export type AgentEvent =
   | { type: "guardrail_warn"; toolName: string; message: string }
   | { type: "guardrail_halt"; toolName: string; message: string }
   | { type: "thinking_delta"; delta: string }
-  | { type: "thinking_end"; content: string; durationMs: number };
+  | { type: "thinking_end"; content: string; durationMs: number }
+  /** Emitted when context usage crosses the warning threshold (~62%). */
+  | { type: "context_warning"; usedPercent: number; inputTokens: number }
+  /** Emitted when a compact pass completes. savedMessages = how many old messages were compressed. */
+  | { type: "compacted"; savedMessages: number; summaryLength: number };
 
 export interface ToolCall {
   id: string;

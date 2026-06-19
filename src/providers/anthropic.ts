@@ -173,7 +173,7 @@ export class AnthropicProvider implements Provider {
     const thinkingStartMs = Date.now()
     const response = await this.client.messages.create({
       model,
-      max_tokens: options?.maxTokens ?? 4096,
+      max_tokens: options?.maxTokens ?? 16384,
       ...(options?.temperature !== undefined ? { temperature: options.temperature } : {}),
       ...(cached.system ? { system: cached.system } : {}),
       ...(tools && tools.length > 0 ? { tools } : {}),
@@ -207,6 +207,7 @@ export class AnthropicProvider implements Provider {
         cacheCreationInputTokens: (response.usage as unknown as Record<string, unknown>).cache_creation_input_tokens as number | undefined,
         cacheReadInputTokens: (response.usage as unknown as Record<string, unknown>).cache_read_input_tokens as number | undefined,
       },
+      stopReason: response.stop_reason ?? undefined,
       ...(thinkingContent ? { thinkingContent, thinkingDurationMs: Date.now() - thinkingStartMs } : {}),
     }
   }
@@ -227,7 +228,7 @@ export class AnthropicProvider implements Provider {
 
     const stream = this.client.messages.stream({
       model,
-      max_tokens: options?.maxTokens ?? 4096,
+      max_tokens: options?.maxTokens ?? 16384,
       ...(options?.temperature !== undefined ? { temperature: options.temperature } : {}),
       ...(cached.system ? { system: cached.system } : {}),
       ...(tools && tools.length > 0 ? { tools } : {}),
