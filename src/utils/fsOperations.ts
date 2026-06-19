@@ -1,0 +1,1 @@
+export function fsOp(..._args: any[]): any { return undefined as any }

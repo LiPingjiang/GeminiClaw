@@ -1,0 +1,1 @@
+export function preventSleep(..._args: any[]): any { return undefined as any }

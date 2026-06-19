@@ -1,0 +1,1 @@
+export function registerShortcut(..._args: any[]): any { return undefined as any }

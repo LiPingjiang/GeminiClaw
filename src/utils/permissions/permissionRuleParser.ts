@@ -1,0 +1,1 @@
+export function parsePermissionRule(..._args: any[]): any { return undefined as any }

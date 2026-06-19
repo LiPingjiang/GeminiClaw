@@ -1,0 +1,1 @@
+export function resizeImage(..._args: any[]): any { return undefined as any }

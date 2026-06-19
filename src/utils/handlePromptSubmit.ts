@@ -1,0 +1,1 @@
+export function handlePromptSubmit(..._args: any[]): any { return undefined as any }

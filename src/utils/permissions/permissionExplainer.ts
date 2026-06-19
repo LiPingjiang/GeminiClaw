@@ -1,0 +1,1 @@
+export function explainPermission(..._args: any[]): any { return undefined as any }

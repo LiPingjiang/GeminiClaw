@@ -1,0 +1,1 @@
+export function loadPermissions(): any { return {} }

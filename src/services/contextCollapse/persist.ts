@@ -1,0 +1,1 @@
+export function persistContextCollapse(..._args: any[]): any { return undefined as any }

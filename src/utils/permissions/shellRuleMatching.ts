@@ -1,0 +1,1 @@
+export function matchShellRule(..._args: any[]): any { return undefined as any }

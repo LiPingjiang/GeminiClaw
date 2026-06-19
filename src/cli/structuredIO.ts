@@ -1,0 +1,1 @@
+export function structuredIO(..._args: any[]): any { return undefined as any }

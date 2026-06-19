@@ -1,0 +1,1 @@
+export function getManagedPath(): string { return '' }

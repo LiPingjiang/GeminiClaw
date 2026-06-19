@@ -1,0 +1,1 @@
+export function getSessionStorage(): any { return {} }

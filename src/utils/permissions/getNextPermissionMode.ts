@@ -1,0 +1,1 @@
+export function getNextPermissionMode(..._args: any[]): any { return undefined as any }

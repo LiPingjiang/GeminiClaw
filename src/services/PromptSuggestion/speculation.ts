@@ -1,0 +1,1 @@
+export function speculatePrompt(..._args: any[]): any { return undefined as any }

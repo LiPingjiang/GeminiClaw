@@ -1,0 +1,1 @@
+export function detectShadowedRules(..._args: any[]): any { return undefined as any }

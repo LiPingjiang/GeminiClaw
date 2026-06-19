@@ -1,0 +1,1 @@
+export function getSandboxAdapter(): any { return {} }

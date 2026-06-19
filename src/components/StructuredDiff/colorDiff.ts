@@ -1,0 +1,1 @@
+export function colorDiff(..._args: any[]): any { return undefined as any }

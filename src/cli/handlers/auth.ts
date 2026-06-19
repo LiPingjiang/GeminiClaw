@@ -1,0 +1,1 @@
+export function handleAuth(..._args: any[]): any { return undefined as any }

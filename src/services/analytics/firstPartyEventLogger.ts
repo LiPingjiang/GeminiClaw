@@ -1,0 +1,1 @@
+export function logFirstPartyEvent(..._args: any[]): any { return undefined as any }

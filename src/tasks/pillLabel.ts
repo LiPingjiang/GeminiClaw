@@ -1,0 +1,1 @@
+export function getPillLabel(..._args: any[]): string { return '' }

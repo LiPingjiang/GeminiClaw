@@ -1,0 +1,1 @@
+export function getMessageQueueManager(): any { return {} }

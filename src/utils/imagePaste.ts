@@ -1,0 +1,1 @@
+export function handleImagePaste(..._args: any[]): any { return undefined as any }

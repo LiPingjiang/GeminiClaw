@@ -1,0 +1,1 @@
+export function isLocalShellTask(..._args: any[]): boolean { return false }

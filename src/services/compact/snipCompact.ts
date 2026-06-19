@@ -1,0 +1,1 @@
+export function snipCompact(..._args: any[]): any { return undefined as any }

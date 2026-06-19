@@ -1,0 +1,1 @@
+export function isThinking(): boolean { return false }

@@ -1,0 +1,1 @@
+export function compact(..._args: any[]): any { return undefined as any }

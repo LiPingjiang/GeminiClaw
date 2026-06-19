@@ -1,0 +1,1 @@
+export function detectMemoryFile(..._args: any[]): any { return undefined as any }

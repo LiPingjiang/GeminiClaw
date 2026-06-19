@@ -1,0 +1,1 @@
+export function getMacOsKeychainStorage(): any { return {} }

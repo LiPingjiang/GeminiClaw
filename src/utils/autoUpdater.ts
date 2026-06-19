@@ -1,0 +1,1 @@
+export function checkForUpdates(): any { return null }

@@ -1,0 +1,1 @@
+export function renderMarkdown(..._args: any[]): any { return undefined as any }

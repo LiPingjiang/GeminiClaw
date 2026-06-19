@@ -1,0 +1,1 @@
+export function getMcpUtils(..._args: any[]): any { return undefined as any }

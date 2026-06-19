@@ -1,0 +1,1 @@
+export function isUltrareviewEnabled(): boolean { return false }

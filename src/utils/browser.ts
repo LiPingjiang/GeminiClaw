@@ -1,0 +1,1 @@
+export function openBrowser(..._args: any[]): any { return undefined as any }
