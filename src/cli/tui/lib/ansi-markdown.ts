@@ -142,6 +142,15 @@ function tokenToLines(token: Token, columns: number, indent = 0): string[] {
       return lines
     }
 
+    case 'text': {
+      // List item text token: use formatInline to render bold/italic/code
+      const t = token as Tokens.Text
+      const text = t.tokens ? formatInline(t.tokens) : t.text
+      if (!text.trim()) return []
+      const wrapped = wrapAnsi(text, available, { hard: false, trim: true, wordWrap: true })
+      return prefix ? wrapped.split('\n').map(l => prefix + l) : wrapped.split('\n')
+    }
+
     default: {
       // Fallback: render raw text
       const raw = 'text' in token ? (token as { text: string }).text
