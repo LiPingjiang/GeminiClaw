@@ -1,5 +1,10 @@
 // src/cli/tui/gc-renderer/index.ts
+import { appendFileSync } from 'fs'
 import React from 'react'
+
+function dbg(msg: string): void {
+  try { appendFileSync('/tmp/gc-debug.log', msg + '\n') } catch {}
+}
 import { reconciler, ConcurrentRoot, setContainerScreen } from './reconciler.js'
 import { ScreenBuffer } from './screen.js'
 import { TerminalController } from './terminal.js'
@@ -115,11 +120,20 @@ export function render(element: React.ReactElement): RenderResult {
 
   // Enter alt screen
   terminal.enterAltScreen(true)
+  dbg('[render] alt screen entered')
 
-  // Force initial synchronous render so the screen is painted immediately
-  reconciler.flushSync(() => {
-    reconciler.updateContainer(element, fiberRoot, null, null)
-  })
+  // Force initial synchronous render so the screen is painted immediately.
+  // react-reconciler@0.33 removed flushSync; the correct pattern is
+  // updateContainerSync (schedules on SyncLane) + flushSyncWork (drains it).
+  dbg('[render] about to updateContainerSync + flushSyncWork')
+  try {
+    reconciler.updateContainerSync(element, fiberRoot, null, null)
+    reconciler.flushSyncWork()
+    dbg('[render] initial render done')
+  } catch (err) {
+    dbg('[render] initial render ERROR: ' + String(err))
+    process.stderr.write('[gc-renderer] initial render error: ' + String(err) + '\n')
+  }
 
   const handleSignal = (): void => { cleanup(); process.exit(0) }
   process.once('SIGTERM', handleSignal)

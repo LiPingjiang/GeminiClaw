@@ -1,6 +1,11 @@
+import { appendFileSync } from 'fs'
 import stringWidth from 'string-width'
 import stripAnsi from 'strip-ansi'
 import wrapAnsi from 'wrap-ansi'
+
+function dbg(msg: string): void {
+  try { appendFileSync('/tmp/gc-debug.log', msg + '\n') } catch {}
+}
 
 export function cursorTo(col: number, row: number): string {
   return `\x1b[${row + 1};${col + 1}H`
@@ -62,6 +67,7 @@ export class ScreenBuffer {
   }
 
   commit(): void {
+    dbg(`[commit] rows=${this.rows} cols=${this.cols} curr_has=${this.curr.filter(r => r && r.trim().length > 0).length} non-blank rows`)
     const out: string[] = []
     for (let y = 0; y < this.rows; y++) {
       const cur = this.curr[y]!
@@ -70,6 +76,7 @@ export class ScreenBuffer {
         this.prev[y] = cur
       }
     }
+    dbg(`[commit] writing ${out.length} rows to stdout`)
     if (out.length > 0) process.stdout.write(out.join(''))
     const blank = ' '.repeat(this.cols)
     this.curr = Array(this.rows).fill(blank)
