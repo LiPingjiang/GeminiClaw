@@ -36,10 +36,29 @@ registry.register({
         const description = params['description'];
         const template = params['template'] ?? 'base';
         try {
+            // ── Dedup: check if an active agent with same name already exists ──
+            const agentRepo = new AgentRepository(db);
+            const existingByName = agentRepo.findActiveByName(name);
+            if (existingByName) {
+                // Reuse existing agent instead of creating duplicate
+                if (userId) {
+                    db.prepare(`INSERT INTO user_sessions (openid, session_id, agent_id, agent_name, updated_at)
+           VALUES (?, ?, ?, ?, ?)
+           ON CONFLICT(openid) DO UPDATE SET
+             session_id = excluded.session_id,
+             agent_id   = excluded.agent_id,
+             agent_name = excluded.agent_name,
+             updated_at = excluded.updated_at`).run(userId, existingByName.session_id, existingByName.id, existingByName.agent_name, Date.now());
+                }
+                ctx.logger.info(`[create_agent] reused existing agent "${name}" (${existingByName.id})`);
+                return {
+                    type: text,
+                    text: `已有同名助手 **${name}**，已切换到该助手。`,
+                };
+            }
             // Create new agent session
             const { sessionId, agentId } = await createSessionWithAgent(template, db);
             // Update agent name and description
-            const agentRepo = new AgentRepository(db);
             agentRepo.update(agentId, { agent_name: name, description });
             // Update sticky: route this user's next message to the new agent
             if (userId) {

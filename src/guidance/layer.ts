@@ -205,6 +205,19 @@ export class GuidanceLayer {
 
     if (!bestTemplate || bestScore === 0) return null;
 
+    // ── Dedup: reuse existing active agent for this template ──
+    const existingAgent = this.agentRepo.findActiveByTemplate(bestTemplate.name);
+    if (existingAgent) {
+      this.agentRepo.update(existingAgent.id, {}); // refresh updated_at
+      return {
+        sessionId: existingAgent.session_id,
+        agentId: existingAgent.id,
+        agentName: existingAgent.agent_name,
+        isNew: false,
+        templateName: existingAgent.template_name,
+      };
+    }
+
     const { sessionId, agentId } = await createSessionWithAgent(
       bestTemplate.name,
       this.db,
