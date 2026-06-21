@@ -18,6 +18,7 @@ import { registry as toolRegistry } from "../tools/index.js";
 import { ChannelRegistry } from "../channels/registry.js";
 import type { IChannel } from "../channels/types.js"
 import { QQBotChannel } from "../channels/qqbot/index.js";
+import { registerStatic } from './static.js'
 
 function makeRegistryAdapter() {
   return {
@@ -251,6 +252,9 @@ export async function buildServer(
   fastify.addHook("onClose", async () => {
     await chanRegistry.stopAll();
   });
+
+  // Web UI static files (served from web/dist/ after pnpm build:web)
+  await registerStatic(fastify)
 
   return fastify;
 }

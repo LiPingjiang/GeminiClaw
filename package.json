@@ -21,6 +21,7 @@
   "dependencies": {
     "@alcalzone/ansi-tokenize": "^0.3.0",
     "@anthropic-ai/sdk": "^0.39.0",
+    "@fastify/static": "^9.1.3",
     "@types/react-reconciler": "^0.33.0",
     "asciichart": "^1.5.25",
     "auto-bind": "^5.0.1",
