@@ -174,7 +174,8 @@ export interface Session {
 
 export interface Agent {
   id: string
-  name: string
+  name: string          // mapped from agent_name
+  session_id?: string   // session this agent is bound to
   status: string
   lastActive?: string
 }
@@ -202,8 +203,17 @@ export const api = {
 
   getAgents: (): Promise<Agent[]> =>
     fetch('/v1/agents', { headers: authHeaders() })
-      .then(r => r.ok ? r.json() : [])
-      .then((d: unknown) => Array.isArray(d) ? d : (d as { agents?: Agent[] }).agents ?? [])
+      .then(r => r.ok ? r.json() : { agents: [] })
+      .then((d: unknown) => {
+        const raw: Record<string, unknown>[] = Array.isArray(d) ? d : ((d as { agents?: unknown[] }).agents ?? []) as Record<string, unknown>[]
+        return raw.map(a => ({
+          id: String(a.id ?? ''),
+          name: String(a.agent_name ?? a.name ?? a.id ?? 'Agent'),
+          session_id: a.session_id ? String(a.session_id) : undefined,
+          status: String(a.status ?? 'idle'),
+          lastActive: a.updated_at ? String(a.updated_at) : undefined,
+        }))
+      })
       .catch(() => []),
 
   getRuns: (): Promise<Run[]> =>
