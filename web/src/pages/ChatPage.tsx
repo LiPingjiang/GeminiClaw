@@ -28,6 +28,7 @@ export default function ChatPage() {
   const navigate = useNavigate()
   const [sessions, setSessions] = useState<SessionItem[]>([])
   const [agents, setAgents] = useState<Agent[]>([])
+  const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null)
   const [activeSessionId, setActiveSessionId] = useState<string | undefined>()
   const [noAuth, setNoAuth] = useState(!getConfig().authToken)
   const [items, setItems] = useState<DisplayItem[]>([])
@@ -191,71 +192,105 @@ export default function ChatPage() {
 
   return (
     <div className="flex h-full overflow-hidden">
-      {/* Left panel: agents + sessions */}
-      <aside className="w-52 shrink-0 flex flex-col bg-gray-900 border-r border-gray-800">
-        <div className="p-3 border-b border-gray-800">
-          <button
-            onClick={handleNew}
-            className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded-lg transition-colors"
-          >
-            <Plus size={13} />
-            New Chat
-          </button>
+      {/* Left panel: step 1 pick agent, step 2 pick/new session */}
+      <aside className="w-56 shrink-0 flex flex-col bg-gray-900 border-r border-gray-800">
+        {/* Step 1: Agent list */}
+        <div className="border-b border-gray-800">
+          <div className="px-3 pt-3 pb-1 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+            Step 1 · Select Agent
+          </div>
+          {agents.length === 0 && (
+            <p className="px-3 py-2 pb-3 text-xs text-gray-600">No active agents</p>
+          )}
+          {agents.map(a => (
+            <button
+              key={a.id}
+              onClick={() => setSelectedAgent(prev => prev?.id === a.id ? null : a)}
+              className={cn(
+                'w-full flex items-center gap-2 px-3 py-2.5 text-sm text-left transition-colors',
+                selectedAgent?.id === a.id
+                  ? 'bg-blue-600 text-white'
+                  : 'text-gray-300 hover:bg-gray-800',
+              )}
+            >
+              <Cpu size={13} className="shrink-0" />
+              <span className="truncate flex-1">{a.name}</span>
+              <span className={cn(
+                'w-1.5 h-1.5 rounded-full shrink-0',
+                a.status === 'active' ? 'bg-green-400' : 'bg-gray-600',
+              )} />
+            </button>
+          ))}
         </div>
+
+        {/* Step 2: Session actions for selected agent */}
         <div className="flex-1 overflow-y-auto">
-          {/* Agents section */}
-          {agents.length > 0 && (
+          {selectedAgent ? (
             <div>
               <div className="px-3 pt-3 pb-1 text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                Agents
+                Step 2 · Session
               </div>
-              {agents.map(a => (
+              <div className="px-3 pb-2">
                 <button
-                  key={a.id}
-                  onClick={() => handleSelectAgent(a)}
-                  disabled={!a.session_id}
+                  onClick={handleNew}
+                  className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded-lg transition-colors"
+                >
+                  <Plus size={13} />
+                  New Session
+                </button>
+              </div>
+              {selectedAgent.session_id && (
+                <button
+                  onClick={() => handleSelectAgent(selectedAgent)}
                   className={cn(
-                    'w-full flex items-center gap-2 px-3 py-2 text-sm text-left transition-colors',
-                    a.session_id && activeSessionId === a.session_id
-                      ? 'bg-blue-600/20 text-blue-300'
+                    'w-full flex items-center gap-2 px-3 py-2.5 text-sm text-left transition-colors',
+                    activeSessionId === selectedAgent.session_id
+                      ? 'bg-gray-700 text-white'
                       : 'text-gray-400 hover:bg-gray-800 hover:text-gray-200',
-                    !a.session_id && 'opacity-40 cursor-not-allowed',
                   )}
                 >
-                  <Cpu size={12} className="shrink-0" />
-                  <span className="truncate flex-1">{a.name}</span>
-                  <span className={cn(
-                    'text-[10px] px-1 rounded shrink-0',
-                    a.status === 'active' ? 'text-green-400' : 'text-gray-600',
-                  )}>●</span>
+                  <MessageSquare size={12} className="shrink-0" />
+                  <span className="truncate">Continue session</span>
+                </button>
+              )}
+              {!selectedAgent.session_id && (
+                <p className="px-3 py-1 text-xs text-gray-600">No existing session</p>
+              )}
+            </div>
+          ) : (
+            <div>
+              <div className="px-3 pt-3 pb-1 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                All Sessions
+              </div>
+              <div className="px-3 pb-2">
+                <button
+                  onClick={handleNew}
+                  className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-gray-800 hover:bg-gray-700 text-gray-300 text-sm rounded-lg transition-colors"
+                >
+                  <Plus size={13} />
+                  New Chat
+                </button>
+              </div>
+              {sessions.length === 0 && (
+                <p className="px-3 py-1 text-xs text-gray-600">No sessions yet</p>
+              )}
+              {sessions.map(s => (
+                <button
+                  key={s.id}
+                  onClick={() => handleSelect(s.id)}
+                  className={cn(
+                    'w-full flex items-center gap-2 px-3 py-2.5 text-sm text-left transition-colors',
+                    activeSessionId === s.id
+                      ? 'bg-gray-700 text-white'
+                      : 'text-gray-400 hover:bg-gray-800 hover:text-gray-200',
+                  )}
+                >
+                  <MessageSquare size={12} className="shrink-0" />
+                  <span className="truncate">{s.label}</span>
                 </button>
               ))}
             </div>
           )}
-          {/* Sessions section */}
-          <div>
-            <div className="px-3 pt-3 pb-1 text-xs font-semibold text-gray-500 uppercase tracking-wider">
-              Sessions
-            </div>
-            {sessions.length === 0 && (
-              <p className="px-3 py-2 text-xs text-gray-600">No sessions yet</p>
-            )}
-            {sessions.map(s => (
-              <button
-                key={s.id}
-                onClick={() => handleSelect(s.id)}
-                className={cn(
-                  'w-full flex items-center gap-2 px-3 py-2 text-sm text-left transition-colors',
-                  activeSessionId === s.id
-                    ? 'bg-gray-700 text-white'
-                    : 'text-gray-400 hover:bg-gray-800 hover:text-gray-200',
-                )}
-              >
-                <MessageSquare size={12} className="shrink-0" />
-                <span className="truncate">{s.label}</span>
-              </button>
-            ))}
-          </div>
         </div>
       </aside>
 
