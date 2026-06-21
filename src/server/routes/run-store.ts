@@ -188,6 +188,13 @@ export class RunStore {
   }
 
   /**
+   * List all runs, newest first.
+   */
+  list(): Run[] {
+    return [...this.runs.values()].sort((a, b) => b.createdAt - a.createdAt)
+  }
+
+  /**
    * Total runs tracked.
    */
   get size(): number {

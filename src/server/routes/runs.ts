@@ -50,6 +50,25 @@ export async function runsRoute(
     return null
   }
 
+  // ── GET /v1/runs ─────────────────────────────────────────────────────────
+
+  fastify.get("/v1/runs", async (request, reply) => {
+    const authErr = checkAuth(request)
+    if (authErr) return reply.status(401).send({ error: authErr })
+
+    const runs = runStore.list().map((r) => ({
+      id: r.id,
+      status: r.status,
+      sessionId: r.sessionId,
+      result: r.result,
+      error: r.error,
+      eventCount: r.events.length,
+      createdAt: r.createdAt,
+      updatedAt: r.updatedAt,
+    }))
+    return reply.send({ runs })
+  })
+
   // ── POST /v1/runs ────────────────────────────────────────────────────────
 
   fastify.post<{

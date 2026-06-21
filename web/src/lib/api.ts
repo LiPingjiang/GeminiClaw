@@ -1,19 +1,16 @@
 // ── Config (stored in localStorage) ────────────────────────────────────────
 
 export interface GcConfig {
-  baseUrl: string
   authToken: string
 }
 
 export function getConfig(): GcConfig {
   return {
-    baseUrl: localStorage.getItem('gc_base_url') ?? 'http://localhost:18888',
     authToken: localStorage.getItem('gc_auth_token') ?? '',
   }
 }
 
 export function saveConfig(config: GcConfig): void {
-  localStorage.setItem('gc_base_url', config.baseUrl)
   localStorage.setItem('gc_auth_token', config.authToken)
 }
 

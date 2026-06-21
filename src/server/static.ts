@@ -17,7 +17,6 @@ export async function registerStatic(fastify: FastifyInstance): Promise<void> {
   await fastify.register(import('@fastify/static'), {
     root: WEB_DIST,
     prefix: '/',
-    decorateReply: false,
   })
 
   // SPA fallback: non-/v1 routes serve index.html

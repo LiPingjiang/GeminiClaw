@@ -19,6 +19,10 @@ import { ChannelRegistry } from "../channels/registry.js";
 import type { IChannel } from "../channels/types.js"
 import { QQBotChannel } from "../channels/qqbot/index.js";
 import { registerStatic } from './static.js'
+import { sessionsRoute } from './routes/sessions.js'
+import { agentsRoute } from './routes/agents.js'
+import { runsRoute } from './routes/runs.js'
+import { RunStore } from './routes/run-store.js'
 
 function makeRegistryAdapter() {
   return {
@@ -252,6 +256,20 @@ export async function buildServer(
   fastify.addHook("onClose", async () => {
     await chanRegistry.stopAll();
   });
+
+  // REST API routes for sessions, agents, runs
+  if (db) {
+    await fastify.register(sessionsRoute, { db, authToken: config.server.authToken })
+    await fastify.register(agentsRoute, { db, authToken: config.server.authToken })
+  }
+  const runStore = new RunStore()
+  await fastify.register(runsRoute, {
+    runStore,
+    router,
+    strategy,
+    authToken: config.server.authToken,
+    agentLoop: agentLoop as any,
+  })
 
   // Web UI static files (served from web/dist/ after pnpm build:web)
   await registerStatic(fastify)

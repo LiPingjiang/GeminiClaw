@@ -19,19 +19,6 @@ export default function ConfigPage() {
       <div className="max-w-lg space-y-5">
         <div>
           <label className="block text-sm font-medium text-gray-300 mb-1.5">
-            Server URL
-          </label>
-          <input
-            type="url"
-            value={config.baseUrl}
-            onChange={e => setConfig(c => ({ ...c, baseUrl: e.target.value }))}
-            className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3.5 py-2.5 text-sm text-gray-100 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/30 transition-colors"
-          />
-          <p className="mt-1 text-xs text-gray-500">Default: http://localhost:18888</p>
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-gray-300 mb-1.5">
             Auth Token
           </label>
           <input
