@@ -185,170 +185,190 @@ export default function ChatPage() {
     }
   }
 
+  const filtered = selectedAgent
+    ? sessions.filter(s => s.agentName === selectedAgent.name)
+    : sessions
+
   return (
-    <div className="flex h-full overflow-hidden">
-      {/* Left panel */}
-      <aside className="w-56 shrink-0 flex flex-col bg-gray-900 border-r border-gray-800">
-        {/* New chat button */}
-        <div className="p-3 border-b border-gray-800">
-          <button
-            onClick={handleNew}
-            className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded-lg transition-colors"
-          >
-            <Plus size={13} />
-            New Chat
+    <div style={{ display: 'flex', height: '100%', overflow: 'hidden' }}>
+
+      {/* ── Left panel: unit roster + session log ── */}
+      <aside style={{
+        width: '13rem', flexShrink: 0, display: 'flex', flexDirection: 'column',
+        background: '#060d1a', borderRight: '1px solid #0d2a40', position: 'relative',
+      }}>
+        {/* Amber top bar */}
+        <div style={{ height: 2, background: 'linear-gradient(90deg, #ff8c00 40%, transparent)' }} />
+
+        {/* New session button */}
+        <div style={{ padding: '10px 10px 8px', borderBottom: '1px solid #0d2a40' }}>
+          <button onClick={handleNew} className="sp-btn" style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+            <Plus size={11} />
+            NEW SESSION
           </button>
         </div>
 
-        {/* Agent filter tabs */}
+        {/* Agent filter */}
         {agents.length > 0 && (
-          <div className="border-b border-gray-800 px-2 py-2 flex flex-wrap gap-1">
-            <button
-              onClick={() => setSelectedAgent(null)}
-              className={cn(
-                'flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors',
-                selectedAgent === null
-                  ? 'bg-gray-700 text-white'
-                  : 'text-gray-500 hover:bg-gray-800 hover:text-gray-300',
-              )}
-            >
-              All
-            </button>
-            {agents.map(a => (
+          <div style={{ borderBottom: '1px solid #0d2a40', padding: '6px 8px' }}>
+            <div className="sp-label" style={{ padding: '2px 4px', marginBottom: 4 }}>◈ UNIT FILTER</div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
               <button
-                key={a.id}
-                onClick={() => setSelectedAgent(prev => prev?.id === a.id ? null : a)}
-                className={cn(
-                  'flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors',
-                  selectedAgent?.id === a.id
-                    ? 'bg-blue-600 text-white'
-                    : 'text-gray-500 hover:bg-gray-800 hover:text-gray-300',
-                )}
-              >
-                <Cpu size={10} />
-                <span className="max-w-[80px] truncate">{a.name}</span>
-              </button>
-            ))}
+                onClick={() => setSelectedAgent(null)}
+                style={{
+                  fontSize: 9, letterSpacing: '0.1em', textTransform: 'uppercase',
+                  padding: '2px 7px', cursor: 'pointer', transition: 'all 0.15s',
+                  background: selectedAgent === null ? 'rgba(255,140,0,0.15)' : 'transparent',
+                  border: `1px solid ${selectedAgent === null ? '#ff8c00' : '#0d2a40'}`,
+                  color: selectedAgent === null ? '#ff8c00' : '#3d5060',
+                }}
+              >ALL</button>
+              {agents.map(a => (
+                <button
+                  key={a.id}
+                  onClick={() => setSelectedAgent(prev => prev?.id === a.id ? null : a)}
+                  style={{
+                    fontSize: 9, letterSpacing: '0.1em', textTransform: 'uppercase',
+                    padding: '2px 7px', cursor: 'pointer', transition: 'all 0.15s',
+                    display: 'flex', alignItems: 'center', gap: 4,
+                    background: selectedAgent?.id === a.id ? 'rgba(0,212,255,0.12)' : 'transparent',
+                    border: `1px solid ${selectedAgent?.id === a.id ? '#00d4ff' : '#0d2a40'}`,
+                    color: selectedAgent?.id === a.id ? '#00d4ff' : '#3d5060',
+                  }}
+                >
+                  <Cpu size={8} />{a.name.slice(0, 8)}
+                </button>
+              ))}
+            </div>
           </div>
         )}
 
-        {/* Session list, filtered by selected agent */}
-        <div className="flex-1 overflow-y-auto p-1">
-          {(() => {
-            const filtered = selectedAgent
-              ? sessions.filter(s => s.agentName === selectedAgent.name)
-              : sessions
-            if (filtered.length === 0) {
-              return <p className="px-3 py-3 text-xs text-gray-600">No sessions</p>
-            }
-            return filtered.map(s => (
-              <button
-                key={s.id}
-                onClick={() => handleSelect(s.id)}
-                className={cn(
-                  'w-full flex flex-col px-3 py-2.5 rounded-lg text-left transition-colors mb-0.5',
-                  activeSessionId === s.id
-                    ? 'bg-gray-700 text-white'
-                    : 'text-gray-400 hover:bg-gray-800 hover:text-gray-200',
-                )}
-              >
-                <div className="flex items-center gap-2">
-                  <MessageSquare size={11} className="shrink-0" />
-                  <span className="truncate text-sm">{s.label}</span>
-                </div>
-                {s.agentName && (
-                  <span className="ml-5 text-[10px] text-blue-400 truncate mt-0.5">{s.agentName}</span>
-                )}
-              </button>
-            ))
-          })()}
+        {/* Session list */}
+        <div className="sp-label" style={{ margin: '8px 0 0' }}>◈ SESSION LOG</div>
+        <div style={{ flex: 1, overflowY: 'auto', padding: '4px 0' }}>
+          {filtered.length === 0 && (
+            <div style={{ padding: '12px 14px', fontSize: 9, color: '#3d5060', letterSpacing: '0.1em' }}>
+              NO RECORDS FOUND
+            </div>
+          )}
+          {filtered.map(s => (
+            <button
+              key={s.id}
+              onClick={() => handleSelect(s.id)}
+              style={{
+                width: '100%', display: 'flex', flexDirection: 'column',
+                padding: '7px 14px', cursor: 'pointer', textAlign: 'left', transition: 'all 0.15s',
+                background: activeSessionId === s.id ? 'rgba(255,140,0,0.08)' : 'transparent',
+                borderLeft: `2px solid ${activeSessionId === s.id ? '#ff8c00' : 'transparent'}`,
+                borderTop: 'none', borderRight: 'none', borderBottom: 'none',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <MessageSquare size={10} style={{ color: activeSessionId === s.id ? '#ff8c00' : '#3d5060', flexShrink: 0 }} />
+                <span style={{ fontSize: 11, color: activeSessionId === s.id ? '#ff8c00' : '#506070',
+                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', letterSpacing: '0.05em' }}>
+                  {s.label.toUpperCase()}
+                </span>
+              </div>
+              {s.agentName && (
+                <span style={{ marginLeft: 16, fontSize: 9, color: '#004455', letterSpacing: '0.1em', marginTop: 2 }}>
+                  UNIT: {s.agentName}
+                </span>
+              )}
+            </button>
+          ))}
         </div>
       </aside>
 
-      <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Auth warning banner */}
+      {/* ── Main comm panel ── */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', position: 'relative' }}>
+
+        {/* Subtle grid background */}
+        <div style={{
+          position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 0,
+          backgroundImage: 'linear-gradient(rgba(13,42,64,0.3) 1px, transparent 1px), linear-gradient(90deg, rgba(13,42,64,0.3) 1px, transparent 1px)',
+          backgroundSize: '40px 40px',
+        }} />
+
+        {/* Auth warning */}
         {noAuth && (
-          <div className="shrink-0 flex items-center gap-3 px-4 py-2.5 bg-yellow-950 border-b border-yellow-800 text-yellow-300 text-sm">
-            <AlertTriangle size={14} className="shrink-0" />
-            <span>Auth Token 未设置，请求可能被拒绝</span>
-            <button
-              onClick={() => navigate('/config')}
-              className="ml-auto text-xs underline hover:text-yellow-100"
-            >
-              前往 Config 配置 →
+          <div style={{
+            flexShrink: 0, display: 'flex', alignItems: 'center', gap: 10,
+            padding: '7px 16px', zIndex: 1,
+            background: '#1a0500', borderBottom: '1px solid #661100',
+            fontSize: 10, letterSpacing: '0.12em', color: '#ff4400',
+            textTransform: 'uppercase',
+          }}>
+            <AlertTriangle size={12} style={{ flexShrink: 0 }} />
+            <span style={{ textShadow: '0 0 6px rgba(255,68,0,0.6)' }}>⚠ AUTH TOKEN NOT SET — TRANSMISSIONS MAY FAIL</span>
+            <button onClick={() => navigate('/config')}
+              style={{ marginLeft: 'auto', fontSize: 9, color: '#ff6600', cursor: 'pointer', background: 'none', border: '1px solid #661100', padding: '2px 8px' }}>
+              CONFIG →
             </button>
-            <button onClick={() => setNoAuth(false)} className="text-yellow-600 hover:text-yellow-400">✕</button>
+            <button onClick={() => setNoAuth(false)}
+              style={{ color: '#661100', cursor: 'pointer', background: 'none', border: 'none', fontSize: 12 }}>✕</button>
           </div>
         )}
 
         {/* Messages */}
-        <div className="flex-1 overflow-y-auto p-6">
+        <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px', position: 'relative', zIndex: 1 }}>
           {items.length === 0 && (
-            <div className="h-full flex items-center justify-center">
-              <p className="text-gray-600 text-sm">Start a conversation…</p>
+            <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12 }}>
+              <div style={{ fontSize: 9, letterSpacing: '0.3em', color: '#1a3040', textTransform: 'uppercase' }}>
+                ◈ ◈ ◈ AWAITING TRANSMISSION ◈ ◈ ◈
+              </div>
+              <div className="blink" style={{ fontSize: 9, color: '#3d5060', letterSpacing: '0.2em' }}>
+                ENTER COMMAND BELOW
+              </div>
             </div>
           )}
           {items.map(item => {
-            if (item.type === 'event') {
-              return <MessageBubble key={item.id} event={item.event} />
-            }
-            if (item.type === 'tool') {
-              return (
-                <ToolCallCard
-                  key={item.id}
-                  name={item.tool.name}
-                  input={item.tool.input}
-                  output={item.tool.output}
-                  status={item.tool.status}
-                />
-              )
-            }
-            if (item.type === 'streaming') {
-              return (
-                <MessageBubble
-                  key={item.id}
-                  event={{ kind: 'response', content: streamingText }}
-                  streaming
-                />
-              )
-            }
+            if (item.type === 'event') return <MessageBubble key={item.id} event={item.event} />
+            if (item.type === 'tool') return (
+              <ToolCallCard key={item.id} name={item.tool.name}
+                input={item.tool.input} output={item.tool.output} status={item.tool.status} />
+            )
+            if (item.type === 'streaming') return (
+              <MessageBubble key={item.id} event={{ kind: 'response', content: streamingText }} streaming />
+            )
             return null
           })}
           <div ref={bottomRef} />
         </div>
 
         {/* Input bar */}
-        <div className="shrink-0 p-4 border-t border-gray-800">
-          <div className="flex gap-2 items-end">
+        <div style={{
+          flexShrink: 0, padding: '10px 16px 12px', zIndex: 1,
+          borderTop: '1px solid #0d2a40',
+          background: '#040810',
+          position: 'relative',
+        }}>
+          {/* Top amber line */}
+          <div style={{ position: 'absolute', top: 0, left: '5%', right: '5%', height: 1,
+            background: 'linear-gradient(90deg, transparent, rgba(255,140,0,0.4) 40%, rgba(255,140,0,0.4) 60%, transparent)' }} />
+
+          <div style={{ fontSize: 8, letterSpacing: '0.2em', color: '#3d5060', marginBottom: 6, textTransform: 'uppercase' }}>
+            ▶ COMMAND INPUT {isStreaming && <span className="blink" style={{ color: '#ff8c00', marginLeft: 8 }}>■ TRANSMITTING</span>}
+          </div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
             <textarea
+              className="sp-input"
               value={input}
               onChange={e => setInput(e.target.value)}
               onKeyDown={e => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault()
-                  handleSend()
-                }
+                if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() }
               }}
-              placeholder="Message GeminiClaw… (Enter to send, Shift+Enter for newline)"
+              placeholder="ENTER TRANSMISSION… (ENTER=SEND  SHIFT+ENTER=NEWLINE)"
               rows={1}
-              className="flex-1 resize-none bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-sm text-gray-100 placeholder-gray-500 focus:outline-none focus:border-blue-500 transition-colors"
-              style={{ minHeight: '48px', maxHeight: '200px' }}
+              style={{ flex: 1, resize: 'none', padding: '8px 12px', minHeight: 42, maxHeight: 160 }}
             />
             {isStreaming ? (
-              <button
-                onClick={handleCancel}
-                className="shrink-0 px-4 py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-xl transition-colors"
-                title="Cancel"
-              >
-                <Square size={15} />
+              <button onClick={handleCancel} className="sp-btn sp-btn-cyan" style={{ padding: '8px 14px' }} title="ABORT">
+                <Square size={13} />
               </button>
             ) : (
-              <button
-                onClick={handleSend}
-                disabled={!input.trim()}
-                className="shrink-0 px-4 py-3 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl transition-colors"
-              >
-                <Send size={15} />
+              <button onClick={handleSend} disabled={!input.trim()} className="sp-btn" style={{ padding: '8px 14px' }}>
+                <Send size={13} />
               </button>
             )}
           </div>

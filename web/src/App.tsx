@@ -9,9 +9,9 @@ import ConfigPage from './pages/ConfigPage'
 export default function App() {
   return (
     <BrowserRouter>
-      <div className="flex h-screen bg-gray-950 text-gray-100 overflow-hidden">
+      <div className="flex overflow-hidden" style={{ height: '100vh', background: '#040810', color: '#d4b870' }}>
         <Sidebar />
-        <main className="flex-1 overflow-hidden">
+        <main className="flex-1 overflow-hidden" style={{ position: 'relative' }}>
           <Routes>
             <Route path="/" element={<ChatPage />} />
             <Route path="/sessions" element={<SessionsPage />} />

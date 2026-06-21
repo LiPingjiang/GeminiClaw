@@ -1,1 +1,235 @@
 @import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700&display=swap');
+
+/* ── Space anime color tokens ──────────────────────────────────── */
+@theme {
+  --color-space-bg:    #040810;
+  --color-panel-bg:    #060d1a;
+  --color-panel-deep:  #030609;
+  --color-border-dim:  #0d2a40;
+  --color-amber:       #ff8c00;
+  --color-amber-dim:   #7a3c00;
+  --color-amber-glow:  rgba(255,140,0,0.25);
+  --color-cyan:        #00d4ff;
+  --color-cyan-dim:    #004455;
+  --color-cyan-glow:   rgba(0,212,255,0.2);
+  --color-green:       #00cc66;
+  --color-red:         #ff2200;
+  --color-text:        #d4b870;
+  --color-text-dim:    #3d5060;
+  --color-text-cyan:   #00b8d4;
+}
+
+/* ── Base ────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: #040810;
+  color: #d4b870;
+  font-family: 'Share Tech Mono', 'Courier New', monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  overflow: hidden;
+}
+
+/* ── Scanline overlay ────────────────────────────────────────────── */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent 0px,
+    transparent 3px,
+    rgba(0,0,0,0.12) 3px,
+    rgba(0,0,0,0.12) 4px
+  );
+  pointer-events: none;
+  z-index: 9998;
+}
+
+/* CRT vignette */
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background: radial-gradient(ellipse at center, transparent 60%, rgba(0,0,0,0.55) 100%);
+  pointer-events: none;
+  z-index: 9997;
+}
+
+/* ── Panel component ─────────────────────────────────────────────── */
+.sp-panel {
+  background: #060d1a;
+  border: 1px solid #0d2a40;
+  position: relative;
+}
+
+/* Corner bracket decorations */
+.sp-panel::before,
+.sp-panel::after {
+  content: '';
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  border-color: #ff8c00;
+  border-style: solid;
+}
+.sp-panel::before {
+  top: -1px; left: -1px;
+  border-width: 2px 0 0 2px;
+}
+.sp-panel::after {
+  bottom: -1px; right: -1px;
+  border-width: 0 2px 2px 0;
+}
+
+/* ── Glows ──────────────────────────────────────────────────────── */
+.glow-amber {
+  box-shadow: 0 0 6px rgba(255,140,0,0.5), 0 0 12px rgba(255,140,0,0.2), inset 0 0 6px rgba(255,140,0,0.05);
+}
+.glow-cyan {
+  box-shadow: 0 0 6px rgba(0,212,255,0.5), 0 0 12px rgba(0,212,255,0.2), inset 0 0 6px rgba(0,212,255,0.05);
+}
+.text-glow-amber { text-shadow: 0 0 8px rgba(255,140,0,0.9); }
+.text-glow-cyan  { text-shadow: 0 0 8px rgba(0,212,255,0.9); }
+.text-glow-green { text-shadow: 0 0 8px rgba(0,204,102,0.9); }
+
+/* ── Animations ─────────────────────────────────────────────────── */
+@keyframes blink {
+  0%, 49% { opacity: 1; }
+  50%, 100% { opacity: 0; }
+}
+@keyframes pulse-amber {
+  0%, 100% { box-shadow: 0 0 4px rgba(255,140,0,0.4); }
+  50%       { box-shadow: 0 0 12px rgba(255,140,0,0.8), 0 0 24px rgba(255,140,0,0.3); }
+}
+@keyframes scan-h {
+  0%   { transform: translateY(-100%); opacity: 0; }
+  10%  { opacity: 0.15; }
+  90%  { opacity: 0.15; }
+  100% { transform: translateY(100%); opacity: 0; }
+}
+@keyframes flicker {
+  0%, 100% { opacity: 1; }
+  92% { opacity: 1; }
+  93% { opacity: 0.8; }
+  94% { opacity: 1; }
+  96% { opacity: 0.6; }
+  97% { opacity: 1; }
+}
+
+.blink  { animation: blink 1.2s step-end infinite; }
+.pulse-amber { animation: pulse-amber 2s ease-in-out infinite; }
+.flicker { animation: flicker 8s ease-in-out infinite; }
+
+/* ── Section label ──────────────────────────────────────────────── */
+.sp-label {
+  font-size: 9px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: #7a5c20;
+  border-bottom: 1px solid #0d2a40;
+  padding: 4px 12px;
+}
+
+/* ── Horizontal divider with amber lines ────────────────────────── */
+.sp-divider {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, #ff8c00 40%, #ff8c00 60%, transparent);
+  opacity: 0.4;
+  margin: 0;
+}
+
+/* ── Scrollbar ────────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: #040810; }
+::-webkit-scrollbar-thumb { background: #1a3a50; border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: #ff8c00; }
+
+/* ── Input terminal style ─────────────────────────────────────────── */
+.sp-input {
+  background: #030609;
+  border: 1px solid #0d3050;
+  color: #d4b870;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 13px;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.sp-input:focus {
+  border-color: #ff8c00;
+  box-shadow: 0 0 8px rgba(255,140,0,0.3), inset 0 0 4px rgba(255,140,0,0.05);
+}
+.sp-input::placeholder { color: #3d5060; }
+
+/* ── Button ──────────────────────────────────────────────────────── */
+.sp-btn {
+  background: #0a1a2a;
+  border: 1px solid #ff8c00;
+  color: #ff8c00;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background 0.15s, box-shadow 0.15s;
+  padding: 6px 14px;
+}
+.sp-btn:hover {
+  background: #ff8c00;
+  color: #040810;
+  box-shadow: 0 0 12px rgba(255,140,0,0.6);
+}
+.sp-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.sp-btn-cyan {
+  border-color: #00d4ff;
+  color: #00d4ff;
+}
+.sp-btn-cyan:hover {
+  background: #00d4ff;
+  color: #040810;
+  box-shadow: 0 0 12px rgba(0,212,255,0.6);
+}
+
+/* ── Nav item ─────────────────────────────────────────────────────── */
+.sp-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 14px;
+  font-size: 11px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: #3d5060;
+  cursor: pointer;
+  border-left: 2px solid transparent;
+  transition: all 0.15s;
+  text-decoration: none;
+  width: 100%;
+  background: transparent;
+  border-top: none;
+  border-right: none;
+  border-bottom: none;
+}
+.sp-nav-item:hover {
+  color: #d4b870;
+  background: rgba(255,140,0,0.05);
+  border-left-color: #7a3c00;
+}
+.sp-nav-item.active {
+  color: #ff8c00;
+  background: rgba(255,140,0,0.08);
+  border-left-color: #ff8c00;
+  text-shadow: 0 0 8px rgba(255,140,0,0.6);
+}
