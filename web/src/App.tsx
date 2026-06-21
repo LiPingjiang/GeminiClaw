@@ -3,10 +3,8 @@ import Sidebar from './components/Sidebar'
 import ChatPage from './pages/ChatPage'
 import SessionsPage from './pages/SessionsPage'
 import AgentsPage from './pages/AgentsPage'
-
-const Placeholder = ({ name }: { name: string }) => (
-  <div className="p-8 text-gray-400">{name} page coming soon…</div>
-)
+import RunsPage from './pages/RunsPage'
+import ConfigPage from './pages/ConfigPage'
 
 export default function App() {
   return (
@@ -18,8 +16,8 @@ export default function App() {
             <Route path="/" element={<ChatPage />} />
             <Route path="/sessions" element={<SessionsPage />} />
             <Route path="/agents" element={<AgentsPage />} />
-            <Route path="/runs" element={<Placeholder name="Runs" />} />
-            <Route path="/config" element={<Placeholder name="Config" />} />
+            <Route path="/runs" element={<RunsPage />} />
+            <Route path="/config" element={<ConfigPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </main>
