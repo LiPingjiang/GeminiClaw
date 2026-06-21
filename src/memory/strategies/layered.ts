@@ -11,6 +11,7 @@ import { BackgroundService } from "../background.js"
 import { buildContext } from "../context.js"
 import { MemoryPaths } from "../paths.js"
 import { WorkingMemoryBuilder } from "../working-memory.js"
+import { logger as persistentLogger } from "../../utils/logger.js"
 
 interface LayeredStrategyConfig {
   db: Db
@@ -51,6 +52,10 @@ export class LayeredStrategy implements MemoryStrategy {
     const exists = this.db.prepare(`SELECT id FROM chat_sessions WHERE id = ?`).get(sessionId)
     if (!exists) {
       this.db.prepare(`INSERT INTO chat_sessions (id, title) VALUES (?, ?)`).run(sessionId, null)
+      persistentLogger.info("layered-memory", "session_created", { sessionId })
+    } else {
+      const stats = this.db.prepare(`SELECT message_count FROM chat_sessions WHERE id = ?`).get(sessionId) as { message_count: number } | undefined
+      persistentLogger.debug("layered-memory", "session_reused", { sessionId, messageCount: stats?.message_count ?? 0 })
     }
   }
 
@@ -111,6 +116,19 @@ export class LayeredStrategy implements MemoryStrategy {
       recentHistory,
       userMessage,
       recentMessageLimit: this.config.recentMessageLimit,
+    })
+
+    // Audit log: memory context retrieval
+    persistentLogger.debug("layered-memory", "get_context", {
+      sessionId,
+      agentId: agentId ?? null,
+      activeTopicsCount: activeTopics.length,
+      matchedTopics: routeResult.matches.map(m => ({ topicId: m.topicId, confidence: m.confidence, level: m.level })),
+      topicDocsLoaded: topicDocs.map(d => ({ title: d.title, level: d.level, contentLen: d.content.length })),
+      recentHistoryCount: recentHistory.length,
+      recentMessageLimit: this.config.recentMessageLimit,
+      workspaceMemChars: workspaceMem.length,
+      finalMessageCount: messages.length,
     })
 
     return { messages, strategyName: this.name }

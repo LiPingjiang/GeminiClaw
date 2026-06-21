@@ -1,3 +1,4 @@
+import { logger as persistentLogger } from "../utils/logger.js"
 import type { Provider, Message } from "../providers/types.js"
 import type { TopicSummary } from "./router.js"
 
@@ -74,6 +75,13 @@ export class TriageService {
       const resp = await this.provider.chat(msgs, { maxTokens: 256, temperature: 0 })
       const parsed = JSON.parse(resp.content) as TriageResult
       if (!parsed.action) return { action: "skip" }
+      persistentLogger.info("triage", "triage_result", {
+        sessionId: _sessionId,
+        turns,
+        action: parsed.action,
+        ...(parsed.action === "new_topic" ? { title: (parsed as any).title } : {}),
+        ...(parsed.action === "merge_topic" ? { topicId: (parsed as any).topicId } : {}),
+      })
       return parsed
     } catch (err) {
       process.stderr.write(`[triage] LLM call failed, skipping: ${err}\n`)

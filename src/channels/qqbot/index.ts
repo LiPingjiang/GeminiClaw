@@ -482,6 +482,27 @@ export class QQBotChannel implements IChannel {
       }));
       console.log(`[QQBot:DEBUG] session=${sessionId.slice(0, 12)}… msgs=${messages.length} last3=${JSON.stringify(_dbgLast3)}`);
 
+      // Full context audit: log every message role + length for post-hoc analysis
+      const { logger: _ctxLogger } = await import("../../utils/logger.js");
+      const _contextSnapshot = messages.map((m, i) => ({
+        idx: i,
+        role: (m as any).role,
+        chars: typeof (m as any).content === "string" ? (m as any).content.length : JSON.stringify((m as any).content).length,
+        preview: typeof (m as any).content === "string" ? (m as any).content.slice(0, 120) : "[multimodal]",
+        hasToolCalls: !!(m as any).tool_calls,
+      }));
+      _ctxLogger.debug("qqbot-channel", "context_assembly", {
+        sessionId,
+        agentId: agentId ?? null,
+        totalMessages: messages.length,
+        systemMsgCount: messages.filter((m: any) => m.role === "system").length,
+        userMsgCount: messages.filter((m: any) => m.role === "user").length,
+        assistantMsgCount: messages.filter((m: any) => m.role === "assistant").length,
+        toolMsgCount: messages.filter((m: any) => m.role === "tool").length,
+        totalChars: _contextSnapshot.reduce((s, m) => s + m.chars, 0),
+        snapshot: _contextSnapshot,
+      });
+
       const modelOverride = modelOverrides.get(userId);
       let finalReply = "";
 
