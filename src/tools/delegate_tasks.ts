@@ -10,6 +10,7 @@
 // When sub-tasks complete, ResultInjector pushes results to the user via QQ/channel.
 
 import { registry } from "./registry.js"
+import { logger as persistentLogger } from "../utils/logger.js"
 import { asyncExecute, MAX_CONCURRENT_RUNS_PER_PARENT } from "../multi-agent/async-executor.js"
 import { getRunningForParent } from "../multi-agent/subagent-registry.js"
 import type { TaskSpec } from "../multi-agent/task-delegator.js"
@@ -225,6 +226,14 @@ registry.register({
     }
 
     // Fire-and-forget: launch async execution
+    persistentLogger.info("delegate_tasks", "launching", {
+      taskCount: taskSpecs.length,
+      titles: taskSpecs.map(t => t.title),
+      strategy,
+      timeoutMs,
+      maxConcurrent,
+      parentSessionId,
+    });
     const result = asyncExecute(taskSpecs, {
       parentSessionId,
       parentAgentId: parentAgentId ?? null,
@@ -237,6 +246,11 @@ registry.register({
     })
 
     if (!result.accepted) {
+      persistentLogger.warn("delegate_tasks", "rejected", {
+        reason: result.rejectReason,
+        taskCount: taskSpecs.length,
+        parentSessionId,
+      });
       return {
         type: "error",
         error: `delegate_tasks: 任务被拒绝 — ${result.rejectReason}`,
@@ -248,6 +262,15 @@ registry.register({
     const slotsUsed = running.length
     const slotsRemaining = MAX_CONCURRENT_RUNS_PER_PARENT - slotsUsed
 
+    persistentLogger.info("delegate_tasks", "accepted", {
+      runId: result.runId,
+      taskCount: taskSpecs.length,
+      titles: taskSpecs.map(t => t.title),
+      strategy,
+      timeoutMs,
+      slotsUsed,
+      slotsRemaining,
+    });
     // Return immediately — parent agent is NOT blocked
     const taskList = taskSpecs.map((t, i) => `  ${i + 1}. ${t.title}`).join("\n")
     return {

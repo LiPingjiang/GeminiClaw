@@ -22,6 +22,7 @@ import { traceHub } from "../trace/hub.js";
 import { auditConversation } from "./audit.js";
 import { getContextPercent, shouldCompact, shouldWarn, fmtTokens } from "./context-window.js";
 import { compactConversation } from "./compact.js";
+import { logger as persistentLogger } from "../utils/logger.js";
 // ── Tools that are known to mutate state ────────────────────────────────────
 const MUTATING_TOOLS = new Set(["exec", "write", "edit", "file_write", "execute_script"]);
 
@@ -342,6 +343,21 @@ export class AgentLoop {
           `input=${fmtTokens(inputTok)} output=${fmtTokens(outputTok)} ` +
           `ctx=${ctxPct}% llm=${llmDurationMs}ms stop=${response.stopReason ?? "?"}`
         );
+
+        // ── Persistent audit log: LLM response ──
+        const toolCallNames = (response.tool_calls ?? []).map((tc: any) => tc.name);
+        persistentLogger.info("agent-loop", "llm_response", {
+          requestId,
+          turn,
+          inputTokens: inputTok,
+          outputTokens: outputTok,
+          ctxPercent: ctxPct,
+          llmDurationMs,
+          stopReason: response.stopReason ?? "unknown",
+          hasToolCalls: toolCallNames.length > 0,
+          toolCallNames,
+          contentPreview: (response.content ?? "").slice(0, 200),
+        });
 
         // ── Hook: post_llm_call ──
         await hookBus.emit("post_llm_call", {
@@ -911,6 +927,11 @@ export class AgentLoop {
     }
 
     const startMs = Date.now();
+    persistentLogger.info("agent-loop", "tool_exec_start", {
+      toolName: tc.name,
+      toolCallId: tc.id,
+      argsPreview: JSON.stringify(tc.args).slice(0, 300),
+    });
     let toolResult: ToolResult;
     let isError = false;
     let multimodal: ContentPart[] | undefined;
@@ -968,6 +989,13 @@ export class AgentLoop {
     }
 
     const durationMs = Date.now() - startMs;
+    persistentLogger.info("agent-loop", "tool_exec_end", {
+      toolName: tc.name,
+      toolCallId: tc.id,
+      durationMs,
+      isError,
+      resultPreview: (toolResult.content ?? "").slice(0, 200),
+    });
     // Smart truncation (Layer 1 + Layer 2)
     const truncationResult = truncateToolResult(toolResult.content, tc.name, sessionId);
     toolResult = { ...toolResult, content: truncationResult.content };
