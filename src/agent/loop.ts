@@ -341,7 +341,7 @@ export class AgentLoop {
         console.log(
           `[AgentLoop] req=${requestId} turn=${turn} ` +
           `input=${fmtTokens(inputTok)} output=${fmtTokens(outputTok)} ` +
-          `ctx=${ctxPct}% llm=${llmDurationMs}ms stop=${response.stopReason ?? "?"}`
+          `ctx=${ctxPct}% llm=${llmDurationMs}ms stop=${response.stopReason ?? "?"}` + ((response as any).routeUsed ? ` [FALLBACK:${(response as any).routeUsed}]` : "")
         );
 
         // ── Persistent audit log: LLM response ──
@@ -356,6 +356,7 @@ export class AgentLoop {
           stopReason: response.stopReason ?? "unknown",
           hasToolCalls: toolCallNames.length > 0,
           toolCallNames,
+          routeUsed: (response as any).routeUsed ?? undefined,
           contentPreview: (response.content ?? "").slice(0, 200),
         });
 
