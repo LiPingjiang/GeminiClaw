@@ -233,3 +233,116 @@ body::after {
   border-left-color: #ff8c00;
   text-shadow: 0 0 8px rgba(255,140,0,0.6);
 }
+
+/* ── Markdown renderer (space aesthetic) ────────────────────────── */
+.prose-space { color: #b0d0d8; line-height: 1.65; }
+.prose-space > *:first-child { margin-top: 0; }
+.prose-space > *:last-child  { margin-bottom: 0; }
+
+.prose-space h1, .prose-space h2, .prose-space h3,
+.prose-space h4, .prose-space h5, .prose-space h6 {
+  font-family: 'Orbitron', monospace;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin: 14px 0 6px;
+  color: #ff8c00;
+  text-shadow: 0 0 8px rgba(255,140,0,0.5);
+}
+.prose-space h1 { font-size: 14px; border-bottom: 1px solid #7a3c00; padding-bottom: 4px; }
+.prose-space h2 { font-size: 13px; }
+.prose-space h3 { font-size: 12px; color: #d4b870; text-shadow: none; }
+.prose-space h4, .prose-space h5, .prose-space h6 { font-size: 11px; color: #7a5c20; text-shadow: none; }
+
+.prose-space p { margin: 6px 0; }
+
+/* Inline code */
+.prose-space code {
+  background: rgba(0,212,255,0.07);
+  border: 1px solid #004455;
+  color: #00d4ff;
+  padding: 1px 5px;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 11px;
+  text-shadow: 0 0 6px rgba(0,212,255,0.4);
+}
+
+/* Code blocks */
+.prose-space pre {
+  background: #030609;
+  border: 1px solid #0d2a40;
+  border-left: 2px solid #00d4ff;
+  padding: 10px 12px;
+  margin: 8px 0;
+  overflow-x: auto;
+  position: relative;
+}
+.prose-space pre::before {
+  content: '// CODE';
+  position: absolute;
+  top: 4px; right: 8px;
+  font-size: 8px;
+  letter-spacing: 0.15em;
+  color: #004455;
+}
+.prose-space pre code {
+  background: none;
+  border: none;
+  padding: 0;
+  color: #90b8c0;
+  font-size: 12px;
+  text-shadow: none;
+}
+
+/* Lists */
+.prose-space ul { list-style: none; padding-left: 4px; margin: 6px 0; }
+.prose-space ul > li { padding-left: 14px; position: relative; margin: 3px 0; }
+.prose-space ul > li::before { content: '▸'; position: absolute; left: 0; color: #ff8c00; }
+.prose-space ol { padding-left: 20px; margin: 6px 0; counter-reset: sp-counter; list-style: none; }
+.prose-space ol > li { position: relative; margin: 3px 0; counter-increment: sp-counter; padding-left: 4px; }
+.prose-space ol > li::before { content: counter(sp-counter) '.'; position: absolute; left: -18px; color: #ff8c00; font-size: 11px; }
+
+/* Emphasis */
+.prose-space strong { color: #ff8c00; font-weight: bold; }
+.prose-space em { color: #d4c080; font-style: italic; }
+
+/* Blockquote */
+.prose-space blockquote {
+  border-left: 2px solid #ff8c00;
+  margin: 8px 0;
+  padding: 4px 10px;
+  background: rgba(255,140,0,0.04);
+  color: #7a6030;
+}
+.prose-space blockquote p { margin: 0; }
+
+/* Horizontal rule */
+.prose-space hr {
+  border: none;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, #ff8c00 30%, #ff8c00 70%, transparent);
+  opacity: 0.35;
+  margin: 12px 0;
+}
+
+/* Links */
+.prose-space a { color: #00d4ff; text-decoration: none; border-bottom: 1px solid #004455; }
+.prose-space a:hover { color: #ff8c00; border-bottom-color: #ff8c00; }
+
+/* Tables */
+.prose-space table { border-collapse: collapse; width: 100%; margin: 10px 0; font-size: 12px; }
+.prose-space th {
+  background: rgba(255,140,0,0.1);
+  border: 1px solid #1a3a50;
+  padding: 5px 10px;
+  color: #ff8c00;
+  font-size: 9px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  text-align: left;
+}
+.prose-space td {
+  border: 1px solid #0d2a40;
+  padding: 5px 10px;
+  color: #90b0b8;
+}
+.prose-space tr:nth-child(even) td { background: rgba(0,212,255,0.03); }
