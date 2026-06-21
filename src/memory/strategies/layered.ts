@@ -19,6 +19,7 @@ interface LayeredStrategyConfig {
   triageProvider: Provider
   systemPrompt: string
   recentMessageLimit: number
+  contextTokenBudget: number
   triageAfterTurns: number
   compactThresholdBytes: number
   maxActiveTopics: number
@@ -175,51 +176,183 @@ export class LayeredStrategy implements MemoryStrategy {
     this.background.runAsync(topicId, userMsg, assistantMsg)
   }
 
+  // Token-budget dynamic loading: load messages from newest to oldest,
+  // stopping when we hit the token budget. Replaces the old fixed LIMIT 40.
+  //
+  // For the 2 most recent user requests: keep full tool chains
+  // For older requests: compress to user + summary + final_reply
+
+  private estimateTokens(text: string): number {
+    if (!text) return 0
+    return Math.ceil((text.length / 4) * 1.2)
+  }
+
   private getRecentHistory(sessionId: string): Message[] {
-    // 加载所有角色的消息（user/assistant/tool），保留完整的工具调用链
-    // 这样 LLM 能看到正确的模式：assistant 调用工具 → tool 返回结果 → assistant 回复
+    const TOKEN_BUDGET = this.config.contextTokenBudget ?? 120_000
+    const KEEP_FULL_REQUESTS = 2
+
+    // Load a large batch of messages (up to 600)
     const raw = this.db.prepare(`
       SELECT role, content, tool_calls, tool_call_id FROM chat_messages
       WHERE session_id = ?
-      ORDER BY id DESC LIMIT ?
-    `).all(sessionId, this.config.recentMessageLimit) as Array<{
+      ORDER BY id DESC LIMIT 600
+    `).all(sessionId) as Array<{
       role: string; content: string; tool_calls: string | null; tool_call_id: string | null
     }>
 
-    // 构造完整的 Message 对象（包含 tool_calls 和 tool_call_id）
+    if (raw.length === 0) return []
+
+    // Reverse to chronological order (oldest first)
+    raw.reverse()
+
+    // Segment into request groups (user msg + following assistant/tool msgs)
+    interface RequestGroup {
+      userMsg: typeof raw[0] | null
+      messages: typeof raw
+      totalTokens: number
+    }
+
+    const groups: RequestGroup[] = []
+    let currentGroup: RequestGroup = { userMsg: null, messages: [], totalTokens: 0 }
+
+    for (const row of raw) {
+      if (row.role === "user") {
+        if (currentGroup.messages.length > 0) {
+          groups.push(currentGroup)
+        }
+        currentGroup = { userMsg: row, messages: [row], totalTokens: this.estimateTokens(row.content) }
+      } else {
+        currentGroup.messages.push(row)
+        const extra = row.tool_calls ? row.tool_calls.length : 0
+        currentGroup.totalTokens += this.estimateTokens((row.content ?? "") + (extra > 0 ? row.tool_calls! : ""))
+      }
+    }
+    if (currentGroup.messages.length > 0) {
+      groups.push(currentGroup)
+    }
+
+    // Build output: walk from newest group to oldest with token budget
+    const finalResult: Message[] = []
+    let budget = TOKEN_BUDGET
+    let recentKept = 0
+
+    for (let i = groups.length - 1; i >= 0; i--) {
+      const group = groups[i]
+
+      if (recentKept < KEEP_FULL_REQUESTS) {
+        // Keep full tool chain for recent requests
+        if (group.totalTokens > budget) break
+        budget -= group.totalTokens
+        const msgs = this.buildMessagesFromRaw(group.messages)
+        finalResult.unshift(...msgs)
+        recentKept++
+      } else {
+        // Compress older requests
+        const compressed = this.compressRequestGroup(group)
+        const tokens = compressed.reduce(
+          (sum, m) => sum + this.estimateTokens(typeof m.content === "string" ? m.content : ""),
+          0
+        )
+        if (tokens > budget) break
+        budget -= tokens
+        finalResult.unshift(...compressed)
+      }
+    }
+
+    persistentLogger.debug("layered-memory", "token_budget_loading", {
+      sessionId,
+      totalRawMessages: raw.length,
+      requestGroups: groups.length,
+      fullRequestsKept: recentKept,
+      usedTokens: TOKEN_BUDGET - budget,
+      tokenBudget: TOKEN_BUDGET,
+      finalMessageCount: finalResult.length,
+    })
+
+    return finalResult
+  }
+
+  private buildMessagesFromRaw(raw: Array<{
+    role: string; content: string; tool_calls: string | null; tool_call_id: string | null
+  }>): Message[] {
     const messages: Message[] = []
     const seenAssistantContent = new Set<string>()
+
     for (const row of raw) {
       if (row.role === "assistant") {
         const text = row.content ?? ""
-        // 跳过完全空的 assistant 消息（除非有 tool_calls）
         if (!text && !row.tool_calls) continue
-        // 去重：跳过已出现过的相同 assistant 内容（仅对无 tool_calls 的消息去重）
         if (text.length > 50 && seenAssistantContent.has(text) && !row.tool_calls) continue
         if (text.length > 50 && !row.tool_calls) seenAssistantContent.add(text)
 
         const msg: Message = { role: "assistant", content: text }
         if (row.tool_calls) {
-          try {
-            msg.tool_calls = JSON.parse(row.tool_calls)
-          } catch { /* ignore parse errors */ }
+          try { msg.tool_calls = JSON.parse(row.tool_calls) } catch { /* ignore */ }
         }
         messages.push(msg)
       } else if (row.role === "tool") {
-        // tool 消息必须有 tool_call_id 才能被 LLM 理解
         if (row.tool_call_id) {
-          messages.push({
-            role: "tool",
-            content: row.content ?? "",
-            tool_call_id: row.tool_call_id,
-          })
+          messages.push({ role: "tool", content: row.content ?? "", tool_call_id: row.tool_call_id })
         }
-        // 没有 tool_call_id 的 tool 消息跳过（旧数据兼容）
       } else if (row.role === "user" || row.role === "system") {
         messages.push({ role: row.role, content: row.content ?? "" })
       }
     }
     return messages
+  }
+
+  private compressRequestGroup(group: {
+    userMsg: { role: string; content: string; tool_calls: string | null; tool_call_id: string | null } | null
+    messages: Array<{ role: string; content: string; tool_calls: string | null; tool_call_id: string | null }>
+  }): Message[] {
+    const result: Message[] = []
+
+    // User message (always keep)
+    if (group.userMsg) {
+      result.push({ role: "user", content: group.userMsg.content ?? "" })
+    }
+
+    // Find the final assistant reply (last assistant without tool_calls)
+    let finalReply = ""
+    const toolNames: string[] = []
+    let toolCallCount = 0
+
+    for (let i = group.messages.length - 1; i >= 0; i--) {
+      const msg = group.messages[i]
+      if (msg.role === "assistant" && !msg.tool_calls && msg.content && msg.content.length > 10) {
+        finalReply = msg.content
+        break
+      }
+    }
+
+    // Collect tool names used
+    for (const msg of group.messages) {
+      if (msg.role === "assistant" && msg.tool_calls) {
+        toolCallCount++
+        try {
+          const calls = JSON.parse(msg.tool_calls)
+          for (const tc of calls) {
+            if (tc.name && !toolNames.includes(tc.name)) toolNames.push(tc.name)
+          }
+        } catch { /* ignore */ }
+      }
+    }
+
+    // Build compressed summary
+    if (toolCallCount > 0) {
+      const summary = "[" + toolCallCount + " tool calls: " + toolNames.slice(0, 5).join(", ") + (toolNames.length > 5 ? "..." : "") + "]"
+      result.push({ role: "assistant", content: summary })
+    }
+
+    // Final reply (truncated if too long)
+    if (finalReply) {
+      const truncated = finalReply.length > 800
+        ? finalReply.slice(0, 600) + "\n...[truncated]"
+        : finalReply
+      result.push({ role: "assistant", content: truncated })
+    }
+
+    return result
   }
 
   async appendMessages(sessionId: string, messages: Message[]): Promise<void> {

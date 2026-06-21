@@ -41,8 +41,8 @@ export function buildContext(opts: BuildContextOptions): Message[] {
   }
 
   // 3. 近期对话（滑动窗口）
-  const trimmed = recentHistory.slice(-recentMessageLimit)
-  result.push(...trimmed)
+  // Token-budget loading handles the size limit; no secondary truncation needed
+  result.push(...recentHistory)
 
   return result
 }

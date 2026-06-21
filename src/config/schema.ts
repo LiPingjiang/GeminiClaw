@@ -32,6 +32,7 @@ export const memoryConfigSchema = z.object({
   maxActiveTopics: z.number().int().min(1).max(50).default(16),
   compactThresholdBytes: z.number().int().positive().default(6144),
   recentMessageLimit: z.number().int().positive().default(20),
+  contextTokenBudget: z.number().int().positive().default(120_000),
   triageAfterTurns: z.number().int().positive().default(3),
 })
 
