@@ -61,6 +61,7 @@ export class ProviderRouter {
           routeUsed: isFallback ? `${providerName}/${model}` : undefined,
         }
       } catch (err) {
+        console.error(`[ProviderRouter] ✗ ${providerName}/${model} failed: ${(err as Error).message}`)
         errors.push(`${providerName}/${model}: ${(err as Error).message}`)
       }
     }
