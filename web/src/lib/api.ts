@@ -228,6 +228,11 @@ export const api = {
       .then((d: { messages?: { role: string; content: string }[] }) => d.messages ?? [])
       .catch(() => []),
 
+  getSessionMessagesRaw: (sessionId: string): Promise<{ status: number; msgs: { role: string; content: string }[] }> =>
+    fetch(`/v1/sessions/${encodeURIComponent(sessionId)}/messages?limit=200`, { headers: authHeaders() })
+      .then(async r => ({ status: r.status, msgs: r.ok ? (await r.json()).messages ?? [] : [] }))
+      .catch(() => ({ status: 0, msgs: [] })),
+
   // Create an agent record for a session (called after new session is created)
   createSessionAgent: (sessionId: string, templateName = 'base'): Promise<void> =>
     fetch(`/v1/sessions/${encodeURIComponent(sessionId)}/agents`, {

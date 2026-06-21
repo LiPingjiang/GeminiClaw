@@ -73,17 +73,27 @@ export default function ChatPage() {
   const handleSelect = (id: string) => {
     resetChat()
     setActiveSessionId(id)
-    api.getSessionMessages(id).then(msgs => {
+    // show loading indicator
+    setItems([{ type: 'event', id: uid(), event: { kind: 'system', message: 'LOADING SESSION HISTORY…' } }])
+    api.getSessionMessagesRaw(id).then(({ status, msgs }) => {
+      if (status === 401) {
+        setItems([{ type: 'event', id: uid(), event: { kind: 'error', message: 'AUTH TOKEN REQUIRED — go to Config and set your token' } }])
+        setNoAuth(true)
+        return
+      }
       const loaded = msgs
-        .filter(m => m.role === 'user' || m.role === 'assistant')
-        .map(m => ({
+        .filter((m: { role: string }) => m.role === 'user' || m.role === 'assistant')
+        .map((m: { role: string; content: string }) => ({
           type: 'event' as const,
           id: uid(),
           event: m.role === 'user'
             ? { kind: 'user_message' as const, content: m.content }
             : { kind: 'response' as const, content: m.content },
         }))
-      if (loaded.length > 0) setItems(loaded)
+      setItems(loaded.length > 0
+        ? loaded
+        : [{ type: 'event', id: uid(), event: { kind: 'system', message: 'NO MESSAGES IN THIS SESSION' } }]
+      )
     })
   }
 
