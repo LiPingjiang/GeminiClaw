@@ -208,40 +208,37 @@ export default function ChatPage() {
           </button>
         </div>
 
-        {/* Agent filter */}
-        {agents.length > 0 && (
-          <div style={{ borderBottom: '1px solid #0d2a40', padding: '6px 8px' }}>
-            <div className="sp-label" style={{ padding: '2px 4px', marginBottom: 4 }}>◈ UNIT FILTER</div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-              <button
-                onClick={() => setSelectedAgent(null)}
-                style={{
-                  fontSize: 9, letterSpacing: '0.1em', textTransform: 'uppercase',
-                  padding: '2px 7px', cursor: 'pointer', transition: 'all 0.15s',
-                  background: selectedAgent === null ? 'rgba(255,140,0,0.15)' : 'transparent',
-                  border: `1px solid ${selectedAgent === null ? '#ff8c00' : '#0d2a40'}`,
-                  color: selectedAgent === null ? '#ff8c00' : '#3d5060',
-                }}
-              >ALL</button>
+        {/* Agent filter dropdown */}
+        <div style={{ padding: '8px 10px', borderBottom: '1px solid #0d2a40' }}>
+          <div className="sp-label" style={{ padding: '0 0 4px', border: 'none' }}>◈ SELECT UNIT</div>
+          <div style={{ position: 'relative' }}>
+            <Cpu size={10} style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: selectedAgent ? '#00d4ff' : '#3d5060', pointerEvents: 'none' }} />
+            <select
+              value={selectedAgent?.id ?? ''}
+              onChange={e => {
+                const id = e.target.value
+                setSelectedAgent(agents.find(a => a.id === id) ?? null)
+              }}
+              style={{
+                width: '100%', padding: '6px 8px 6px 24px',
+                background: '#030609', border: '1px solid #0d3050',
+                color: selectedAgent ? '#00d4ff' : '#3d5060',
+                fontFamily: "'Share Tech Mono', monospace",
+                fontSize: 10, letterSpacing: '0.1em', textTransform: 'uppercase',
+                cursor: 'pointer', outline: 'none', appearance: 'none',
+                boxShadow: selectedAgent ? '0 0 6px rgba(0,212,255,0.2)' : 'none',
+                borderColor: selectedAgent ? '#004455' : '#0d3050',
+              }}
+            >
+              <option value="">ALL UNITS</option>
               {agents.map(a => (
-                <button
-                  key={a.id}
-                  onClick={() => setSelectedAgent(prev => prev?.id === a.id ? null : a)}
-                  style={{
-                    fontSize: 9, letterSpacing: '0.1em', textTransform: 'uppercase',
-                    padding: '2px 7px', cursor: 'pointer', transition: 'all 0.15s',
-                    display: 'flex', alignItems: 'center', gap: 4,
-                    background: selectedAgent?.id === a.id ? 'rgba(0,212,255,0.12)' : 'transparent',
-                    border: `1px solid ${selectedAgent?.id === a.id ? '#00d4ff' : '#0d2a40'}`,
-                    color: selectedAgent?.id === a.id ? '#00d4ff' : '#3d5060',
-                  }}
-                >
-                  <Cpu size={8} />{a.name.slice(0, 8)}
-                </button>
+                <option key={a.id} value={a.id}>{a.name.toUpperCase()}</option>
               ))}
-            </div>
+            </select>
+            {/* Custom arrow */}
+            <span style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', color: '#3d5060', fontSize: 8, pointerEvents: 'none' }}>▼</span>
           </div>
-        )}
+        </div>
 
         {/* Session list */}
         <div className="sp-label" style={{ margin: '8px 0 0' }}>◈ SESSION LOG</div>
