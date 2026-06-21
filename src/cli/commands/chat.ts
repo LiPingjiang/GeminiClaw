@@ -64,6 +64,7 @@ AGENT INTEROP
     gc chat --session \$SESSION_ID "\$MESSAGE"
     gc chat --json "问题" | jq -r .response`)
         .option("-s, --session <id>", "Session ID（续接已有会话）")
+        .option("-a, --agent <id>", "Agent ID（指定 agent 身份）")
         .option("-m, --model <name>", "模型名称")
         .option("--new", "强制新建 session")
         .option("--json", "输出完整 JSON")
@@ -86,7 +87,9 @@ AGENT INTEROP
             const sessionId = opts.new ? undefined : opts.session;
             const body = { message: msg };
             if (sessionId)
-                body.session_id = sessionId;
+                body.sessionId = sessionId;
+            if (opts.agent)
+                body.agentId = opts.agent;
             if (opts.model)
                 body.model = opts.model;
             const data = await apiFetch(`${srv.baseUrl}/v1/agent/chat`, {

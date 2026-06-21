@@ -4,10 +4,15 @@ import type { ProviderRouter } from "../../providers/router.js"
 import type { MemoryStrategy } from "../../memory/strategy.js"
 import type { TwinSystemInstance } from "../../twin-system/factory.js"
 import type { AgentLoop } from "../../agent/index.js"
+import { existsSync } from "fs"
+import { MemoryPaths } from "../../memory/paths.js"
+import type { Db } from "../../db/client.js"
+
 
 interface ChatBody {
   message: string
   sessionId?: string
+  agentId?: string
   model?: string
   stream?: boolean
 }
@@ -18,6 +23,7 @@ interface ChatRouteOpts {
   authToken?: string
   agentLoop?: AgentLoop
   twinSystem?: TwinSystemInstance
+  db?: Db
 }
 
 export async function chatRoute(
@@ -32,7 +38,7 @@ export async function chatRoute(
       }
     }
 
-    const { message, sessionId, model, stream: wantStream } = request.body
+    const { message, sessionId, agentId, model, stream: wantStream } = request.body
 
     // 输入校验
     if (!message || typeof message !== "string" || message.trim() === "") {
@@ -89,10 +95,31 @@ export async function chatRoute(
     }
 
     // 1. 获取 context（含 system + 事项索引 + 历史）
-    const { messages: contextMessages } = await opts.strategy.getContext(sid, message)
+    const { messages: contextMessages } = await opts.strategy.getContext(sid, message, agentId ?? undefined)
 
-    // 2. 追加当前用户消息
-    const allMessages = [...contextMessages, { role: "user" as const, content: message }]
+    // 2. Inject agent identity system message (same logic as QQBot channel)
+    let agentIdentityMsg: { role: "system"; content: string } | null = null
+    if (agentId && opts.db) {
+      const agentRow = opts.db
+        .prepare("SELECT agent_name, description FROM agents WHERE id = ?")
+        .get(agentId) as { agent_name: string; description: string | null } | undefined
+      if (agentRow) {
+        const hasFixedOnDisk = existsSync(new MemoryPaths().agentAgentMd(agentId))
+        if (!hasFixedOnDisk) {
+          agentIdentityMsg = {
+            role: "system" as const,
+            content: `## 当前助手身份\n你现在以【${agentRow.agent_name}】身份工作。${agentRow.description ? "\n职责：" + agentRow.description : ""}`,
+          }
+        }
+      }
+    }
+
+    // 3. 追加当前用户消息
+    const allMessages = [
+      ...contextMessages,
+      ...(agentIdentityMsg ? [agentIdentityMsg] : []),
+      { role: "user" as const, content: message },
+    ]
 
     // ─── 使用 AgentLoop 执行（带工具调用能力） ───
     if (opts.agentLoop) {

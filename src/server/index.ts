@@ -212,6 +212,7 @@ export async function buildServer(
     authToken: config.server.authToken,
     agentLoop,
     twinSystem,
+    db,
   });
 
   // Trace live route — QQBot 对话实时监控（gc watch）
