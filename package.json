@@ -14,7 +14,9 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "build:web": "pnpm --filter web build",
+    "dev:web": "pnpm --filter web dev"
   },
   "dependencies": {
     "@alcalzone/ansi-tokenize": "^0.3.0",
