@@ -70,7 +70,22 @@ export default function ChatPage() {
 
   const handleNew = () => { resetChat(); setActiveSessionId(undefined) }
 
-  const handleSelect = (id: string) => { resetChat(); setActiveSessionId(id) }
+  const handleSelect = (id: string) => {
+    resetChat()
+    setActiveSessionId(id)
+    api.getSessionMessages(id).then(msgs => {
+      const loaded = msgs
+        .filter(m => m.role === 'user' || m.role === 'assistant')
+        .map(m => ({
+          type: 'event' as const,
+          id: uid(),
+          event: m.role === 'user'
+            ? { kind: 'user_message' as const, content: m.content }
+            : { kind: 'response' as const, content: m.content },
+        }))
+      if (loaded.length > 0) setItems(loaded)
+    })
+  }
 
   const handleSelectAgent = (agent: Agent) => {
     if (agent.session_id) handleSelect(agent.session_id)

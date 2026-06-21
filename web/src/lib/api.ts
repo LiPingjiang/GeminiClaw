@@ -222,6 +222,12 @@ export const api = {
       .then((d: unknown) => Array.isArray(d) ? d : (d as { runs?: Run[] }).runs ?? [])
       .catch(() => []),
 
+  getSessionMessages: (sessionId: string): Promise<{ role: string; content: string }[]> =>
+    fetch(`/v1/sessions/${encodeURIComponent(sessionId)}/messages?limit=200`, { headers: authHeaders() })
+      .then(r => r.ok ? r.json() : { messages: [] })
+      .then((d: { messages?: { role: string; content: string }[] }) => d.messages ?? [])
+      .catch(() => []),
+
   // Create an agent record for a session (called after new session is created)
   createSessionAgent: (sessionId: string, templateName = 'base'): Promise<void> =>
     fetch(`/v1/sessions/${encodeURIComponent(sessionId)}/agents`, {
