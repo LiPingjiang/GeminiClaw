@@ -84,6 +84,7 @@ export default function ChatPage() {
     streamingTextRef.current = ''
     setStreamingText('')
 
+    const isNewSession = !activeSessionId  // capture before send
     const userItemId = uid()
     const streamItemId = uid()
 
@@ -104,7 +105,12 @@ export default function ChatPage() {
 
       onSessionId: (id) => {
         setActiveSessionId(id)
-        loadAll()
+        // Register a new agent for this session (only if session was just created)
+        if (isNewSession) {
+          api.createSessionAgent(id).then(() => loadAll())
+        } else {
+          loadAll()
+        }
       },
 
       onEvent: (event) => {

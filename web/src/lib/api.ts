@@ -221,4 +221,12 @@ export const api = {
       .then(r => r.ok ? r.json() : [])
       .then((d: unknown) => Array.isArray(d) ? d : (d as { runs?: Run[] }).runs ?? [])
       .catch(() => []),
+
+  // Create an agent record for a session (called after new session is created)
+  createSessionAgent: (sessionId: string, templateName = 'base'): Promise<void> =>
+    fetch(`/v1/sessions/${encodeURIComponent(sessionId)}/agents`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ template_name: templateName }),
+    }).then(() => undefined).catch(() => undefined),
 }
