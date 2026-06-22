@@ -179,7 +179,7 @@ export async function anthMessagesChat(config, messages, options) {
     return {
         content,
         model: response.model,
-        finish_reason: response.stop_reason ?? undefined,
+        stopReason: response.stop_reason ?? undefined,
         tool_calls,
         usage: {
             inputTokens: response.usage.input_tokens,

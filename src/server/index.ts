@@ -175,7 +175,7 @@ export async function buildServer(
         }))
       : undefined;
 
-    return { content: response.content ?? "", tool_calls: agentToolCalls, model: response.model, usage: response.usage };
+    return { content: response.content ?? "", tool_calls: agentToolCalls, model: response.model, usage: response.usage, stopReason: response.stopReason };
   };
 
   const agentLoop = new AgentLoop({
