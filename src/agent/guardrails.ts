@@ -45,6 +45,9 @@ const IDEMPOTENT_TOOLS = new Set([
   "read",
   "web_fetch",
   "web_browse",
+  "exec",
+  "sandbox_exec",
+  "db_query",
 ]);
 
 /** Compute a short hash for dedup purposes. */
