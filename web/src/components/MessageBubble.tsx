@@ -1,4 +1,5 @@
 import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import type { TuiEvent } from '@/lib/api'
 
 interface MessageBubbleProps {
@@ -72,7 +73,7 @@ export default function MessageBubble({ event, streaming }: MessageBubbleProps) 
               </span>
             ) : (
               <div className="prose-space">
-                <ReactMarkdown>{event.content}</ReactMarkdown>
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>{event.content}</ReactMarkdown>
               </div>
             )}
             {/* Corner accent */}
