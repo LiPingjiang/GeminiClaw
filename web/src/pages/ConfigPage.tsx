@@ -13,12 +13,14 @@ export default function ConfigPage() {
   }
 
   return (
-    <div className="p-6 h-full overflow-y-auto">
-      <h2 className="text-xl font-semibold mb-6">Config</h2>
+    <div style={{ padding: 24, height: '100%', overflowY: 'auto', background: 'var(--gc-bg)' }}>
+      <div style={{ fontSize: 9, letterSpacing: '0.2em', color: 'var(--gc-text-label)', textTransform: 'uppercase', marginBottom: 20 }}>
+        ◈ SYSTEM CONFIG
+      </div>
 
-      <div className="max-w-lg space-y-5">
-        <div>
-          <label className="block text-sm font-medium text-gray-300 mb-1.5">
+      <div style={{ maxWidth: 480 }}>
+        <div style={{ marginBottom: 20 }}>
+          <label style={{ display: 'block', fontSize: 9, letterSpacing: '0.15em', color: 'var(--gc-text-dim)', textTransform: 'uppercase', marginBottom: 8 }}>
             Auth Token
           </label>
           <input
@@ -26,17 +28,17 @@ export default function ConfigPage() {
             value={config.authToken}
             onChange={e => setConfig(c => ({ ...c, authToken: e.target.value }))}
             placeholder="optional"
-            className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3.5 py-2.5 text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/30 transition-colors"
+            className="sp-input"
+            style={{ width: '100%', padding: '8px 12px' }}
           />
-          <p className="mt-1 text-xs text-gray-500">Sent as Authorization: Bearer &lt;token&gt;</p>
+          <p style={{ marginTop: 6, fontSize: 9, color: 'var(--gc-text-dim)', letterSpacing: '0.08em' }}>
+            Sent as Authorization: Bearer &lt;token&gt;
+          </p>
         </div>
 
-        <button
-          onClick={handleSave}
-          className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded-lg transition-colors"
-        >
-          {saved ? <CheckCircle size={14} /> : <Save size={14} />}
-          {saved ? 'Saved!' : 'Save changes'}
+        <button onClick={handleSave} className="sp-btn" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {saved ? <CheckCircle size={12} /> : <Save size={12} />}
+          {saved ? 'SAVED' : 'SAVE CHANGES'}
         </button>
       </div>
     </div>

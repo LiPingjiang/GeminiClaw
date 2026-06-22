@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import { RefreshCw } from 'lucide-react'
 import { api, type Run } from '@/lib/api'
-import { cn } from '@/lib/utils'
 
 export default function RunsPage() {
   const [runs, setRuns] = useState<Run[]>([])
@@ -15,59 +14,53 @@ export default function RunsPage() {
 
   useEffect(() => { load() }, [])
 
+  const statusColor = (s: string) =>
+    s === 'completed' ? 'var(--gc-green)' :
+    s === 'running'   ? 'var(--gc-accent)' :
+    s === 'failed'    ? 'var(--gc-red)' :
+                        'var(--gc-text-dim)'
+
   return (
-    <div className="p-6 h-full overflow-y-auto">
-      <div className="flex items-center justify-between mb-6">
-        <h2 className="text-xl font-semibold">Runs</h2>
-        <button
-          onClick={load}
-          disabled={loading}
-          className="flex items-center gap-2 px-3 py-1.5 text-sm text-gray-400 hover:text-gray-200 hover:bg-gray-800 rounded-lg transition-colors"
-        >
-          <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
-          Refresh
+    <div style={{ padding: 24, height: '100%', overflowY: 'auto', background: 'var(--gc-bg)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+        <div style={{ fontSize: 9, letterSpacing: '0.2em', color: 'var(--gc-text-label)', textTransform: 'uppercase' }}>◈ OPERATION HISTORY</div>
+        <button onClick={load} disabled={loading} className="sp-btn sp-btn-cyan" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <RefreshCw size={10} style={{ animation: loading ? 'spin 1s linear infinite' : 'none' }} />
+          REFRESH
         </button>
       </div>
 
-      <div className="rounded-xl border border-gray-800 overflow-hidden">
-        <table className="w-full text-sm">
-          <thead className="bg-gray-800/60 text-gray-400 text-left text-xs uppercase tracking-wider">
-            <tr>
-              <th className="px-5 py-3">Run ID</th>
-              <th className="px-5 py-3">Status</th>
-              <th className="px-5 py-3">Duration</th>
-              <th className="px-5 py-3">Created</th>
+      <div style={{ border: '1px solid var(--gc-border)', overflow: 'hidden' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11, fontFamily: "'Share Tech Mono', monospace" }}>
+          <thead>
+            <tr style={{ background: 'var(--gc-panel)' }}>
+              {['Run ID', 'Status', 'Duration', 'Created'].map(h => (
+                <th key={h} style={{ padding: '6px 14px', textAlign: 'left', fontSize: 9, letterSpacing: '0.15em', color: 'var(--gc-text-label)', textTransform: 'uppercase', borderBottom: '1px solid var(--gc-border)', fontWeight: 'normal' }}>{h}</th>
+              ))}
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-800">
+          <tbody>
             {loading && (
-              <tr>
-                <td colSpan={4} className="px-5 py-10 text-center text-gray-500">Loading…</td>
-              </tr>
+              <tr><td colSpan={4} style={{ padding: '40px 14px', textAlign: 'center', color: 'var(--gc-text-dim)', fontSize: 9, letterSpacing: '0.1em' }}>LOADING…</td></tr>
             )}
             {!loading && runs.length === 0 && (
-              <tr>
-                <td colSpan={4} className="px-5 py-10 text-center text-gray-500">No runs yet</td>
-              </tr>
+              <tr><td colSpan={4} style={{ padding: '40px 14px', textAlign: 'center', color: 'var(--gc-text-dim)', fontSize: 9, letterSpacing: '0.1em' }}>NO RUNS</td></tr>
             )}
             {runs.map(r => (
-              <tr key={r.id} className="hover:bg-gray-800/40 transition-colors">
-                <td className="px-5 py-3 font-mono text-xs text-gray-400">{r.id.slice(0, 12)}…</td>
-                <td className="px-5 py-3">
-                  <span className={cn(
-                    'text-xs px-2 py-0.5 rounded-full border',
-                    r.status === 'completed' ? 'bg-green-900/60 text-green-300 border-green-800' :
-                    r.status === 'running' ? 'bg-yellow-900/60 text-yellow-300 border-yellow-800' :
-                    r.status === 'failed' ? 'bg-red-900/60 text-red-300 border-red-800' :
-                    'bg-gray-700 text-gray-400 border-gray-600',
-                  )}>
+              <tr key={r.id} style={{ borderBottom: '1px solid var(--gc-border)' }}
+                onMouseEnter={e => (e.currentTarget.style.background = 'var(--gc-user-bg)')}
+                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+              >
+                <td style={{ padding: '8px 14px', color: 'var(--gc-text-dim)', fontSize: 10 }}>{r.id.slice(0, 12)}…</td>
+                <td style={{ padding: '8px 14px' }}>
+                  <span style={{ fontSize: 8, letterSpacing: '0.1em', textTransform: 'uppercase', color: statusColor(r.status), border: `1px solid ${statusColor(r.status)}`, padding: '1px 6px' }}>
                     {r.status}
                   </span>
                 </td>
-                <td className="px-5 py-3 text-gray-400 text-xs">
+                <td style={{ padding: '8px 14px', color: 'var(--gc-text-mid)', fontSize: 10 }}>
                   {r.durationMs != null ? `${(r.durationMs / 1000).toFixed(1)}s` : '—'}
                 </td>
-                <td className="px-5 py-3 text-gray-500 text-xs">
+                <td style={{ padding: '8px 14px', color: 'var(--gc-text-dim)', fontSize: 10 }}>
                   {new Date(r.createdAt).toLocaleString()}
                 </td>
               </tr>
