@@ -188,7 +188,7 @@ export async function chatRoute(
       // 非流式 + AgentLoop：收集所有 message_delta 事件
       // ⚠️ 2026-06-17: 添加请求级超时保护，防止 AgentLoop 工具调用卡死导致 session 永久挂起
       // 回滚方案：移除 Promise.race 包装，恢复原始 for-await 循环
-      const REQUEST_TIMEOUT_MS = 120_000 // 2 分钟超时
+      const REQUEST_TIMEOUT_MS = 600_000 // 10 分钟超时
       let fullContent = ""
       const eventStream = opts.agentLoop.run({
         messages: allMessages as any,

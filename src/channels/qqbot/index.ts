@@ -303,7 +303,7 @@ export class QQBotChannel implements IChannel {
         ? { type: "c2c" as const, openid: source.openid }
         : { type: "group" as const, groupOpenid: (source as any).groupOpenid };
       try {
-        const reply = await processWithAgent(sessionId, currentAgentId, content, _msgId, userId, runSignal, attachments, progressTarget);
+        const reply = await processWithAgent(sessionId, currentAgentId, content, _msgId, userId, runSignal, attachments, progressTarget, isNewSession);
         // If agent was backgrounded mid-flight, push result via callback instead of returning
         if (gate && currentAgentId && gate.isBackgrounded(currentAgentId)) {
           gate.completeBackground(currentAgentId, reply);
@@ -333,6 +333,7 @@ export class QQBotChannel implements IChannel {
       progressTarget?:
         | { type: "c2c"; openid: string }
         | { type: "group"; groupOpenid: string },
+      isNewSession?: boolean,
     ): Promise<string> => {
       await memory.ensureSession(sessionId);
 
