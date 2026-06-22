@@ -59,6 +59,24 @@ export class SqliteStrategy {
     }
     async appendMessages(sessionId, messages) {
         await this.ensureSession(sessionId);
+
+        // ── Dedup guard: skip entire batch if last assistant content is identical to DB ──
+        const lastAssistant = [...messages].reverse().find(m => m.role === "assistant" && m.content);
+        if (lastAssistant) {
+            const lastContent = typeof lastAssistant.content === "string"
+                ? lastAssistant.content
+                : JSON.stringify(lastAssistant.content);
+            const prev = this.db.prepare(
+                `SELECT content FROM chat_messages
+                 WHERE session_id = ? AND role = 'assistant'
+                 ORDER BY id DESC LIMIT 1`
+            ).get(sessionId);
+            if (prev && prev.content === lastContent) {
+                console.warn(`[SqliteStrategy] Dedup: skipping duplicate assistant message (${lastContent.slice(0, 60)}…)`);
+                return;
+            }
+        }
+
         const insertMsg = this.db.prepare(`INSERT INTO chat_messages (session_id, role, content, tool_calls, tool_call_id, created_at)
        VALUES (?, ?, ?, ?, ?, datetime('now'))`);
         const updateSession = this.db.prepare(`UPDATE chat_sessions
