@@ -8,6 +8,7 @@ import type { Db } from "../../db/client.js";
 import { messageText } from "../../providers/types.js";
 import type { ContentPart } from "../../providers/types.js";
 import { registerWebhookRoute } from "./webhook.js";
+import { sanitizeToolPairing } from "../../memory/sanitize-tool-pairing.js";
 import { QQBotWSClient, DEFAULT_INTENTS } from "./ws-client.js";
 import type { MessageSource, QQAttachment } from "./ws-client.js";
 import { QQBotApi, parseInteractionEvent } from "./api.js";
@@ -476,6 +477,9 @@ export class QQBotChannel implements IChannel {
         { role: "user" as const, content: userContent },
       ];
 
+      // ── Sanitize tool pairing: remove orphan tool messages that lack a preceding tool_use ──
+      const sanitizedMessages = sanitizeToolPairing(messages);
+
       // DEBUG: log last 3 messages sent to LLM to verify user message is at the end
       const _dbgLast3 = messages.slice(-3).map((m) => ({
         role: (m as any).role,
@@ -612,7 +616,7 @@ export class QQBotChannel implements IChannel {
       }
 
       for await (const event of agentLoop.run({
-        messages,
+        messages: sanitizedMessages,
         sessionId,
         ...(modelOverride ? { model: modelOverride } : {}),
         ...(signal ? { signal } : {}),
