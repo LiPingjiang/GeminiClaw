@@ -415,6 +415,51 @@ body::after {
   font-size: 11px;
   text-shadow: 0 0 6px var(--gc-accent2-glow);
 }
+/* Code blocks rendered via CodeBlock component */
+.code-block-wrapper {
+  margin: 8px 0;
+  border: 1px solid var(--gc-border);
+  border-left: 2px solid var(--gc-accent2);
+  background: var(--gc-panel-deep);
+}
+.code-block-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 3px 10px;
+  border-bottom: 1px solid var(--gc-border);
+  background: var(--gc-assistant-bg);
+}
+.code-lang {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 8px;
+  letter-spacing: 0.15em;
+  color: var(--gc-accent2-dim);
+}
+.code-copy-btn {
+  display: flex;
+  align-items: center;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--gc-accent2-dim);
+  padding: 2px 4px;
+  transition: color 0.15s;
+}
+.code-copy-btn:hover { color: var(--gc-accent2); }
+.code-block-pre {
+  margin: 0;
+  padding: 10px 12px;
+  overflow-x: auto;
+  background: none;
+  border: none;
+}
+.code-block-pre code {
+  background: none; border: none; padding: 0;
+  color: var(--gc-code-text); font-size: 12px; text-shadow: none;
+  font-family: 'Share Tech Mono', monospace;
+}
+/* Bare <pre> fallback (should not appear with custom components) */
 .prose-space pre {
   background: var(--gc-panel-deep);
   border: 1px solid var(--gc-border);
@@ -422,15 +467,6 @@ body::after {
   padding: 10px 12px;
   margin: 8px 0;
   overflow-x: auto;
-  position: relative;
-}
-.prose-space pre::before {
-  content: '// CODE';
-  position: absolute;
-  top: 4px; right: 8px;
-  font-size: 8px;
-  letter-spacing: 0.15em;
-  color: var(--gc-accent2-dim);
 }
 .prose-space pre code {
   background: none; border: none; padding: 0;
@@ -471,3 +507,19 @@ body::after {
 }
 .prose-space td { border: 1px solid var(--gc-border); padding: 5px 10px; color: var(--gc-td-text); }
 .prose-space tr:nth-child(even) td { background: var(--gc-assistant-bg); }
+
+/* Strikethrough (GFM ~~text~~) */
+.prose-space del { color: var(--gc-text-label); text-decoration: line-through; opacity: 0.7; }
+
+/* GFM task list */
+.prose-space ul.contains-task-list { padding-left: 0; }
+.prose-space li.task-list-item { list-style: none; padding-left: 20px; }
+.prose-space li.task-list-item::before { content: none; }
+.prose-space li.task-list-item input[type="checkbox"] {
+  position: absolute;
+  left: 0;
+  width: 12px; height: 12px;
+  margin-top: 3px;
+  accent-color: var(--gc-accent);
+  cursor: default;
+}

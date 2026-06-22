@@ -1,6 +1,72 @@
+import { useState, useCallback } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import type { Components } from 'react-markdown'
+import { Copy, Check } from 'lucide-react'
 import type { TuiEvent } from '@/lib/api'
+
+// ── Code block with language label + copy button ─────────────────────────────
+
+function CodeBlock({ language, code }: { language: string; code: string }) {
+  const [copied, setCopied] = useState(false)
+
+  const handleCopy = useCallback(() => {
+    navigator.clipboard.writeText(code).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    }).catch(() => undefined)
+  }, [code])
+
+  return (
+    <div className="code-block-wrapper">
+      <div className="code-block-header">
+        <span className="code-lang">{language.toUpperCase()}</span>
+        <button className="code-copy-btn" onClick={handleCopy} title="Copy">
+          {copied ? <Check size={11} /> : <Copy size={11} />}
+        </button>
+      </div>
+      <pre className="code-block-pre"><code>{code}</code></pre>
+    </div>
+  )
+}
+
+// ── react-markdown component overrides ───────────────────────────────────────
+
+const MD_COMPONENTS: Components = {
+  // Block code: extract language, render with header + copy button
+  code({ children, className }) {
+    const match = /language-(\w+)/.exec(className ?? '')
+    const code = String(children).replace(/\n$/, '')
+    // Block if has language class OR multi-line (unlabeled fenced block)
+    if (match || code.includes('\n')) {
+      return <CodeBlock language={match?.[1] ?? ''} code={code} />
+    }
+    // Inline code — keep existing prose-space styling via CSS
+    return <code className={className}>{children}</code>
+  },
+  // Let code component own the full block rendering
+  pre({ children }) {
+    return <>{children}</>
+  },
+  // del element for ~~strikethrough~~ (GFM)
+  del({ children }) {
+    return <del>{children}</del>
+  },
+}
+
+// ── Shared markdown renderer ─────────────────────────────────────────────────
+
+function ProseMarkdown({ content }: { content: string }) {
+  return (
+    <div className="prose-space">
+      <ReactMarkdown remarkPlugins={[remarkGfm]} components={MD_COMPONENTS}>
+        {content}
+      </ReactMarkdown>
+    </div>
+  )
+}
+
+// ── MessageBubble ────────────────────────────────────────────────────────────
 
 interface MessageBubbleProps {
   event: TuiEvent & ({ kind: 'user_message' } | { kind: 'response' } | { kind: 'system' } | { kind: 'error' })
@@ -56,16 +122,7 @@ export default function MessageBubble({ event, streaming }: MessageBubbleProps) 
             position: 'relative',
             boxShadow: '0 0 8px var(--gc-assistant-glow), inset 0 0 6px var(--gc-assistant-glow)',
           }}>
-            {streaming ? (
-              <span>
-                {event.content}
-                <span className="blink" style={{ display: 'inline-block', width: 8, height: 14, background: 'var(--gc-accent2)', marginLeft: 2, verticalAlign: 'middle', boxShadow: '0 0 6px var(--gc-accent2)' }} />
-              </span>
-            ) : (
-              <div className="prose-space">
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>{event.content}</ReactMarkdown>
-              </div>
-            )}
+            <ProseMarkdown content={event.content} />
             <span style={{ position: 'absolute', bottom: -1, left: -1, width: 6, height: 6, borderBottom: '2px solid var(--gc-accent2)', borderLeft: '2px solid var(--gc-accent2)', opacity: 0.6 }} />
           </div>
         </div>
