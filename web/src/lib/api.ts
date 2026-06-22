@@ -246,10 +246,18 @@ export const api = {
 export type ThemeId = 'space-dark' | 'day-command' | 'deep-sea'
 
 export function getTheme(): ThemeId {
-  return (localStorage.getItem('gc_theme') as ThemeId) ?? 'space-dark'
+  try {
+    return (localStorage.getItem('gc_theme') as ThemeId) ?? 'space-dark'
+  } catch {
+    return 'space-dark'
+  }
 }
 
 export function saveTheme(id: ThemeId): void {
-  localStorage.setItem('gc_theme', id)
+  try {
+    localStorage.setItem('gc_theme', id)
+  } catch {
+    // storage unavailable (Safari Private, sandboxed iframe) — theme still applies via DOM
+  }
   document.documentElement.setAttribute('data-theme', id)
 }

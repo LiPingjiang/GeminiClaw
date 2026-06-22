@@ -252,13 +252,13 @@ export default function ChatPage() {
               }}
               style={{
                 width: '100%', padding: '6px 8px 6px 24px',
-                background: '#030609', border: '1px solid #0d3050',
+                background: 'var(--gc-input-bg)', border: '1px solid var(--gc-border-hi)',
                 color: selectedAgent ? 'var(--gc-accent2)' : 'var(--gc-text-dim)',
                 fontFamily: "'Share Tech Mono', monospace",
                 fontSize: 10, letterSpacing: '0.1em', textTransform: 'uppercase',
                 cursor: 'pointer', outline: 'none', appearance: 'none',
                 boxShadow: selectedAgent ? '0 0 6px var(--gc-accent2-glow)' : 'none',
-                borderColor: selectedAgent ? 'var(--gc-accent2-dim)' : '#0d3050',
+                borderColor: selectedAgent ? 'var(--gc-accent2-dim)' : 'var(--gc-border-hi)',
               }}
             >
               <option value="">ALL UNITS</option>
