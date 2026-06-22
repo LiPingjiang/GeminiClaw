@@ -481,9 +481,11 @@ export class AgentLoop {
 
         // ── 空转检测：第一轮"我来…/让我…"但无工具调用 ─────────────────────
         if (toolSchemas.length > 0 && response.content) {
-          const idlePattern = /^(好的[，,\s]|我(来|将|会|要|先|正在|立即)|让我|开始|首先|稍等|马上|接下来|现在|正在为你)/;
+          const idlePatternStart = /^(好的[，,\s]|我(来|将|会|要|先|正在|立即)|让我|开始|首先|稍等|马上|接下来|现在|正在为你)/;
+          const idlePatternAnywhere = /让我(来|检查|查看|查询|确认|验证|分析|处理|执行|获取|尝试)|我(来|将|会|要|先)(检查|查看|查询|确认|验证|分析|处理|执行|获取|尝试)/;
+          const endsWithColon = /[：:]\s*$/.test(response.content.trim());
           const isPromise =
-            idlePattern.test(response.content.trim()) &&
+            (idlePatternStart.test(response.content.trim()) || (idlePatternAnywhere.test(response.content) && endsWithColon)) &&
             response.content.length < 400;
           if (isPromise) {
             consecutiveIdleTurns++;

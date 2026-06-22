@@ -78,7 +78,11 @@ export class GuardrailController {
   private noProgressMap = new Map<string, NoProgressRecord>(); // signature → record
   // ── NEW: Global call history for circuit breaker ──
   private callHistory: Array<{ signature: string; resultHash: string }> = [];
+  // ── Same-tool-same-result tracker (ignores args differences) ──
+  private sameToolResultMap = new Map<string, { resultHash: string; count: number; warnEmitted: boolean }>(); // toolName → record
   private static readonly HISTORY_SIZE = 40;
+  private static readonly SAME_TOOL_RESULT_HALT_AFTER = 5;
+  private static readonly SAME_TOOL_RESULT_WARN_AFTER = 3;
 
   constructor(config?: GuardrailConfig) {
     this.cfg = {
@@ -169,6 +173,29 @@ export class GuardrailController {
       };
     }
 
+    // ── Same-tool-same-result detection (fuzzy: ignores args, only checks tool+result) ──
+    if (IDEMPOTENT_TOOLS.has(toolName)) {
+      const stsr = this.sameToolResultMap.get(toolName);
+      if (stsr && stsr.resultHash === rHash) {
+        stsr.count++;
+        if (stsr.count >= GuardrailController.SAME_TOOL_RESULT_HALT_AFTER) {
+          return {
+            action: "halt",
+            message: `Tool "${toolName}" returned the same result ${stsr.count} consecutive times (with varying arguments). Stopping.`,
+          };
+        }
+        if (stsr.count >= GuardrailController.SAME_TOOL_RESULT_WARN_AFTER && !stsr.warnEmitted) {
+          stsr.warnEmitted = true;
+          return {
+            action: "warn",
+            message: `Tool "${toolName}" returned the same result ${stsr.count} times in a row (with different arguments). Stop repeating.`,
+          };
+        }
+      } else {
+        this.sameToolResultMap.set(toolName, { resultHash: rHash, count: 1, warnEmitted: false });
+      }
+    }
+
     // ── Idempotent no-progress detection ──
     if (!IDEMPOTENT_TOOLS.has(toolName)) return { action: "continue" };
 
@@ -250,5 +277,6 @@ export class GuardrailController {
     this.noProgressWarnEmitted = false;
     this.noProgressMap.clear();
     this.callHistory = [];
+    this.sameToolResultMap.clear();
   }
 }
