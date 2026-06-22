@@ -241,6 +241,7 @@ export class QQBotChannel implements IChannel {
       }
 
       // ── AgentGate: busy 检测 ────────────────────────────────────────────
+      let isNewSession = false;
       let sessionId = userId;
       let currentAgentId: string | null = null;
       if (gate) {
@@ -290,6 +291,7 @@ export class QQBotChannel implements IChannel {
 
         // Agent is idle — proceed
         const gateResult = await gate.getOrCreateAgent(userId);
+        isNewSession = gateResult.isNew;
         sessionId = gateResult.sessionId;
         currentAgentId = gateResult.agentId;
         gate.markBusy(gateResult.agentId, content.slice(0, 30));
@@ -696,6 +698,11 @@ export class QQBotChannel implements IChannel {
       const fallbackRoute = consumeFallbackRoute?.();
       if (fallbackRoute) {
         finalReply += `\n\n[fallback:${fallbackRoute}]`;
+      }
+
+      // ── 新会话注脚：当创建了新 session 时提示用户 ──────────────────────
+      if (isNewSession) {
+        finalReply += `\n\n---\n🆕 已创建新对话（session: ${sessionId.slice(0, 8)}…）`;
       }
 
       // ── 持久化策略：存 user + 完整 tool 调用链 + 最终 assistant 回复 ──
