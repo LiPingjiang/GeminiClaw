@@ -357,6 +357,7 @@ export class AgentLoop {
           hasToolCalls: toolCallNames.length > 0,
           toolCallNames,
           routeUsed: (response as any).routeUsed ?? undefined,
+          modelUsed: (response as any).modelUsed ?? undefined,
           contentPreview: (response.content ?? "").slice(0, 200),
         });
 
