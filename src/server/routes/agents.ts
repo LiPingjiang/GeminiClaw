@@ -56,7 +56,8 @@ export async function agentsRoute(fastify, opts) {
         if (!session)
             return reply.status(404).send({ error: "Session not found" });
         const templateName = request.body?.template_name ?? "base";
-        const agent = agentRepo.createMainAgent(sessionId, templateName);
+        const agentNameOverride = request.body?.agent_name ?? undefined;
+        const agent = agentRepo.createMainAgent(sessionId, templateName, agentNameOverride);
         return reply.status(201).send({ agent });
     });
     // ── PATCH /v1/agents/:id ────────────────────────────────────────────────────

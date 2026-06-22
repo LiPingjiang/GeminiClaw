@@ -234,11 +234,11 @@ export const api = {
       .catch(() => ({ status: 0, msgs: [] })),
 
   // Create an agent record for a session (called after new session is created)
-  createSessionAgent: (sessionId: string, templateName = 'base'): Promise<void> =>
+  createSessionAgent: (sessionId: string, templateName = 'base', agentName?: string): Promise<void> =>
     fetch(`/v1/sessions/${encodeURIComponent(sessionId)}/agents`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...authHeaders() },
-      body: JSON.stringify({ template_name: templateName }),
+      body: JSON.stringify({ template_name: templateName, ...(agentName ? { agent_name: agentName } : {}) }),
     }).then(() => undefined).catch(() => undefined),
 }
 

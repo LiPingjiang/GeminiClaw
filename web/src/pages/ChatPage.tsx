@@ -132,7 +132,7 @@ export default function ChatPage() {
         setActiveSessionId(id)
         // Register a new agent for this session (only if session was just created)
         if (isNewSession) {
-          api.createSessionAgent(id).then(() => loadAll())
+          api.createSessionAgent(id, 'base', selectedAgent?.name ?? undefined).then(() => loadAll())
         } else {
           loadAll()
         }

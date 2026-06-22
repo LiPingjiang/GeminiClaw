@@ -10,9 +10,9 @@ export class AgentRepository {
      * Create the main agent for a session (depth=0, parent=null).
      * Also updates chat_sessions.main_agent_id.
      */
-    createMainAgent(sessionId, templateName, displayName) {
+    createMainAgent(sessionId, templateName, agentNameOverride) {
         const id = randomUUID();
-        const agentName = displayName || templateName || `agent-${id.slice(0, 8)}`;
+        const agentName = agentNameOverride ?? `agent-${id.slice(0, 8)}`;
         const now = new Date().toISOString().replace("T", " ").slice(0, 19);
         this.db
             .prepare(`INSERT INTO agents (id, session_id, parent_agent_id, template_name, agent_name, depth, status, created_at, updated_at)
@@ -27,12 +27,12 @@ export class AgentRepository {
     /**
      * Create a sub-agent (depth = parent.depth + 1).
      */
-    createSubAgent(parentAgentId, templateName, displayName) {
+    createSubAgent(parentAgentId, templateName) {
         const parent = this.getById(parentAgentId);
         if (!parent)
             throw new Error(`Parent agent not found: ${parentAgentId}`);
         const id = randomUUID();
-        const agentName = displayName || templateName || `agent-${id.slice(0, 8)}`;
+        const agentName = `agent-${id.slice(0, 8)}`;
         const depth = parent.depth + 1;
         const now = new Date().toISOString().replace("T", " ").slice(0, 19);
         this.db
@@ -92,51 +92,5 @@ export class AgentRepository {
         this.db
             .prepare(`UPDATE agents SET ${fields.join(", ")} WHERE id = ?`)
             .run(...values);
-    }
-
-    /**
-     * Find the most recent active main agent for a given template.
-     * Used for deduplication: reuse existing agent instead of creating a new one.
-     */
-    findActiveByTemplate(templateName) {
-        return this.db
-            .prepare(`SELECT * FROM agents WHERE template_name = ? AND depth = 0 AND status = "active" ORDER BY updated_at DESC LIMIT 1`)
-            .get(templateName) ?? null;
-    }
-    /**
-     * Find an active main agent by exact name.
-     */
-    findActiveByName(name) {
-        return this.db
-            .prepare(`SELECT * FROM agents WHERE agent_name = ? AND depth = 0 AND status = "active" ORDER BY updated_at DESC LIMIT 1`)
-            .get(name) ?? null;
-    }
-    /**
-     * Archive an agent (hide from active list, searchable only).
-     */
-    archive(id) {
-        const now = new Date().toISOString().replace("T", " ").slice(0, 19);
-        this.db.prepare(`UPDATE agents SET status = "archived", updated_at = ? WHERE id = ?`).run(now, id);
-    }
-    /**
-     * List archived agents, optionally filtered by keyword.
-     */
-    listArchived(keyword) {
-        if (keyword) {
-            const like = `%${keyword}%`;
-            return this.db
-                .prepare(`SELECT * FROM agents WHERE depth = 0 AND status = "archived" AND (agent_name LIKE ? OR description LIKE ?) ORDER BY updated_at DESC`)
-                .all(like, like);
-        }
-        return this.db
-            .prepare(`SELECT * FROM agents WHERE depth = 0 AND status = "archived" ORDER BY updated_at DESC`)
-            .all();
-    }
-    /**
-     * Restore an archived agent back to active.
-     */
-    unarchive(id) {
-        const now = new Date().toISOString().replace("T", " ").slice(0, 19);
-        this.db.prepare(`UPDATE agents SET status = "active", updated_at = ? WHERE id = ?`).run(now, id);
     }
 }
