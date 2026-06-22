@@ -12,26 +12,22 @@ export default function MessageBubble({ event, streaming }: MessageBubbleProps) 
     return (
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
         <div style={{ maxWidth: '70%' }}>
-          {/* Sender label */}
-          <div style={{ textAlign: 'right', fontSize: 9, letterSpacing: '0.15em',
-            color: '#7a5c20', marginBottom: 3, textTransform: 'uppercase' }}>
+          <div style={{ textAlign: 'right', fontSize: 9, letterSpacing: '0.15em', color: 'var(--gc-text-label)', marginBottom: 3, textTransform: 'uppercase' }}>
             ▶ OPERATOR INPUT
           </div>
           <div style={{
-            background: 'rgba(255,140,0,0.08)',
-            border: '1px solid #ff8c00',
+            background: 'var(--gc-user-bg)',
+            border: '1px solid var(--gc-user-border)',
             borderTopRightRadius: 0,
             padding: '8px 12px',
             fontSize: 13,
-            color: '#ff8c00',
+            color: 'var(--gc-user-text)',
             lineHeight: 1.6,
             position: 'relative',
-            boxShadow: '0 0 8px rgba(255,140,0,0.15), inset 0 0 6px rgba(255,140,0,0.04)',
+            boxShadow: '0 0 8px var(--gc-user-glow), inset 0 0 6px var(--gc-user-glow)',
           }}>
             {event.content}
-            {/* Corner accent */}
-            <span style={{ position: 'absolute', top: -1, right: -1, width: 6, height: 6,
-              borderTop: '2px solid #ff8c00', borderRight: '2px solid #ff8c00' }} />
+            <span style={{ position: 'absolute', top: -1, right: -1, width: 6, height: 6, borderTop: '2px solid var(--gc-user-border)', borderRight: '2px solid var(--gc-user-border)' }} />
           </div>
         </div>
       </div>
@@ -42,43 +38,35 @@ export default function MessageBubble({ event, streaming }: MessageBubbleProps) 
     return (
       <div style={{ display: 'flex', justifyContent: 'flex-start', marginBottom: 16 }}>
         <div style={{ maxWidth: '80%' }}>
-          {/* Sender label */}
-          <div style={{ fontSize: 9, letterSpacing: '0.15em', color: '#004455',
-            marginBottom: 3, textTransform: 'uppercase' }}>
+          <div style={{ fontSize: 9, letterSpacing: '0.15em', color: 'var(--gc-accent2-dim)', marginBottom: 3, textTransform: 'uppercase' }}>
             ◀ UNIT-GEMINI /{' '}
             {streaming
-              ? <span className="blink" style={{ color: '#00d4ff' }}>TRANSMITTING</span>
-              : <span style={{ color: '#00cc66' }}>COMPLETE</span>
+              ? <span className="blink" style={{ color: 'var(--gc-accent2)' }}>TRANSMITTING</span>
+              : <span style={{ color: 'var(--gc-green)' }}>COMPLETE</span>
             }
           </div>
           <div style={{
-            background: 'rgba(0,212,255,0.04)',
-            border: '1px solid #0d3a4a',
+            background: 'var(--gc-assistant-bg)',
+            border: '1px solid var(--gc-assistant-border)',
             borderTopLeftRadius: 0,
             padding: '8px 12px',
             fontSize: 13,
-            color: '#b0d0d8',
+            color: 'var(--gc-assistant-text)',
             lineHeight: 1.6,
             position: 'relative',
-            boxShadow: '0 0 8px rgba(0,212,255,0.08), inset 0 0 6px rgba(0,212,255,0.02)',
+            boxShadow: '0 0 8px var(--gc-assistant-glow), inset 0 0 6px var(--gc-assistant-glow)',
           }}>
             {streaming ? (
               <span>
                 {event.content}
-                <span className="blink" style={{
-                  display: 'inline-block', width: 8, height: 14,
-                  background: '#00d4ff', marginLeft: 2, verticalAlign: 'middle',
-                  boxShadow: '0 0 6px #00d4ff',
-                }} />
+                <span className="blink" style={{ display: 'inline-block', width: 8, height: 14, background: 'var(--gc-accent2)', marginLeft: 2, verticalAlign: 'middle', boxShadow: '0 0 6px var(--gc-accent2)' }} />
               </span>
             ) : (
               <div className="prose-space">
                 <ReactMarkdown remarkPlugins={[remarkGfm]}>{event.content}</ReactMarkdown>
               </div>
             )}
-            {/* Corner accent */}
-            <span style={{ position: 'absolute', bottom: -1, left: -1, width: 6, height: 6,
-              borderBottom: '2px solid #00d4ff', borderLeft: '2px solid #00d4ff', opacity: 0.6 }} />
+            <span style={{ position: 'absolute', bottom: -1, left: -1, width: 6, height: 6, borderBottom: '2px solid var(--gc-accent2)', borderLeft: '2px solid var(--gc-accent2)', opacity: 0.6 }} />
           </div>
         </div>
       </div>
@@ -88,11 +76,7 @@ export default function MessageBubble({ event, streaming }: MessageBubbleProps) 
   if (event.kind === 'system') {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 8 }}>
-        <div style={{
-          fontSize: 9, letterSpacing: '0.15em', color: '#3d5060', textTransform: 'uppercase',
-          padding: '3px 12px', border: '1px solid #0d2a40',
-          background: '#060d1a',
-        }}>
+        <div style={{ fontSize: 9, letterSpacing: '0.15em', color: 'var(--gc-sys-text)', textTransform: 'uppercase', padding: '3px 12px', border: '1px solid var(--gc-sys-border)', background: 'var(--gc-sys-bg)' }}>
           ◈ SYS — {event.message}
         </div>
       </div>
@@ -102,12 +86,7 @@ export default function MessageBubble({ event, streaming }: MessageBubbleProps) 
   if (event.kind === 'error') {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 8 }}>
-        <div style={{
-          fontSize: 9, letterSpacing: '0.15em', color: '#ff4400', textTransform: 'uppercase',
-          padding: '3px 12px', border: '1px solid #661100',
-          background: '#1a0500',
-          textShadow: '0 0 6px rgba(255,68,0,0.6)',
-        }}>
+        <div style={{ fontSize: 9, letterSpacing: '0.15em', color: 'var(--gc-red)', textTransform: 'uppercase', padding: '3px 12px', border: '1px solid var(--gc-error-border)', background: 'var(--gc-error-bg)', textShadow: '0 0 6px var(--gc-error-glow)' }}>
           ⚠ ALERT — {event.message}
         </div>
       </div>

@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import { ChevronRight, ChevronDown, Wrench, CheckCircle, Loader } from 'lucide-react'
-import { cn } from '@/lib/utils'
 
 export interface ToolCallCardProps {
   name: string
@@ -12,33 +11,36 @@ export interface ToolCallCardProps {
 export default function ToolCallCard({ name, input, output, status }: ToolCallCardProps) {
   const [expanded, setExpanded] = useState(false)
 
+  const statusColor =
+    status === 'running' ? 'var(--gc-accent)' :
+    status === 'done'    ? 'var(--gc-green)' :
+                           'var(--gc-red)'
+
   return (
-    <div className="my-2 mx-0 border border-gray-700 rounded-lg overflow-hidden text-xs font-mono">
+    <div style={{ margin: '6px 0', border: '1px solid var(--gc-border)', overflow: 'hidden', fontFamily: "'Share Tech Mono', monospace", fontSize: 11 }}>
       <button
         onClick={() => setExpanded(v => !v)}
-        className="w-full flex items-center gap-2 px-3 py-2 bg-gray-800 hover:bg-gray-750 text-left"
+        style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', background: 'var(--gc-panel)', color: 'var(--gc-text)', textAlign: 'left', border: 'none', cursor: 'pointer' }}
       >
-        {expanded ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
-        <Wrench size={11} className="text-blue-400 shrink-0" />
-        <span className="text-gray-300 flex-1 truncate">{name}</span>
-        {status === 'running' && <Loader size={11} className="text-yellow-400 animate-spin shrink-0" />}
-        {status === 'done' && <CheckCircle size={11} className="text-green-400 shrink-0" />}
-        {status === 'error' && (
-          <span className="text-red-400 shrink-0">✗</span>
-        )}
+        {expanded ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
+        <Wrench size={10} style={{ color: 'var(--gc-accent2)', flexShrink: 0 }} />
+        <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 11, color: 'var(--gc-text)' }}>{name}</span>
+        {status === 'running' && <Loader size={10} style={{ color: 'var(--gc-accent)', animation: 'spin 1s linear infinite', flexShrink: 0 }} />}
+        {status === 'done'    && <CheckCircle size={10} style={{ color: 'var(--gc-green)', flexShrink: 0 }} />}
+        {status === 'error'   && <span style={{ color: 'var(--gc-red)', flexShrink: 0, fontSize: 10 }}>✗</span>}
       </button>
       {expanded && (
-        <div className={cn('grid divide-x divide-gray-700', output !== undefined ? 'grid-cols-2' : 'grid-cols-1')}>
-          <div className="p-3 bg-gray-900">
-            <div className="text-gray-500 mb-1.5 font-sans text-[10px] uppercase tracking-wider">Input</div>
-            <pre className="text-gray-300 whitespace-pre-wrap break-all text-[11px]">
+        <div style={{ display: 'grid', gridTemplateColumns: output !== undefined ? '1fr 1fr' : '1fr', borderTop: '1px solid var(--gc-border)' }}>
+          <div style={{ padding: '8px 10px', background: 'var(--gc-panel-deep)', borderRight: output !== undefined ? '1px solid var(--gc-border)' : 'none' }}>
+            <div style={{ fontSize: 8, letterSpacing: '0.15em', color: 'var(--gc-text-label)', textTransform: 'uppercase', marginBottom: 6 }}>Input</div>
+            <pre style={{ margin: 0, color: 'var(--gc-assistant-text)', whiteSpace: 'pre-wrap', wordBreak: 'break-all', fontSize: 11 }}>
               {JSON.stringify(input, null, 2)}
             </pre>
           </div>
           {output !== undefined && (
-            <div className="p-3 bg-gray-900">
-              <div className="text-gray-500 mb-1.5 font-sans text-[10px] uppercase tracking-wider">Output</div>
-              <pre className="text-gray-300 whitespace-pre-wrap break-all text-[11px]">
+            <div style={{ padding: '8px 10px', background: 'var(--gc-panel-deep)' }}>
+              <div style={{ fontSize: 8, letterSpacing: '0.15em', color: 'var(--gc-text-label)', textTransform: 'uppercase', marginBottom: 6 }}>Output</div>
+              <pre style={{ margin: 0, color: 'var(--gc-assistant-text)', whiteSpace: 'pre-wrap', wordBreak: 'break-all', fontSize: 11 }}>
                 {typeof output === 'string' ? output : JSON.stringify(output, null, 2)}
               </pre>
             </div>
