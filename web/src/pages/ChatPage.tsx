@@ -226,13 +226,13 @@ export default function ChatPage() {
       {/* ── Left panel: unit roster + session log ── */}
       <aside style={{
         width: '13rem', flexShrink: 0, display: 'flex', flexDirection: 'column',
-        background: '#060d1a', borderRight: '1px solid #0d2a40', position: 'relative',
+        background: 'var(--gc-panel)', borderRight: '1px solid var(--gc-border)', position: 'relative',
       }}>
         {/* Amber top bar */}
-        <div style={{ height: 2, background: 'linear-gradient(90deg, #ff8c00 40%, transparent)' }} />
+        <div style={{ height: 2, background: 'linear-gradient(90deg, var(--gc-accent) 40%, transparent)' }} />
 
         {/* New session button */}
-        <div style={{ padding: '10px 10px 8px', borderBottom: '1px solid #0d2a40' }}>
+        <div style={{ padding: '10px 10px 8px', borderBottom: '1px solid var(--gc-border)' }}>
           <button onClick={handleNew} className="sp-btn" style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
             <Plus size={11} />
             NEW SESSION
@@ -240,10 +240,10 @@ export default function ChatPage() {
         </div>
 
         {/* Agent filter dropdown */}
-        <div style={{ padding: '8px 10px', borderBottom: '1px solid #0d2a40' }}>
+        <div style={{ padding: '8px 10px', borderBottom: '1px solid var(--gc-border)' }}>
           <div className="sp-label" style={{ padding: '0 0 4px', border: 'none' }}>◈ SELECT UNIT</div>
           <div style={{ position: 'relative' }}>
-            <Cpu size={10} style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: selectedAgent ? '#00d4ff' : '#3d5060', pointerEvents: 'none' }} />
+            <Cpu size={10} style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: selectedAgent ? 'var(--gc-accent2)' : 'var(--gc-text-dim)', pointerEvents: 'none' }} />
             <select
               value={selectedAgent?.id ?? ''}
               onChange={e => {
@@ -253,12 +253,12 @@ export default function ChatPage() {
               style={{
                 width: '100%', padding: '6px 8px 6px 24px',
                 background: '#030609', border: '1px solid #0d3050',
-                color: selectedAgent ? '#00d4ff' : '#3d5060',
+                color: selectedAgent ? 'var(--gc-accent2)' : 'var(--gc-text-dim)',
                 fontFamily: "'Share Tech Mono', monospace",
                 fontSize: 10, letterSpacing: '0.1em', textTransform: 'uppercase',
                 cursor: 'pointer', outline: 'none', appearance: 'none',
-                boxShadow: selectedAgent ? '0 0 6px rgba(0,212,255,0.2)' : 'none',
-                borderColor: selectedAgent ? '#004455' : '#0d3050',
+                boxShadow: selectedAgent ? '0 0 6px var(--gc-accent2-glow)' : 'none',
+                borderColor: selectedAgent ? 'var(--gc-accent2-dim)' : '#0d3050',
               }}
             >
               <option value="">ALL UNITS</option>
@@ -267,7 +267,7 @@ export default function ChatPage() {
               ))}
             </select>
             {/* Custom arrow */}
-            <span style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', color: '#3d5060', fontSize: 8, pointerEvents: 'none' }}>▼</span>
+            <span style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', color: 'var(--gc-text-dim)', fontSize: 8, pointerEvents: 'none' }}>▼</span>
           </div>
         </div>
 
@@ -275,7 +275,7 @@ export default function ChatPage() {
         <div className="sp-label" style={{ margin: '8px 0 0' }}>◈ SESSION LOG</div>
         <div style={{ flex: 1, overflowY: 'auto', padding: '4px 0' }}>
           {filtered.length === 0 && (
-            <div style={{ padding: '12px 14px', fontSize: 9, color: '#3d5060', letterSpacing: '0.1em' }}>
+            <div style={{ padding: '12px 14px', fontSize: 9, color: 'var(--gc-text-dim)', letterSpacing: '0.1em' }}>
               NO RECORDS FOUND
             </div>
           )}
@@ -286,20 +286,20 @@ export default function ChatPage() {
               style={{
                 width: '100%', display: 'flex', flexDirection: 'column',
                 padding: '7px 14px', cursor: 'pointer', textAlign: 'left', transition: 'all 0.15s',
-                background: activeSessionId === s.id ? 'rgba(255,140,0,0.08)' : 'transparent',
-                borderLeft: `2px solid ${activeSessionId === s.id ? '#ff8c00' : 'transparent'}`,
+                background: activeSessionId === s.id ? 'var(--gc-user-bg)' : 'transparent',
+                borderLeft: `2px solid ${activeSessionId === s.id ? 'var(--gc-accent)' : 'transparent'}`,
                 borderTop: 'none', borderRight: 'none', borderBottom: 'none',
               }}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <MessageSquare size={10} style={{ color: activeSessionId === s.id ? '#ff8c00' : '#3d5060', flexShrink: 0 }} />
-                <span style={{ fontSize: 11, color: activeSessionId === s.id ? '#ff8c00' : '#506070',
+                <MessageSquare size={10} style={{ color: activeSessionId === s.id ? 'var(--gc-accent)' : 'var(--gc-text-dim)', flexShrink: 0 }} />
+                <span style={{ fontSize: 11, color: activeSessionId === s.id ? 'var(--gc-accent)' : 'var(--gc-text-mid)',
                   overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', letterSpacing: '0.05em' }}>
                   {s.label.toUpperCase()}
                 </span>
               </div>
               {s.agentName && (
-                <span style={{ marginLeft: 16, fontSize: 9, color: '#004455', letterSpacing: '0.1em', marginTop: 2 }}>
+                <span style={{ marginLeft: 16, fontSize: 9, color: 'var(--gc-accent2-dim)', letterSpacing: '0.1em', marginTop: 2 }}>
                   UNIT: {s.agentName}
                 </span>
               )}
@@ -314,7 +314,7 @@ export default function ChatPage() {
         {/* Subtle grid background */}
         <div style={{
           position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 0,
-          backgroundImage: 'linear-gradient(rgba(13,42,64,0.3) 1px, transparent 1px), linear-gradient(90deg, rgba(13,42,64,0.3) 1px, transparent 1px)',
+          backgroundImage: 'linear-gradient(var(--gc-grid-overlay) 1px, transparent 1px), linear-gradient(90deg, var(--gc-grid-overlay) 1px, transparent 1px)',
           backgroundSize: '40px 40px',
         }} />
 
@@ -323,18 +323,18 @@ export default function ChatPage() {
           <div style={{
             flexShrink: 0, display: 'flex', alignItems: 'center', gap: 10,
             padding: '7px 16px', zIndex: 1,
-            background: '#1a0500', borderBottom: '1px solid #661100',
-            fontSize: 10, letterSpacing: '0.12em', color: '#ff4400',
+            background: 'var(--gc-error-bg)', borderBottom: '1px solid var(--gc-error-border)',
+            fontSize: 10, letterSpacing: '0.12em', color: 'var(--gc-red)',
             textTransform: 'uppercase',
           }}>
             <AlertTriangle size={12} style={{ flexShrink: 0 }} />
-            <span style={{ textShadow: '0 0 6px rgba(255,68,0,0.6)' }}>⚠ AUTH TOKEN NOT SET — TRANSMISSIONS MAY FAIL</span>
+            <span style={{ textShadow: '0 0 6px var(--gc-error-glow)' }}>⚠ AUTH TOKEN NOT SET — TRANSMISSIONS MAY FAIL</span>
             <button onClick={() => navigate('/config')}
-              style={{ marginLeft: 'auto', fontSize: 9, color: '#ff6600', cursor: 'pointer', background: 'none', border: '1px solid #661100', padding: '2px 8px' }}>
+              style={{ marginLeft: 'auto', fontSize: 9, color: '#ff6600', cursor: 'pointer', background: 'none', border: '1px solid var(--gc-error-border)', padding: '2px 8px' }}>
               CONFIG →
             </button>
             <button onClick={() => setNoAuth(false)}
-              style={{ color: '#661100', cursor: 'pointer', background: 'none', border: 'none', fontSize: 12 }}>✕</button>
+              style={{ color: 'var(--gc-error-border)', cursor: 'pointer', background: 'none', border: 'none', fontSize: 12 }}>✕</button>
           </div>
         )}
 
@@ -342,10 +342,10 @@ export default function ChatPage() {
         <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px', position: 'relative', zIndex: 1 }}>
           {items.length === 0 && (
             <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12 }}>
-              <div style={{ fontSize: 9, letterSpacing: '0.3em', color: '#1a3040', textTransform: 'uppercase' }}>
+              <div style={{ fontSize: 9, letterSpacing: '0.3em', color: 'var(--gc-border-hi)', textTransform: 'uppercase' }}>
                 ◈ ◈ ◈ AWAITING TRANSMISSION ◈ ◈ ◈
               </div>
-              <div className="blink" style={{ fontSize: 9, color: '#3d5060', letterSpacing: '0.2em' }}>
+              <div className="blink" style={{ fontSize: 9, color: 'var(--gc-text-dim)', letterSpacing: '0.2em' }}>
                 ENTER COMMAND BELOW
               </div>
             </div>
@@ -367,16 +367,16 @@ export default function ChatPage() {
         {/* Input bar */}
         <div style={{
           flexShrink: 0, padding: '10px 16px 12px', zIndex: 1,
-          borderTop: '1px solid #0d2a40',
-          background: '#040810',
+          borderTop: '1px solid var(--gc-border)',
+          background: 'var(--gc-bg)',
           position: 'relative',
         }}>
           {/* Top amber line */}
           <div style={{ position: 'absolute', top: 0, left: '5%', right: '5%', height: 1,
-            background: 'linear-gradient(90deg, transparent, rgba(255,140,0,0.4) 40%, rgba(255,140,0,0.4) 60%, transparent)' }} />
+            background: 'linear-gradient(90deg, transparent, var(--gc-accent-glow) 40%, var(--gc-accent-glow) 60%, transparent)' }} />
 
-          <div style={{ fontSize: 8, letterSpacing: '0.2em', color: '#3d5060', marginBottom: 6, textTransform: 'uppercase' }}>
-            ▶ COMMAND INPUT {isStreaming && <span className="blink" style={{ color: '#ff8c00', marginLeft: 8 }}>■ TRANSMITTING</span>}
+          <div style={{ fontSize: 8, letterSpacing: '0.2em', color: 'var(--gc-text-dim)', marginBottom: 6, textTransform: 'uppercase' }}>
+            ▶ COMMAND INPUT {isStreaming && <span className="blink" style={{ color: 'var(--gc-accent)', marginLeft: 8 }}>■ TRANSMITTING</span>}
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
             <textarea
