@@ -17,6 +17,23 @@ interface ChatBody {
   stream?: boolean
 }
 
+interface ReplayBody {
+  /** The session to replay from */
+  sourceSessionId: string
+  /** User message to inject (same as original or modified) */
+  message: string
+  /** Load history before this ISO timestamp (e.g. "2026-06-22T15:42:00Z") */
+  beforeTime?: string
+  /** Load history before this DB row id */
+  beforeId?: number
+  /** Agent ID for identity injection */
+  agentId?: string
+  /** Override model */
+  model?: string
+  /** If true, don't persist replay results (default: true) */
+  dryRun?: boolean
+}
+
 interface ChatRouteOpts {
   router: ProviderRouter
   strategy: MemoryStrategy
@@ -295,6 +312,150 @@ export async function chatRoute(
       response: chatResponse.content,
       sessionId: sid,
       model: chatResponse.model,
+    })
+  })
+
+  // ==========================================================================
+  // /v1/agent/replay - Replay a past session's context through full agentLoop
+  // ==========================================================================
+  fastify.post<{ Body: ReplayBody }>("/v1/agent/replay", async (request, reply) => {
+    if (opts.authToken) {
+      const auth = request.headers["authorization"]
+      if (!auth || auth !== `Bearer ${opts.authToken}`) {
+        return reply.status(401).send({ error: "Unauthorized" })
+      }
+    }
+
+    const { sourceSessionId, message, beforeTime, beforeId, agentId, model, dryRun } = request.body
+    if (!sourceSessionId || !message) {
+      return reply.status(400).send({ error: "sourceSessionId and message are required" })
+    }
+
+    const isDryRun = dryRun !== false // default true
+
+    // 1. Load history from source session with time/id filter
+    let whereClause = "WHERE session_id = ?"
+    const params: unknown[] = [sourceSessionId]
+
+    if (beforeTime) {
+      whereClause += " AND created_at < ?"
+      params.push(beforeTime)
+    } else if (beforeId) {
+      whereClause += " AND id < ?"
+      params.push(beforeId)
+    }
+
+    const rows = opts.db!.prepare(`
+      SELECT role, content, tool_calls, tool_call_id, created_at
+      FROM chat_messages
+      ${whereClause}
+      ORDER BY id ASC
+      LIMIT 600
+    `).all(...params) as Array<{
+      role: string; content: string; tool_calls: string | null;
+      tool_call_id: string | null; created_at: string
+    }>
+
+    if (rows.length === 0) {
+      return reply.status(404).send({
+        error: `No messages found in session ${sourceSessionId}` +
+          (beforeTime ? ` before ${beforeTime}` : beforeId ? ` before id ${beforeId}` : "")
+      })
+    }
+
+    // 2. Build messages array from DB rows
+    const historyMessages = rows.map(row => {
+      const msg: Record<string, unknown> = { role: row.role, content: row.content }
+      if (row.tool_calls) {
+        try { msg.tool_calls = JSON.parse(row.tool_calls) } catch {}
+      }
+      if (row.tool_call_id) msg.tool_call_id = row.tool_call_id
+      return msg
+    })
+
+    // 3. Inject agent identity (same as chat route)
+    let agentIdentityMsg: { role: "system"; content: string } | null = null
+    if (agentId && opts.db) {
+      const agentRow = opts.db
+        .prepare("SELECT agent_name, description FROM agents WHERE id = ?")
+        .get(agentId) as { agent_name: string; description: string | null } | undefined
+      if (agentRow) {
+        agentIdentityMsg = {
+          role: "system" as const,
+          content: `## \u5f53\u524d\u52a9\u624b\u8eab\u4efd\n\u4f60\u73b0\u5728\u4ee5\u3010${agentRow.agent_name}\u3011\u8eab\u4efd\u5de5\u4f5c\u3002${agentRow.description ? "\n\u804c\u8d23\uff1a" + agentRow.description : ""}`,
+        }
+      }
+    }
+
+    // 4. Assemble full message array (history + identity + new user message)
+    const allMessages = [
+      ...historyMessages,
+      ...(agentIdentityMsg ? [agentIdentityMsg] : []),
+      { role: "user" as const, content: message },
+    ]
+
+    // 5. Create a replay session ID (won't pollute original)
+    const replaySessionId = `replay-${sourceSessionId.slice(0, 8)}-${Date.now()}`
+
+    console.log(
+      `[Replay] source=${sourceSessionId} msgs=${historyMessages.length} ` +
+      `beforeTime=${beforeTime ?? "none"} beforeId=${beforeId ?? "none"} ` +
+      `replaySession=${replaySessionId} dryRun=${isDryRun}`
+    )
+
+    // 6. Run through agentLoop (full tool execution + guardrails)
+    if (!opts.agentLoop) {
+      return reply.status(500).send({ error: "AgentLoop not available" })
+    }
+
+    let fullContent = ""
+    const events: Array<{ type: string; [k: string]: unknown }> = []
+
+    try {
+      const eventStream = opts.agentLoop.run({
+        messages: allMessages as any,
+        sessionId: replaySessionId,
+        model,
+      })
+
+      for await (const event of eventStream) {
+        if (event.type === "message_delta") {
+          fullContent += event.delta
+        }
+        // Collect key events for diagnostics
+        if (event.type === "turn_start" || event.type === "tool_start" ||
+            event.type === "tool_end" || event.type === "agent_end" ||
+            event.type === "guardrail_warn" || event.type === "guardrail_halt") {
+          events.push(event as any)
+        }
+      }
+    } catch (err) {
+      return reply.status(500).send({
+        error: `Replay failed: ${String(err)}`,
+        partialResponse: fullContent || undefined,
+        events,
+      })
+    }
+
+    // 7. Optionally persist (default: don't)
+    if (!isDryRun && fullContent) {
+      await opts.strategy.ensureSession(replaySessionId)
+      await opts.strategy.appendTurn(
+        replaySessionId,
+        { role: "user", content: message },
+        { role: "assistant", content: fullContent },
+      )
+    }
+
+    return reply.send({
+      response: fullContent,
+      replaySessionId,
+      sourceSessionId,
+      historyMessageCount: historyMessages.length,
+      totalTurns: events.filter(e => e.type === "turn_start").length,
+      toolCalls: events.filter(e => e.type === "tool_start").map(e => (e as any).toolName),
+      events: events.slice(0, 50), // cap at 50 for response size
+      dryRun: isDryRun,
     })
   })
 }
