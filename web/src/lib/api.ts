@@ -241,3 +241,15 @@ export const api = {
       body: JSON.stringify({ template_name: templateName }),
     }).then(() => undefined).catch(() => undefined),
 }
+
+// ── Theme ──────────────────────────────────────────────────────
+export type ThemeId = 'space-dark' | 'day-command' | 'deep-sea'
+
+export function getTheme(): ThemeId {
+  return (localStorage.getItem('gc_theme') as ThemeId) ?? 'space-dark'
+}
+
+export function saveTheme(id: ThemeId): void {
+  localStorage.setItem('gc_theme', id)
+  document.documentElement.setAttribute('data-theme', id)
+}
