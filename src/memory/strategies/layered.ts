@@ -269,7 +269,49 @@ export class LayeredStrategy implements MemoryStrategy {
       finalMessageCount: finalResult.length,
     })
 
-    return finalResult
+    // ── P1 fix: merge consecutive user messages to restore turn structure ──
+    return this.mergeConsecutiveUserMessages(finalResult)
+  }
+
+  /**
+   * Merge consecutive user messages into a single message.
+   * When the user sends multiple messages while the model is "stalled" or
+   * before it responds, the DB records them as separate rows. This breaks
+   * the expected user→assistant alternation and confuses the model about
+   * which message is the "current" instruction.
+   *
+   * Strategy: join consecutive user messages with "\n---\n" separator,
+   * preserving chronological order.
+   */
+  private mergeConsecutiveUserMessages(messages: Message[]): Message[] {
+    if (messages.length <= 1) return messages
+
+    const result: Message[] = []
+    let pendingUserTexts: string[] = []
+
+    const flushUser = () => {
+      if (pendingUserTexts.length === 0) return
+      if (pendingUserTexts.length === 1) {
+        result.push({ role: "user", content: pendingUserTexts[0] })
+      } else {
+        // Multiple consecutive user messages → merge with separator
+        const merged = pendingUserTexts.join("\n---\n")
+        result.push({ role: "user", content: merged })
+      }
+      pendingUserTexts = []
+    }
+
+    for (const msg of messages) {
+      if (msg.role === "user") {
+        pendingUserTexts.push(typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content))
+      } else {
+        flushUser()
+        result.push(msg)
+      }
+    }
+    flushUser()
+
+    return result
   }
 
   private buildMessagesFromRaw(raw: Array<{
@@ -282,8 +324,8 @@ export class LayeredStrategy implements MemoryStrategy {
       if (row.role === "assistant") {
         const text = row.content ?? ""
         if (!text && !row.tool_calls) continue
-        if (text.length > 50 && seenAssistantContent.has(text) && !row.tool_calls) continue
-        if (text.length > 50 && !row.tool_calls) seenAssistantContent.add(text)
+        if (text.length > 20 && seenAssistantContent.has(text) && !row.tool_calls) continue
+        if (text.length > 20 && !row.tool_calls) seenAssistantContent.add(text)
 
         const msg: Message = { role: "assistant", content: text }
         if (row.tool_calls) {
@@ -347,7 +389,7 @@ export class LayeredStrategy implements MemoryStrategy {
     // Final reply (truncated if too long)
     if (finalReply) {
       const truncated = finalReply.length > 800
-        ? finalReply.slice(0, 600) + "\n...[truncated]"
+        ? finalReply.slice(0, 400) + "\n...\n" + finalReply.slice(-300)
         : finalReply
       result.push({ role: "assistant", content: truncated })
     }
@@ -357,6 +399,38 @@ export class LayeredStrategy implements MemoryStrategy {
 
   async appendMessages(sessionId: string, messages: Message[]): Promise<void> {
     await this.ensureSession(sessionId)
+
+    // ── Cross-turn repeat detection: skip if new assistant reply matches recent DB replies ──
+    const newAssistant = [...messages].reverse().find(m => m.role === "assistant" && m.content && !m.tool_calls)
+    if (newAssistant) {
+      const newContent = typeof newAssistant.content === "string"
+        ? newAssistant.content : JSON.stringify(newAssistant.content)
+      // Check last 3 assistant replies in DB (not just the immediate previous one)
+      const recentReplies = this.db.prepare(
+        `SELECT content FROM chat_messages
+         WHERE session_id = ? AND role = 'assistant' AND tool_calls IS NULL AND length(content) > 20
+         ORDER BY id DESC LIMIT 3`
+      ).all(sessionId) as Array<{ content: string }>
+      const isDuplicate = recentReplies.some(r => r.content === newContent)
+      if (isDuplicate) {
+        console.warn(`[LayeredStrategy] Cross-turn repeat detected (session=${sessionId.slice(0, 12)}…, content=${newContent.slice(0, 60)}…). Skipping persist.`)
+        // Still persist the user message so context doesn't lose it
+        const userOnly = messages.filter(m => m.role === "user")
+        if (userOnly.length > 0) {
+          const insertUser = this.db.prepare(
+            `INSERT INTO chat_messages (session_id, role, content, tool_calls, tool_call_id) VALUES (?, ?, ?, ?, ?)`
+          )
+          for (const msg of userOnly) {
+            insertUser.run(sessionId, msg.role, msg.content, null, null)
+          }
+          this.db.prepare(
+            `UPDATE chat_sessions SET message_count = message_count + ?, updated_at = datetime('now') WHERE id = ?`
+          ).run(userOnly.length, sessionId)
+        }
+        return  // Signal: caller should check for this
+      }
+    }
+
     const insert = this.db.prepare(
       `INSERT INTO chat_messages (session_id, role, content, tool_calls, tool_call_id) VALUES (?, ?, ?, ?, ?)`
     )
