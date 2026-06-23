@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Send, Square, Plus, MessageSquare, Cpu, AlertTriangle } from 'lucide-react'
+import { Send, Square, Plus, MessageSquare, Cpu, AlertTriangle, Copy, Check } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { streamChat, api, getConfig } from '@/lib/api'
 import type { TuiEvent, Agent } from '@/lib/api'
@@ -30,6 +30,7 @@ export default function ChatPage() {
   const [agents, setAgents] = useState<Agent[]>([])
   const [models, setModels] = useState<string[]>([])
   const [selectedModel, setSelectedModel] = useState<string>('')
+  const [copiedSession, setCopiedSession] = useState(false)
   const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null)
   const [activeSessionId, setActiveSessionId] = useState<string | undefined>()
   const [noAuth, setNoAuth] = useState(!getConfig().authToken)
@@ -390,7 +391,32 @@ export default function ChatPage() {
             <div style={{ fontSize: 8, letterSpacing: '0.2em', color: 'var(--gc-text-dim)', textTransform: 'uppercase' }}>
               ▶ COMMAND INPUT {isStreaming && <span className="blink" style={{ color: 'var(--gc-accent)', marginLeft: 8 }}>■ TRANSMITTING</span>}
             </div>
-            {models.length > 0 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              {activeSessionId && (
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(activeSessionId).then(() => {
+                      setCopiedSession(true)
+                      setTimeout(() => setCopiedSession(false), 2000)
+                    }).catch(() => undefined)
+                  }}
+                  title={`SESSION ID: ${activeSessionId}`}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 4,
+                    background: 'none', border: '1px solid var(--gc-border)',
+                    color: copiedSession ? 'var(--gc-green)' : 'var(--gc-text-dim)',
+                    padding: '2px 7px', cursor: 'pointer',
+                    fontFamily: "'Share Tech Mono', monospace",
+                    fontSize: 8, letterSpacing: '0.1em', textTransform: 'uppercase',
+                    transition: 'color 0.15s, border-color 0.15s',
+                    borderColor: copiedSession ? 'var(--gc-green)' : 'var(--gc-border)',
+                  }}
+                >
+                  {copiedSession ? <Check size={9} /> : <Copy size={9} />}
+                  <span>{activeSessionId.slice(0, 8)}…</span>
+                </button>
+              )}
+              {models.length > 0 && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 <Cpu size={9} style={{ color: 'var(--gc-accent2-dim)', flexShrink: 0 }} />
                 <div style={{ position: 'relative' }}>
@@ -412,6 +438,7 @@ export default function ChatPage() {
                 </div>
               </div>
             )}
+            </div>
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
             <textarea
