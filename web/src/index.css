@@ -508,6 +508,19 @@ body::after {
 .prose-space td { border: 1px solid var(--gc-border); padding: 5px 10px; color: var(--gc-td-text); }
 .prose-space tr:nth-child(even) td { background: var(--gc-assistant-bg); }
 
+/* Streaming cursor — blink on last child's ::after */
+.prose-space.streaming > *:last-child::after {
+  content: '';
+  display: inline-block;
+  width: 7px;
+  height: 13px;
+  background: var(--gc-accent2);
+  box-shadow: 0 0 6px var(--gc-accent2);
+  animation: blink 1s step-end infinite;
+  vertical-align: middle;
+  margin-left: 3px;
+}
+
 /* Strikethrough (GFM ~~text~~) */
 .prose-space del { color: var(--gc-text-label); text-decoration: line-through; opacity: 0.7; }
 

@@ -56,9 +56,9 @@ const MD_COMPONENTS: Components = {
 
 // ── Shared markdown renderer ─────────────────────────────────────────────────
 
-function ProseMarkdown({ content }: { content: string }) {
+function ProseMarkdown({ content, streaming }: { content: string; streaming?: boolean }) {
   return (
-    <div className="prose-space">
+    <div className={streaming ? 'prose-space streaming' : 'prose-space'}>
       <ReactMarkdown remarkPlugins={[remarkGfm]} components={MD_COMPONENTS}>
         {content}
       </ReactMarkdown>
@@ -122,7 +122,7 @@ export default function MessageBubble({ event, streaming }: MessageBubbleProps) 
             position: 'relative',
             boxShadow: '0 0 8px var(--gc-assistant-glow), inset 0 0 6px var(--gc-assistant-glow)',
           }}>
-            <ProseMarkdown content={event.content} />
+            <ProseMarkdown content={event.content} streaming={streaming} />
             <span style={{ position: 'absolute', bottom: -1, left: -1, width: 6, height: 6, borderBottom: '2px solid var(--gc-accent2)', borderLeft: '2px solid var(--gc-accent2)', opacity: 0.6 }} />
           </div>
         </div>
