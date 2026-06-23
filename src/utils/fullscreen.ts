@@ -21,4 +21,4 @@ export function isMouseTrackingEnabled(): boolean {
 export function isMouseClicksDisabled(): boolean { return false }
 
 /** Hint for tmux users — not applicable outside Claude Code context */
-export function maybeGetTmuxMouseHint(): string | undefined { return undefined }
+export function maybeGetTmuxMouseHint(): Promise<string | undefined> { return Promise.resolve(undefined) }
