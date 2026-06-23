@@ -380,10 +380,11 @@ export class LayeredStrategy implements MemoryStrategy {
       }
     }
 
-    // Build compressed summary
+    // Build compressed summary (use system role to prevent model from mimicking this format)
     if (toolCallCount > 0) {
-      const summary = "[" + toolCallCount + " tool calls: " + toolNames.slice(0, 5).join(", ") + (toolNames.length > 5 ? "..." : "") + "]"
-      result.push({ role: "assistant", content: summary })
+      const toolList = toolNames.length > 0 ? toolNames.slice(0, 5).join(", ") + (toolNames.length > 5 ? "..." : "") : "various"
+      const summary = "(此轮执行了 " + toolCallCount + " 次工具调用: " + toolList + "，结果已整合到下方回复中)"
+      result.push({ role: "system", content: summary })
     }
 
     // Final reply (truncated if too long)
