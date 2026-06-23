@@ -182,6 +182,7 @@ export interface Session {
   created_at: string
   updated_at: string
   message_count?: number
+  main_agent_id?: string
 }
 
 export interface Agent {

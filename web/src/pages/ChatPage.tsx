@@ -46,11 +46,11 @@ export default function ChatPage() {
   const loadAll = useCallback(async () => {
     const [rawSessions, agentList] = await Promise.all([api.getSessions(), api.getAgents()])
     // build session_id → agent map
-    const agentBySession = new Map(agentList.filter(a => a.session_id).map(a => [a.session_id!, a]))
+    const agentById = new Map(agentList.map(a => [a.id, a]))
     setSessions(rawSessions.map(s => ({
       id: s.id,
       label: s.title ?? s.id.slice(0, 8) + '…',
-      agentName: agentBySession.get(s.id)?.name,
+      agentName: s.main_agent_id ? agentById.get(s.main_agent_id)?.name : undefined,
     })))
     setAgents(agentList)
   }, [])
@@ -79,7 +79,7 @@ export default function ChatPage() {
     setIsStreaming(false)
   }
 
-  const handleNew = () => { resetChat(); setActiveSessionId(undefined) }
+  const handleNew = () => { resetChat(); setActiveSessionId(undefined); setSelectedAgent(null) }
 
   const handleSelect = (id: string) => {
     resetChat()
@@ -144,7 +144,8 @@ export default function ChatPage() {
         setActiveSessionId(id)
         // Register a new agent for this session (only if session was just created)
         if (isNewSession) {
-          api.createSessionAgent(id, 'base', selectedAgent?.name ?? undefined).then(() => loadAll())
+          setSelectedAgent(null)  // 清空过滤器，让新 session 可见
+          api.createSessionAgent(id, 'base').then(() => loadAll())
         } else {
           loadAll()
         }

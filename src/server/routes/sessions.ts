@@ -15,7 +15,7 @@ export async function sessionsRoute(fastify, opts) {
         }
         const { limit = "50", offset = "0" } = request.query;
         const rows = db.prepare(`
-      SELECT id, title, created_at, updated_at, message_count
+      SELECT id, title, created_at, updated_at, message_count, main_agent_id
       FROM chat_sessions
       ORDER BY updated_at DESC
       LIMIT ? OFFSET ?
