@@ -24,6 +24,18 @@ type DisplayItem =
 let _seq = 0
 const uid = () => String(++_seq)
 
+function toolStatusLabel(name: string): string {
+  const n = name.toLowerCase()
+  if (n === 'bash' || n === 'shell' || n === 'exec') return 'EXECUTING'
+  if (n.startsWith('read')) return 'READING'
+  if (n.startsWith('write')) return 'WRITING'
+  if (n.startsWith('edit')) return 'EDITING'
+  if (n === 'glob' || n === 'grep' || n.startsWith('search') || n.startsWith('find')) return 'SEARCHING'
+  if (n.startsWith('web') || n.startsWith('fetch') || n.startsWith('http')) return 'FETCHING'
+  if (n.startsWith('agent') || n.startsWith('dispatch')) return 'DISPATCHING'
+  return name.slice(0, 12).toUpperCase()
+}
+
 export default function ChatPage() {
   const navigate = useNavigate()
   const [sessions, setSessions] = useState<SessionItem[]>([])
@@ -37,22 +49,50 @@ export default function ChatPage() {
   const [items, setItems] = useState<DisplayItem[]>([])
   const [streamingText, setStreamingText] = useState('')
   const [isStreaming, setIsStreaming] = useState(false)
+  const [streamingStatus, setStreamingStatus] = useState('TRANSMITTING')
   const [input, setInput] = useState('')
   const cancelRef = useRef<(() => void) | null>(null)
   const streamingTextRef = useRef('')
   const bottomRef = useRef<HTMLDivElement>(null)
   const toolMapRef = useRef(new Map<string, ToolCall>())
+  const autoBindDoneRef = useRef(false)
 
   const loadAll = useCallback(async () => {
     const [rawSessions, agentList] = await Promise.all([api.getSessions(), api.getAgents()])
-    // build session_id → agent map
     const agentById = new Map(agentList.map(a => [a.id, a]))
-    setSessions(rawSessions.map(s => ({
+    // agents also carry session_id — use both directions for lookup
+    const agentBySession = new Map(agentList.filter(a => a.session_id).map(a => [a.session_id!, a]))
+
+    const toItem = (s: typeof rawSessions[0]) => ({
       id: s.id,
       label: s.title ?? s.id.slice(0, 8) + '…',
-      agentName: s.main_agent_id ? agentById.get(s.main_agent_id)?.name : undefined,
-    })))
+      agentName: s.main_agent_id
+        ? agentById.get(s.main_agent_id)?.name
+        : agentBySession.get(s.id)?.name,
+    })
+
+    setSessions(rawSessions.map(toItem))
     setAgents(agentList)
+
+    // One-time: bind every unbound session to "助手"
+    if (!autoBindDoneRef.current) {
+      autoBindDoneRef.current = true
+      const unbound = rawSessions.filter(s => !s.main_agent_id && !agentBySession.has(s.id))
+      if (unbound.length > 0) {
+        await Promise.all(unbound.map(s => api.createSessionAgent(s.id, 'base', '助手')))
+        const [newSessions, newAgents] = await Promise.all([api.getSessions(), api.getAgents()])
+        const newById = new Map(newAgents.map(a => [a.id, a]))
+        const newBySession = new Map(newAgents.filter(a => a.session_id).map(a => [a.session_id!, a]))
+        setSessions(newSessions.map(s => ({
+          id: s.id,
+          label: s.title ?? s.id.slice(0, 8) + '…',
+          agentName: s.main_agent_id
+            ? newById.get(s.main_agent_id)?.name
+            : newBySession.get(s.id)?.name,
+        })))
+        setAgents(newAgents)
+      }
+    }
   }, [])
 
   useEffect(() => { loadAll() }, [loadAll])
@@ -84,6 +124,14 @@ export default function ChatPage() {
   const handleSelect = (id: string) => {
     resetChat()
     setActiveSessionId(id)
+    // Auto-switch SELECT UNIT to this session's agent
+    const session = sessions.find(s => s.id === id)
+    if (session?.agentName) {
+      const agent = agents.find(a => a.session_id === id) ?? agents.find(a => a.name === session.agentName) ?? null
+      setSelectedAgent(agent)
+    } else {
+      setSelectedAgent(null)
+    }
     // show loading indicator
     setItems([{ type: 'event', id: uid(), event: { kind: 'system', message: 'LOADING SESSION HISTORY…' } }])
     api.getSessionMessagesRaw(id).then(({ status, msgs }) => {
@@ -117,6 +165,7 @@ export default function ChatPage() {
     if (!msg || isStreaming) return
     setInput('')
     setIsStreaming(true)
+    setStreamingStatus('TRANSMITTING')
     streamingTextRef.current = ''
     setStreamingText('')
 
@@ -161,6 +210,7 @@ export default function ChatPage() {
           }
           toolMapRef.current.set(event.name, tool)
           setItems(prev => [...prev, { type: 'tool', id: tool.id, tool: { ...tool } }])
+          setStreamingStatus(toolStatusLabel(event.name))
         } else if (event.kind === 'tool_end') {
           const tool = toolMapRef.current.get(event.name)
           if (tool) {
@@ -172,6 +222,7 @@ export default function ChatPage() {
                 : item,
             ))
           }
+          setStreamingStatus('TRANSMITTING')
         }
       },
 
@@ -258,10 +309,10 @@ export default function ChatPage() {
           <div style={{ position: 'relative' }}>
             <Cpu size={10} style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: selectedAgent ? 'var(--gc-accent2)' : 'var(--gc-text-dim)', pointerEvents: 'none' }} />
             <select
-              value={selectedAgent?.id ?? ''}
+              value={selectedAgent?.name ?? ''}
               onChange={e => {
-                const id = e.target.value
-                setSelectedAgent(agents.find(a => a.id === id) ?? null)
+                const name = e.target.value
+                setSelectedAgent(name ? (agents.find(a => a.name === name) ?? null) : null)
               }}
               style={{
                 width: '100%', padding: '6px 8px 6px 24px',
@@ -275,8 +326,8 @@ export default function ChatPage() {
               }}
             >
               <option value="">ALL UNITS</option>
-              {agents.map(a => (
-                <option key={a.id} value={a.id}>{a.name.toUpperCase()}</option>
+              {[...new Map(agents.map(a => [a.name, a])).values()].map(a => (
+                <option key={a.name} value={a.name}>{a.name.toUpperCase()}</option>
               ))}
             </select>
             {/* Custom arrow */}
@@ -370,7 +421,7 @@ export default function ChatPage() {
                 input={item.tool.input} output={item.tool.output} status={item.tool.status} />
             )
             if (item.type === 'streaming') return (
-              <MessageBubble key={item.id} event={{ kind: 'response', content: streamingText }} streaming />
+              <MessageBubble key={item.id} event={{ kind: 'response', content: streamingText }} streaming streamingStatus={streamingStatus} />
             )
             return null
           })}

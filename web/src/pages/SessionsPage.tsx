@@ -53,7 +53,7 @@ export default function SessionsPage() {
                 <td style={{ padding: '8px 14px', color: 'var(--gc-text-dim)', fontSize: 10 }}>{s.id.slice(0, 8)}…</td>
                 <td style={{ padding: '8px 14px', color: 'var(--gc-text)' }}>{s.title ?? '(untitled)'}</td>
                 <td style={{ padding: '8px 14px', color: 'var(--gc-text-mid)' }}>{s.message_count ?? '—'}</td>
-                <td style={{ padding: '8px 14px', color: 'var(--gc-text-dim)', fontSize: 10 }}>{new Date(s.updated_at).toLocaleString()}</td>
+                <td style={{ padding: '8px 14px', color: 'var(--gc-text-dim)', fontSize: 10 }}>{new Date(s.updated_at.replace(' ', 'T') + 'Z').toLocaleString()}</td>
                 <td style={{ padding: '8px 14px' }}>
                   <button onClick={() => handleDelete(s.id)} title="Delete session"
                     style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--gc-text-dim)', padding: 0, transition: 'color 0.15s' }}

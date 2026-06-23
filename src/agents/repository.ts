@@ -18,10 +18,10 @@ export class AgentRepository {
             .prepare(`INSERT INTO agents (id, session_id, parent_agent_id, template_name, agent_name, depth, status, created_at, updated_at)
          VALUES (?, ?, NULL, ?, ?, 0, 'active', ?, ?)`)
             .run(id, sessionId, templateName, agentName, now, now);
-        // Update chat_sessions.main_agent_id
+        // Update chat_sessions.main_agent_id (don't touch updated_at — session ordering tracks conversation activity)
         this.db
-            .prepare(`UPDATE chat_sessions SET main_agent_id = ?, updated_at = ? WHERE id = ?`)
-            .run(id, now, sessionId);
+            .prepare(`UPDATE chat_sessions SET main_agent_id = ? WHERE id = ?`)
+            .run(id, sessionId);
         return this.getById(id);
     }
     /**
