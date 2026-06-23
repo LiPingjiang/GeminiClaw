@@ -28,6 +28,8 @@ export default function ChatPage() {
   const navigate = useNavigate()
   const [sessions, setSessions] = useState<SessionItem[]>([])
   const [agents, setAgents] = useState<Agent[]>([])
+  const [models, setModels] = useState<string[]>([])
+  const [selectedModel, setSelectedModel] = useState<string>('')
   const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null)
   const [activeSessionId, setActiveSessionId] = useState<string | undefined>()
   const [noAuth, setNoAuth] = useState(!getConfig().authToken)
@@ -53,6 +55,14 @@ export default function ChatPage() {
   }, [])
 
   useEffect(() => { loadAll() }, [loadAll])
+
+  useEffect(() => {
+    api.getModels().then(list => {
+      setModels(list)
+      if (list.length > 0 && !selectedModel) setSelectedModel(list[0])
+    })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -122,6 +132,7 @@ export default function ChatPage() {
     cancelRef.current = streamChat({
       message: msg,
       sessionId: activeSessionId,
+      model: selectedModel || undefined,
 
       onDelta: (text) => {
         streamingTextRef.current += text
@@ -375,8 +386,32 @@ export default function ChatPage() {
           <div style={{ position: 'absolute', top: 0, left: '5%', right: '5%', height: 1,
             background: 'linear-gradient(90deg, transparent, var(--gc-accent-glow) 40%, var(--gc-accent-glow) 60%, transparent)' }} />
 
-          <div style={{ fontSize: 8, letterSpacing: '0.2em', color: 'var(--gc-text-dim)', marginBottom: 6, textTransform: 'uppercase' }}>
-            ▶ COMMAND INPUT {isStreaming && <span className="blink" style={{ color: 'var(--gc-accent)', marginLeft: 8 }}>■ TRANSMITTING</span>}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+            <div style={{ fontSize: 8, letterSpacing: '0.2em', color: 'var(--gc-text-dim)', textTransform: 'uppercase' }}>
+              ▶ COMMAND INPUT {isStreaming && <span className="blink" style={{ color: 'var(--gc-accent)', marginLeft: 8 }}>■ TRANSMITTING</span>}
+            </div>
+            {models.length > 0 && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <Cpu size={9} style={{ color: 'var(--gc-accent2-dim)', flexShrink: 0 }} />
+                <div style={{ position: 'relative' }}>
+                  <select
+                    value={selectedModel}
+                    onChange={e => setSelectedModel(e.target.value)}
+                    style={{
+                      background: 'var(--gc-input-bg)', border: '1px solid var(--gc-border-hi)',
+                      color: 'var(--gc-accent2)', padding: '2px 20px 2px 6px',
+                      fontFamily: "'Share Tech Mono', monospace",
+                      fontSize: 9, letterSpacing: '0.08em', textTransform: 'uppercase',
+                      cursor: 'pointer', outline: 'none', appearance: 'none',
+                      boxShadow: '0 0 4px var(--gc-accent2-glow)',
+                    }}
+                  >
+                    {models.map(m => <option key={m} value={m}>{m}</option>)}
+                  </select>
+                  <span style={{ position: 'absolute', right: 5, top: '50%', transform: 'translateY(-50%)', color: 'var(--gc-text-dim)', fontSize: 7, pointerEvents: 'none' }}>▼</span>
+                </div>
+              </div>
+            )}
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
             <textarea

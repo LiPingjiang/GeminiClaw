@@ -14,6 +14,18 @@ export function saveConfig(config: GcConfig): void {
   localStorage.setItem('gc_auth_token', config.authToken)
 }
 
+// Auto-populate auth token from server on first load (local dev convenience)
+export async function autoFillAuthToken(): Promise<void> {
+  if (localStorage.getItem('gc_auth_token')) return
+  try {
+    const res = await fetch('/v1/localconfig')
+    if (res.ok) {
+      const { authToken } = await res.json() as { authToken: string }
+      if (authToken) localStorage.setItem('gc_auth_token', authToken)
+    }
+  } catch { /* server not available */ }
+}
+
 function authHeaders(): Record<string, string> {
   const { authToken } = getConfig()
   return authToken ? { Authorization: `Bearer ${authToken}` } : {}
@@ -240,6 +252,12 @@ export const api = {
       headers: { 'Content-Type': 'application/json', ...authHeaders() },
       body: JSON.stringify({ template_name: templateName, ...(agentName ? { agent_name: agentName } : {}) }),
     }).then(() => undefined).catch(() => undefined),
+
+  getModels: (): Promise<string[]> =>
+    fetch('/v1/models', { headers: authHeaders() })
+      .then(r => r.ok ? r.json() : { data: [] })
+      .then((d: { data?: { id: string }[] }) => (d.data ?? []).map(m => m.id))
+      .catch(() => []),
 }
 
 // ── Theme ──────────────────────────────────────────────────────
