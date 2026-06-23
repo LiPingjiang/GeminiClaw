@@ -70,6 +70,10 @@ export class ProviderRouter {
     throw new Error(`All providers failed:\n${errors.join("\n")}`)
   }
 
+  listModels(): string[] {
+    return [this.routing.default, ...this.routing.fallback]
+  }
+
   async *stream(messages: Message[], options?: ChatOptions): AsyncIterable<StreamChunk> {
     const route = this.routing.default
     const { providerName, model } = parseRoute(route)

@@ -23,6 +23,8 @@ import { sessionsRoute } from './routes/sessions.js'
 import { agentsRoute } from './routes/agents.js'
 import { runsRoute } from './routes/runs.js'
 import { RunStore } from './routes/run-store.js'
+import { localConfigRoute } from './routes/localconfig.js'
+import { modelsRoute } from './routes/models.js'
 
 function makeRegistryAdapter() {
   return {
@@ -201,6 +203,8 @@ export async function buildServer(
   });
 
   await fastify.register(healthRoute, { twinSystem });
+  await fastify.register(localConfigRoute, { authToken: config.server.authToken });
+  await fastify.register(modelsRoute, { router, authToken: config.server.authToken });
 
   // Evolution routes (twin-system based / code engine)
   if (twinSystem) {
