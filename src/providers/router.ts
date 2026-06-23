@@ -50,7 +50,12 @@ export class ProviderRouter {
           // Detect repetition loop (model stuck generating same block)
           const cleaned = detectRepetitionLoop(content)
           if (cleaned !== null) {
-            console.log(`[ProviderRouter] ⚠ Repetition loop detected in ${providerName}/${model} output, truncated from ${content.length} to ${cleaned.length} chars`)
+            const truncatedPart = content.slice(cleaned.length, cleaned.length + 200)
+            console.warn(
+              `[ProviderRouter] ⚠ Repetition loop detected in ${providerName}/${model} output\n` +
+              `  full_len=${content.length}  kept_len=${cleaned.length}\n` +
+              `  truncated_preview: ${JSON.stringify(truncatedPart.slice(0, 120))}`
+            )
             content = cleaned || "（模型响应异常，请重试）"
           }
         }

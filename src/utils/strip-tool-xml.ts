@@ -48,9 +48,9 @@ export function stripToolXml(text: string): string {
  * Returns the cleaned content (up to first repetition) if loop detected, else null.
  *
  * Carefully avoids false positives on structured content like Markdown tables,
- * lists, and code blocks which naturally contain repeated patterns.
+ * code blocks, and lists which naturally contain repeated patterns.
  */
-export function detectRepetitionLoop(text: string, minRepeatLen = 30, maxRepeats = 3): string | null {
+export function detectRepetitionLoop(text: string, minRepeatLen = 50, maxRepeats = 4): string | null {
   if (!text || text.length < minRepeatLen * maxRepeats) return null;
 
   // ── Markdown structural line patterns (should NOT be treated as repetition) ──
@@ -101,17 +101,40 @@ export function detectRepetitionLoop(text: string, minRepeatLen = 30, maxRepeats
   const maxBlockLen = Math.min(500, Math.floor(text.length / maxRepeats));
   if (minRepeatLen > maxBlockLen) return null;
 
-  // Pre-compute: which character positions are inside Markdown table regions?
-  const inTableRegion = new Uint8Array(text.length);
+  // Pre-compute: which character positions are inside Markdown table or code block regions?
+  const inExcludedRegion = new Uint8Array(text.length);
+  // Mark table rows
   let pos = 0;
   for (const line of text.split("\n")) {
     if (isMarkdownStructural(line)) {
       for (let j = pos; j < pos + line.length && j < text.length; j++) {
-        inTableRegion[j] = 1;
+        inExcludedRegion[j] = 1;
       }
     }
-    pos += line.length + 1; // +1 for the \n
+    pos += line.length + 1;
   }
+  // Mark code block regions (``` ... ``` or ~~~ ... ~~~)
+  const codeFenceRe = /^[ \t]*(```|~~~)/m;
+  let codeSearchFrom = 0;
+  while (codeSearchFrom < text.length) {
+    const fenceStart = text.search(new RegExp('(?:^|\\n)[ \\t]*(```|~~~)', 'g'));
+    // Simpler: scan for ``` markers
+    const f1 = text.indexOf('```', codeSearchFrom);
+    const f2 = text.indexOf('~~~', codeSearchFrom);
+    const fenceOpen = f1 === -1 ? f2 : f2 === -1 ? f1 : Math.min(f1, f2);
+    if (fenceOpen === -1) break;
+    const fenceChar = text.slice(fenceOpen, fenceOpen + 3);
+    const fenceClose = text.indexOf(fenceChar, fenceOpen + 3);
+    if (fenceClose === -1) {
+      // Unclosed code fence — mark to end
+      for (let j = fenceOpen; j < text.length; j++) inExcludedRegion[j] = 1;
+      break;
+    }
+    const fenceEnd = fenceClose + 3;
+    for (let j = fenceOpen; j < fenceEnd && j < text.length; j++) inExcludedRegion[j] = 1;
+    codeSearchFrom = fenceEnd;
+  }
+  void codeFenceRe; // suppress unused warning
 
   for (let blockLen = minRepeatLen; blockLen <= maxBlockLen; blockLen += 10) {
     for (let i = 0; i + blockLen <= text.length; i += Math.max(1, Math.floor(blockLen / 2))) {
@@ -122,15 +145,15 @@ export function detectRepetitionLoop(text: string, minRepeatLen = 30, maxRepeats
         const idx = text.indexOf(block, searchFrom);
         if (idx === -1) break;
         count++;
-        searchFrom = idx + 1; // overlap allowed for detection
+        searchFrom = idx + 1;
         if (count >= maxRepeats) {
-          // Before confirming: check if the repeated block sits inside a Markdown table region
-          let tableChars = 0;
+          // Before confirming: check if the repeated block sits inside an excluded region
+          let excludedChars = 0;
           for (let j = i; j < i + blockLen; j++) {
-            if (inTableRegion[j]) tableChars++;
+            if (inExcludedRegion[j]) excludedChars++;
           }
-          if (tableChars > blockLen * 0.4) {
-            break; // Skip — block overlaps significantly with Markdown structural content
+          if (excludedChars > blockLen * 0.4) {
+            break; // Skip — block overlaps significantly with code/table content
           }
           // Found genuine repetition — return content up to first occurrence
           return text.slice(0, i).trim() || null;
