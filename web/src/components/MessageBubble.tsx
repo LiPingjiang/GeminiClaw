@@ -4,6 +4,7 @@ import remarkGfm from 'remark-gfm'
 import type { Components } from 'react-markdown'
 import { Copy, Check } from 'lucide-react'
 import type { TuiEvent } from '@/lib/api'
+import DiffBlock from './DiffBlock'
 
 // ── Code block with language label + copy button ─────────────────────────────
 
@@ -37,6 +38,9 @@ const MD_COMPONENTS: Components = {
   code({ children, className }) {
     const match = /language-(\w+)/.exec(className ?? '')
     const code = String(children).replace(/\n$/, '')
+    if (match?.[1] === 'diff') {
+      return <DiffBlock text={code} />
+    }
     // Block if has language class OR multi-line (unlabeled fenced block)
     if (match || code.includes('\n')) {
       return <CodeBlock language={match?.[1] ?? ''} code={code} />

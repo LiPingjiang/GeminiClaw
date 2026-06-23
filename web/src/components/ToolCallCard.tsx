@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { ChevronRight, ChevronDown, Wrench, CheckCircle, Loader } from 'lucide-react'
+import DiffBlock, { isDiff } from './DiffBlock'
 
 export interface ToolCallCardProps {
   name: string
@@ -40,9 +41,14 @@ export default function ToolCallCard({ name, input, output, status }: ToolCallCa
           {output !== undefined && (
             <div style={{ padding: '8px 10px', background: 'var(--gc-panel-deep)' }}>
               <div style={{ fontSize: 8, letterSpacing: '0.15em', color: 'var(--gc-text-label)', textTransform: 'uppercase', marginBottom: 6 }}>Output</div>
-              <pre style={{ margin: 0, color: 'var(--gc-assistant-text)', whiteSpace: 'pre-wrap', wordBreak: 'break-all', fontSize: 11 }}>
-                {typeof output === 'string' ? output : JSON.stringify(output, null, 2)}
-              </pre>
+              {typeof output === 'string' && isDiff(output)
+                ? <DiffBlock text={output} />
+                : (
+                  <pre style={{ margin: 0, color: 'var(--gc-assistant-text)', whiteSpace: 'pre-wrap', wordBreak: 'break-all', fontSize: 11 }}>
+                    {typeof output === 'string' ? output : JSON.stringify(output, null, 2)}
+                  </pre>
+                )
+              }
             </div>
           )}
         </div>
