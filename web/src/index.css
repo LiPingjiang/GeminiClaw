@@ -536,3 +536,6 @@ body::after {
   accent-color: var(--gc-accent);
   cursor: default;
 }
+
+/* Show session config button on row hover */
+button:hover .session-config-btn { opacity: 1 !important; }

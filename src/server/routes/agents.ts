@@ -127,6 +127,59 @@ export async function agentsRoute(fastify, opts) {
         const updated = taskRepo.getById(request.params.id);
         return reply.send({ task: updated });
     });
+    // ── GET /v1/agents/:id/system-prompt ─────────────────────────────────────────
+    // 生成 agent 完整的系统 prompt（identity + 代码常量 + workspace 记忆）
+    fastify.get("/v1/agents/:id/system-prompt", async (request, reply) => {
+        if (!checkAuth(request, authToken)) return reply.status(401).send({ error: "Unauthorized" });
+        const agent = agentRepo.getById(request.params.id);
+        if (!agent) return reply.status(404).send({ error: "Agent not found" });
+        const { buildSystemPrompt } = await import("../../system-prompt/builder.js");
+        const { WorkingMemoryBuilder } = await import("../../memory/working-memory.js");
+        const { MemoryPaths } = await import("../../memory/paths.js");
+        const paths = new MemoryPaths();
+        const wm = new WorkingMemoryBuilder(paths);
+        const date = new Date().toISOString().slice(0, 10);
+        // Read routing config for model family detection
+        const configRow = db.prepare("SELECT 1").get(); // just check db is accessible
+        void configRow;
+        const base = buildSystemPrompt(); // will use default routing from config
+        const workspace = wm.renderSystemPrompt(agent.id, date, agent.agent_name);
+        const full = workspace ? base + "\n\n---\n\n" + workspace : base;
+        return reply.send({
+            agentId: agent.id,
+            agentName: agent.agent_name,
+            systemPrompt: full,
+            baseLength: base.length,
+            workspaceLength: workspace.length,
+        });
+    });
+    // ── GET /v1/skills ────────────────────────────────────────────────────────────
+    // 列出项目 skills 目录下的可用技能
+    fastify.get("/v1/project-skills", async (request, reply) => {
+        if (!checkAuth(request, authToken)) return reply.status(401).send({ error: "Unauthorized" });
+        const { existsSync, readdirSync, readFileSync, statSync } = await import("fs");
+        const { join } = await import("path");
+        const skillsDir = join(process.cwd(), "skills");
+        if (!existsSync(skillsDir)) return reply.send({ skills: [] });
+        const skills: Array<{ name: string; description: string; enabled: boolean }> = [];
+        for (const entry of readdirSync(skillsDir)) {
+            if (entry.startsWith(".")) continue;
+            const entryPath = join(skillsDir, entry);
+            try { if (!statSync(entryPath).isDirectory()) continue; } catch { continue; }
+            const skillFile = join(entryPath, "SKILL.md");
+            if (!existsSync(skillFile)) continue;
+            const content = readFileSync(skillFile, "utf-8").trim();
+            // Extract description from frontmatter
+            let description = entry;
+            const fmMatch = content.match(/^---\n([\s\S]*?)\n---/);
+            if (fmMatch) {
+                const descMatch = fmMatch[1].match(/description:\s*(.+)/);
+                if (descMatch) description = descMatch[1].trim().replace(/^["']|["']$/g, "");
+            }
+            skills.push({ name: entry, description, enabled: true });
+        }
+        return reply.send({ skills });
+    });
 }
 /**
  * Create a session and immediately attach a main agent.

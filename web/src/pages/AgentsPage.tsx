@@ -36,6 +36,11 @@ export default function AgentsPage() {
   const [editDesc, setEditDesc] = useState('')
   const [saving, setSaving] = useState(false)
   const [copying, setCopying] = useState(false)
+  const [tab, setTab] = useState<'config' | 'prompt' | 'skills'>('config')
+  const [systemPrompt, setSystemPrompt] = useState('')
+  const [promptLoading, setPromptLoading] = useState(false)
+  const [skills, setSkills] = useState<Array<{ name: string; description: string; enabled: boolean }>>([])
+  const [skillsLoading, setSkillsLoading] = useState(false)
 
   const load = async () => {
     setLoading(true)
@@ -47,6 +52,8 @@ export default function AgentsPage() {
 
   const openDetail = async (id: string) => {
     setSelectedId(id)
+    setTab('config')
+    setSystemPrompt('')
     setDetailLoading(true)
     try {
       const d = await api.getAgent(id)
@@ -57,6 +64,28 @@ export default function AgentsPage() {
       setDetail(null)
     }
     setDetailLoading(false)
+  }
+
+  const loadPrompt = async () => {
+    if (!detail) return
+    setPromptLoading(true)
+    try {
+      const r = await api.getAgentSystemPrompt(detail.id)
+      setSystemPrompt(r.systemPrompt)
+    } catch { setSystemPrompt('(error loading)') }
+    setPromptLoading(false)
+  }
+
+  const loadSkills = async () => {
+    setSkillsLoading(true)
+    setSkills(await api.getSkills())
+    setSkillsLoading(false)
+  }
+
+  const switchTab = (t: 'config' | 'prompt' | 'skills') => {
+    setTab(t)
+    if (t === 'prompt' && !systemPrompt) loadPrompt()
+    if (t === 'skills' && skills.length === 0) loadSkills()
   }
 
   const saveDetail = async () => {
@@ -157,8 +186,15 @@ export default function AgentsPage() {
       {/* ── Detail panel ── */}
       {selectedId && (
         <div style={{ width: 320, borderLeft: '1px solid var(--gc-border)', background: 'var(--gc-panel)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-          <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--gc-border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <div style={{ fontSize: 9, letterSpacing: '0.2em', color: 'var(--gc-text-label)', textTransform: 'uppercase' }}>◈ UNIT CONFIG</div>
+          <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--gc-border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', gap: 0 }}>
+              {(['config', 'prompt', 'skills'] as const).map(t => (
+                <button key={t} onClick={() => switchTab(t)}
+                  style={{ background: 'none', border: 'none', borderBottom: `2px solid ${tab === t ? 'var(--gc-accent)' : 'transparent'}`, cursor: 'pointer', color: tab === t ? 'var(--gc-accent)' : 'var(--gc-text-dim)', fontSize: 9, letterSpacing: '0.1em', textTransform: 'uppercase', padding: '4px 10px' }}>
+                  {t === 'config' ? 'CONFIG' : t === 'prompt' ? 'PROMPT' : 'SKILLS'}
+                </button>
+              ))}
+            </div>
             <button onClick={() => { setSelectedId(null); setDetail(null) }}
               style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--gc-text-dim)', padding: 0 }}>
               <X size={14} />
@@ -167,7 +203,38 @@ export default function AgentsPage() {
 
           {detailLoading && <div style={{ padding: 20, fontSize: 9, color: 'var(--gc-text-dim)', letterSpacing: '0.1em' }}>LOADING…</div>}
 
-          {detail && !detailLoading && (
+          {detail && !detailLoading && tab === 'prompt' && (
+            <div style={{ flex: 1, overflowY: 'auto', padding: 12 }}>
+              {promptLoading
+                ? <div style={{ fontSize: 9, color: 'var(--gc-text-dim)' }}>GENERATING…</div>
+                : systemPrompt
+                  ? <pre style={{ margin: 0, fontSize: 10, color: 'var(--gc-assistant-text)', whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: 1.6, fontFamily: "'Share Tech Mono', monospace" }}>{systemPrompt}</pre>
+                  : <button onClick={loadPrompt} className="sp-btn sp-btn-cyan" style={{ fontSize: 9 }}>LOAD PROMPT</button>
+              }
+            </div>
+          )}
+
+          {detail && !detailLoading && tab === 'skills' && (
+            <div style={{ flex: 1, overflowY: 'auto', padding: 12 }}>
+              {skillsLoading
+                ? <div style={{ fontSize: 9, color: 'var(--gc-text-dim)' }}>LOADING…</div>
+                : skills.length === 0
+                  ? <div style={{ fontSize: 9, color: 'var(--gc-text-dim)' }}>暂无技能（skills/ 目录为空）</div>
+                  : skills.map(sk => (
+                      <div key={sk.name} style={{ marginBottom: 10, padding: 10, background: 'var(--gc-panel-deep)', border: '1px solid var(--gc-border)' }}>
+                        <div style={{ fontSize: 10, color: 'var(--gc-accent2)', marginBottom: 3 }}>{sk.name}</div>
+                        <div style={{ fontSize: 9, color: 'var(--gc-text-dim)', lineHeight: 1.5 }}>{sk.description}</div>
+                        <div style={{ marginTop: 6, fontSize: 8, color: 'var(--gc-green)', letterSpacing: '0.1em' }}>✅ ACTIVE (global)</div>
+                      </div>
+                    ))
+              }
+              <div style={{ marginTop: 12, fontSize: 8, color: 'var(--gc-text-dim)', letterSpacing: '0.05em', lineHeight: 1.6 }}>
+                技能当前全局启用。per-agent 技能开关需要架构支持（规划中）。
+              </div>
+            </div>
+          )}
+
+          {detail && !detailLoading && tab === 'config' && (
             <div style={{ flex: 1, overflowY: 'auto', padding: 16 }}>
               {/* Fields */}
               {[

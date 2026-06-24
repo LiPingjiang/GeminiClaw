@@ -18,8 +18,15 @@ export default function SessionsPage() {
   useEffect(() => { load() }, [load])
 
   const handleDelete = async (id: string) => {
+    if (!confirm('删除这个 session？此操作不可撤销')) return
     await api.deleteSession(id)
     await load()
+  }
+
+  const handleCleanup = async () => {
+    const { deleted } = await api.batchDeleteSessions(16)
+    if (deleted > 0) { alert(`已删除 ${deleted} 个消息数 < 16 的 session`); await load() }
+    else alert('没有符合条件的 session')
   }
 
   const startEditing = (s: Session) => {
@@ -52,10 +59,15 @@ export default function SessionsPage() {
     <div style={{ padding: 24, height: '100%', overflowY: 'auto', background: 'var(--gc-bg)' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
         <div style={{ fontSize: 9, letterSpacing: '0.2em', color: 'var(--gc-text-label)', textTransform: 'uppercase' }}>◈ SESSION LOG</div>
-        <button onClick={load} disabled={loading} className="sp-btn sp-btn-cyan" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <RefreshCw size={10} style={{ animation: loading ? 'spin 1s linear infinite' : 'none' }} />
-          REFRESH
-        </button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button onClick={handleCleanup} className="sp-btn" style={{ fontSize: 9, padding: '5px 10px', borderColor: 'var(--gc-text-dim)', color: 'var(--gc-text-dim)' }}>
+            CLEAN &lt;16
+          </button>
+          <button onClick={load} disabled={loading} className="sp-btn sp-btn-cyan" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <RefreshCw size={10} style={{ animation: loading ? 'spin 1s linear infinite' : 'none' }} />
+            REFRESH
+          </button>
+        </div>
       </div>
 
       <div style={{ border: '1px solid var(--gc-border)', overflow: 'hidden' }}>

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Send, Square, Plus, MessageSquare, Cpu, AlertTriangle, Copy, Check } from 'lucide-react'
+import { Send, Square, Plus, MessageSquare, Cpu, AlertTriangle, Copy, Check, Settings, X, Save, RefreshCw } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { streamChat, api, getConfig } from '@/lib/api'
 import type { TuiEvent, Agent } from '@/lib/api'
@@ -49,6 +49,15 @@ export default function ChatPage() {
   const [items, setItems] = useState<DisplayItem[]>([])
   const [streamingText, setStreamingText] = useState('')
   const [isStreaming, setIsStreaming] = useState(false)
+  // Session config panel
+  const [configSessionId, setConfigSessionId] = useState<string | null>(null)
+  const [configTab, setConfigTab] = useState<'prompt' | 'memory'>('memory')
+  const [configSystemPrompt, setConfigSystemPrompt] = useState('')
+  const [configPromptLoading, setConfigPromptLoading] = useState(false)
+  const [configAgentMd, setConfigAgentMd] = useState('')
+  const [configMemoryMd, setConfigMemoryMd] = useState('')
+  const [configMemLoading, setConfigMemLoading] = useState(false)
+  const [configSaved, setConfigSaved] = useState(false)
   const [streamingStatus, setStreamingStatus] = useState('TRANSMITTING')
   const [input, setInput] = useState('')
   const cancelRef = useRef<(() => void) | null>(null)
@@ -280,12 +289,96 @@ export default function ChatPage() {
     }
   }
 
+  const openSessionConfig = async (e: React.MouseEvent, sessionId: string) => {
+    e.stopPropagation()
+    setConfigSessionId(sessionId)
+    setConfigTab('memory')
+    setConfigSystemPrompt('')
+    setConfigMemLoading(true)
+    const mem = await api.getSessionMemory(sessionId)
+    setConfigAgentMd(mem.agentMd)
+    setConfigMemoryMd(mem.memoryMd)
+    setConfigMemLoading(false)
+  }
+
+  const loadConfigPrompt = async () => {
+    if (!configSessionId) return
+    setConfigPromptLoading(true)
+    const mem = await api.getSessionMemory(configSessionId)
+    if (mem.agentId) {
+      try {
+        const r = await api.getAgentSystemPrompt(mem.agentId)
+        setConfigSystemPrompt(r.systemPrompt)
+      } catch { setConfigSystemPrompt('(error)') }
+    } else setConfigSystemPrompt('(no agent for this session)')
+    setConfigPromptLoading(false)
+  }
+
+  const saveConfigMemory = async () => {
+    if (!configSessionId) return
+    await api.updateSessionMemory(configSessionId, configAgentMd, configMemoryMd)
+    setConfigSaved(true)
+    setTimeout(() => setConfigSaved(false), 2500)
+  }
+
   const filtered = selectedAgent
     ? sessions.filter(s => s.agentName === selectedAgent.name)
     : sessions
 
   return (
-    <div style={{ display: 'flex', height: '100%', overflow: 'hidden' }}>
+    <div style={{ display: 'flex', height: '100%', overflow: 'hidden', position: 'relative' }}>
+      {/* Session config panel - absolute overlay */}
+      {configSessionId && (
+        <div style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: 360, background: 'var(--gc-panel)', borderLeft: '1px solid var(--gc-border)', zIndex: 100, display: 'flex', flexDirection: 'column' }}>
+          <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--gc-border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', gap: 0 }}>
+              {(['memory', 'prompt'] as const).map(t => (
+                <button key={t} onClick={() => { setConfigTab(t); if (t === 'prompt' && !configSystemPrompt) loadConfigPrompt() }}
+                  style={{ background: 'none', border: 'none', borderBottom: `2px solid ${configTab === t ? 'var(--gc-accent)' : 'transparent'}`, cursor: 'pointer', color: configTab === t ? 'var(--gc-accent)' : 'var(--gc-text-dim)', fontSize: 9, letterSpacing: '0.1em', textTransform: 'uppercase', padding: '4px 10px' }}>
+                  {t === 'memory' ? 'MEMORY' : 'PROMPT'}
+                </button>
+              ))}
+            </div>
+            <button onClick={() => setConfigSessionId(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--gc-text-dim)', padding: 0 }}>
+              <X size={14} />
+            </button>
+          </div>
+
+          <div style={{ flex: 1, overflowY: 'auto', padding: 14 }}>
+            {configTab === 'memory' && (
+              configMemLoading ? <div style={{ fontSize: 9, color: 'var(--gc-text-dim)' }}>LOADING…</div> : <>
+                <div style={{ marginBottom: 12 }}>
+                  <div style={{ fontSize: 8, color: 'var(--gc-text-label)', letterSpacing: '0.12em', textTransform: 'uppercase', marginBottom: 5 }}>Agent AGENT.MD（身份）</div>
+                  <textarea value={configAgentMd} onChange={e => setConfigAgentMd(e.target.value)}
+                    placeholder="(empty)"
+                    style={{ width: '100%', minHeight: 120, padding: '6px 8px', fontSize: 10, lineHeight: 1.5, fontFamily: "'Share Tech Mono', monospace", background: 'var(--gc-panel-deep)', border: '1px solid var(--gc-border)', color: 'var(--gc-assistant-text)', resize: 'vertical' }} />
+                </div>
+                <div style={{ marginBottom: 12 }}>
+                  <div style={{ fontSize: 8, color: 'var(--gc-text-label)', letterSpacing: '0.12em', textTransform: 'uppercase', marginBottom: 5 }}>Agent MEMORY.MD（长期记忆）</div>
+                  <textarea value={configMemoryMd} onChange={e => setConfigMemoryMd(e.target.value)}
+                    placeholder="(empty)"
+                    style={{ width: '100%', minHeight: 120, padding: '6px 8px', fontSize: 10, lineHeight: 1.5, fontFamily: "'Share Tech Mono', monospace", background: 'var(--gc-panel-deep)', border: '1px solid var(--gc-border)', color: 'var(--gc-assistant-text)', resize: 'vertical' }} />
+                </div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button onClick={saveConfigMemory} className="sp-btn" style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontSize: 10 }}>
+                    {configSaved ? <><Check size={11} /> SAVED</> : <><Save size={11} /> SAVE</>}
+                  </button>
+                  <button onClick={() => openSessionConfig({ stopPropagation: () => {} } as React.MouseEvent, configSessionId)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--gc-text-dim)', padding: '5px' }}>
+                    <RefreshCw size={12} />
+                  </button>
+                </div>
+              </>
+            )}
+            {configTab === 'prompt' && (
+              configPromptLoading ? <div style={{ fontSize: 9, color: 'var(--gc-text-dim)' }}>GENERATING…</div>
+              : <pre style={{ margin: 0, fontSize: 9, color: 'var(--gc-assistant-text)', whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: 1.5, fontFamily: "'Share Tech Mono', monospace" }}>
+                  {configSystemPrompt || <span style={{ color: 'var(--gc-text-dim)' }}>Click PROMPT tab to load</span>}
+                </pre>
+            )}
+          </div>
+        </div>
+      )}
+
 
       {/* ── Left panel: unit roster + session log ── */}
       <aside style={{
@@ -358,8 +451,14 @@ export default function ChatPage() {
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 <MessageSquare size={10} style={{ color: activeSessionId === s.id ? 'var(--gc-accent)' : 'var(--gc-text-dim)', flexShrink: 0 }} />
                 <span style={{ fontSize: 11, color: activeSessionId === s.id ? 'var(--gc-accent)' : 'var(--gc-text-mid)',
-                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', letterSpacing: '0.05em' }}>
+                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', letterSpacing: '0.05em', flex: 1 }}>
                   {s.label.toUpperCase()}
+                </span>
+                <span onClick={e => openSessionConfig(e, s.id)}
+                  style={{ flexShrink: 0, cursor: 'pointer', color: configSessionId === s.id ? 'var(--gc-accent2)' : 'var(--gc-text-dim)', opacity: 0, transition: 'opacity 0.15s' }}
+                  className="session-config-btn"
+                  title="Session config">
+                  <Settings size={9} />
                 </span>
               </div>
               {s.agentName && (

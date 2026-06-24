@@ -301,6 +301,43 @@ export const api = {
     fetch('/v1/sessions', { method: 'POST', headers: authHeaders() })
       .then(r => r.ok ? r.json() : Promise.reject()),
 
+  batchDeleteSessions: (maxMessages = 16): Promise<{ deleted: number }> =>
+    fetch(`/v1/sessions/batch?maxMessages=${maxMessages}`, { method: 'DELETE', headers: authHeaders() })
+      .then(r => r.ok ? r.json() : { deleted: 0 }).catch(() => ({ deleted: 0 })),
+
+  getAgentSystemPrompt: (agentId: string): Promise<{ systemPrompt: string; agentName: string; baseLength: number; workspaceLength: number }> =>
+    fetch(`/v1/agents/${encodeURIComponent(agentId)}/system-prompt`, { headers: authHeaders() })
+      .then(r => r.ok ? r.json() : Promise.reject()),
+
+  getSkills: (): Promise<Array<{ name: string; description: string; enabled: boolean }>> =>
+    fetch('/v1/project-skills', { headers: authHeaders() })
+      .then(r => r.ok ? r.json() : { skills: [] })
+      .then((d: { skills: Array<{ name: string; description: string; enabled: boolean }> }) => d.skills ?? [])
+      .catch(() => []),
+
+  getGlobalMemory: (): Promise<{ agentMd: string; memoryMd: string }> =>
+    fetch('/v1/memory/global', { headers: authHeaders() })
+      .then(r => r.ok ? r.json() : { agentMd: '', memoryMd: '' }).catch(() => ({ agentMd: '', memoryMd: '' })),
+
+  updateGlobalMemory: (agentMd: string, memoryMd: string): Promise<void> =>
+    fetch('/v1/memory/global', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ agentMd, memoryMd }),
+    }).then(() => undefined).catch(() => undefined),
+
+  getSessionMemory: (sessionId: string): Promise<{ agentId: string; agentName: string; agentMd: string; memoryMd: string }> =>
+    fetch(`/v1/sessions/${encodeURIComponent(sessionId)}/memory`, { headers: authHeaders() })
+      .then(r => r.ok ? r.json() : { agentId: '', agentName: '', agentMd: '', memoryMd: '' })
+      .catch(() => ({ agentId: '', agentName: '', agentMd: '', memoryMd: '' })),
+
+  updateSessionMemory: (sessionId: string, agentMd: string, memoryMd: string): Promise<void> =>
+    fetch(`/v1/sessions/${encodeURIComponent(sessionId)}/memory`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ agentMd, memoryMd }),
+    }).then(() => undefined).catch(() => undefined),
+
   getSubagentRuns: (): Promise<Array<{ run_id: string; parent_session_id: string; task_titles: string; status: string; started_at: number; completed_at?: number; error?: string }>> =>
     fetch('/v1/runs/subagent', { headers: authHeaders() })
       .then(r => r.ok ? r.json() : { runs: [] })

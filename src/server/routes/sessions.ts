@@ -57,6 +57,36 @@ export async function sessionsRoute(fastify, opts) {
     `).all(id, parseInt(limit), parseInt(offset));
         return reply.send({ session_id: id, messages, total: messages.length });
     });
+    // ── DELETE /v1/sessions/:id ───────────────────────────────────────────────────
+    fastify.delete("/v1/sessions/:id", async (request, reply) => {
+        if (!checkAuth(request, authToken)) {
+            return reply.status(401).send({ error: "Unauthorized" });
+        }
+        const { id } = request.params;
+        const session = db.prepare(`SELECT id FROM chat_sessions WHERE id = ?`).get(id);
+        if (!session) return reply.status(404).send({ error: "Session not found" });
+        db.prepare(`DELETE FROM chat_messages WHERE session_id = ?`).run(id);
+        db.prepare(`DELETE FROM agents WHERE session_id = ?`).run(id);
+        db.prepare(`DELETE FROM chat_sessions WHERE id = ?`).run(id);
+        return reply.send({ deleted: id });
+    });
+    // ── DELETE /v1/sessions/batch ─────────────────────────────────────────────────
+    // 批量删除消息数 < maxMessages 的 session
+    fastify.delete("/v1/sessions/batch", async (request, reply) => {
+        if (!checkAuth(request, authToken)) {
+            return reply.status(401).send({ error: "Unauthorized" });
+        }
+        const maxMessages = parseInt((request.query as { maxMessages?: string }).maxMessages ?? "16");
+        const toDelete = db.prepare(`
+            SELECT id FROM chat_sessions WHERE COALESCE(message_count, 0) < ?
+        `).all(maxMessages) as Array<{ id: string }>;
+        for (const { id } of toDelete) {
+            db.prepare(`DELETE FROM chat_messages WHERE session_id = ?`).run(id);
+            db.prepare(`DELETE FROM agents WHERE session_id = ?`).run(id);
+            db.prepare(`DELETE FROM chat_sessions WHERE id = ?`).run(id);
+        }
+        return reply.send({ deleted: toDelete.length, ids: toDelete.map(r => r.id) });
+    });
     // ── POST /v1/sessions ────────────────────────────────────────────────────────
     // 创建空 session（供 copy agent 等场景使用）
     fastify.post("/v1/sessions", async (request, reply) => {
@@ -111,6 +141,70 @@ export async function sessionsRoute(fastify, opts) {
         if (!title) return reply.status(500).send({ error: "LLM returned empty title" });
         db.prepare(`UPDATE chat_sessions SET title = ? WHERE id = ?`).run(title, id);
         return reply.send({ id, title });
+    });
+    // ── GET /v1/memory/global ────────────────────────────────────────────────────
+    // 读取全局记忆文件（AGENT.md + MEMORY.md）
+    fastify.get("/v1/memory/global", async (request, reply) => {
+        if (!checkAuth(request, authToken)) return reply.status(401).send({ error: "Unauthorized" });
+        const { existsSync, readFileSync } = await import("fs");
+        const { join } = await import("path");
+        const { default: os } = await import("os");
+        const root = join(os.homedir(), ".gemeniclaw");
+        const agentMd = join(root, "AGENT.md");
+        const memoryMd = join(root, "memory", "global", "MEMORY.md");
+        return reply.send({
+            agentMd: existsSync(agentMd) ? readFileSync(agentMd, "utf-8") : "",
+            memoryMd: existsSync(memoryMd) ? readFileSync(memoryMd, "utf-8") : "",
+        });
+    });
+    // ── PATCH /v1/memory/global ───────────────────────────────────────────────────
+    fastify.patch("/v1/memory/global", async (request, reply) => {
+        if (!checkAuth(request, authToken)) return reply.status(401).send({ error: "Unauthorized" });
+        const { agentMd, memoryMd } = request.body as { agentMd?: string; memoryMd?: string };
+        const { writeFileSync, mkdirSync } = await import("fs");
+        const { join } = await import("path");
+        const { default: os } = await import("os");
+        const root = join(os.homedir(), ".gemeniclaw");
+        if (typeof agentMd === "string") writeFileSync(join(root, "AGENT.md"), agentMd, "utf-8");
+        if (typeof memoryMd === "string") {
+            mkdirSync(join(root, "memory", "global"), { recursive: true });
+            writeFileSync(join(root, "memory", "global", "MEMORY.md"), memoryMd, "utf-8");
+        }
+        return reply.send({ ok: true });
+    });
+    // ── GET /v1/sessions/:id/memory ───────────────────────────────────────────────
+    // 读取 session 对应 agent 的记忆层
+    fastify.get("/v1/sessions/:id/memory", async (request, reply) => {
+        if (!checkAuth(request, authToken)) return reply.status(401).send({ error: "Unauthorized" });
+        const { id } = request.params;
+        const agent = db.prepare(`SELECT id, agent_name FROM agents WHERE session_id = ? AND depth = 0 ORDER BY created_at DESC LIMIT 1`).get(id) as { id: string; agent_name: string } | undefined;
+        if (!agent) return reply.send({ agentMd: "", memoryMd: "" });
+        const { existsSync, readFileSync } = await import("fs");
+        const { join } = await import("path");
+        const { default: os } = await import("os");
+        const root = join(os.homedir(), ".gemeniclaw", "agents", agent.id);
+        return reply.send({
+            agentId: agent.id,
+            agentName: agent.agent_name,
+            agentMd: existsSync(join(root, "AGENT.md")) ? readFileSync(join(root, "AGENT.md"), "utf-8") : "",
+            memoryMd: existsSync(join(root, "MEMORY.md")) ? readFileSync(join(root, "MEMORY.md"), "utf-8") : "",
+        });
+    });
+    // ── PATCH /v1/sessions/:id/memory ────────────────────────────────────────────
+    fastify.patch("/v1/sessions/:id/memory", async (request, reply) => {
+        if (!checkAuth(request, authToken)) return reply.status(401).send({ error: "Unauthorized" });
+        const { id } = request.params;
+        const agent = db.prepare(`SELECT id FROM agents WHERE session_id = ? AND depth = 0 ORDER BY created_at DESC LIMIT 1`).get(id) as { id: string } | undefined;
+        if (!agent) return reply.status(404).send({ error: "No agent for this session" });
+        const { agentMd, memoryMd } = request.body as { agentMd?: string; memoryMd?: string };
+        const { writeFileSync, mkdirSync } = await import("fs");
+        const { join } = await import("path");
+        const { default: os } = await import("os");
+        const agentDir = join(os.homedir(), ".gemeniclaw", "agents", agent.id);
+        mkdirSync(agentDir, { recursive: true });
+        if (typeof agentMd === "string") writeFileSync(join(agentDir, "AGENT.md"), agentMd, "utf-8");
+        if (typeof memoryMd === "string") writeFileSync(join(agentDir, "MEMORY.md"), memoryMd, "utf-8");
+        return reply.send({ ok: true });
     });
     // ── GET /v1/runs/subagent ─────────────────────────────────────────────────
     // subagent_runs 历史记录（多 agent 委派产生，持久化在 SQLite）
