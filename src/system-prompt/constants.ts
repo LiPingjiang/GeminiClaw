@@ -91,7 +91,12 @@ export const CLAUDE_MANDATORY_TOOL_USE = `\
   → 已修改的文件和上下文里的内容可能完全不同
 
 当前系统状态（进程、端口、磁盘、内存）→ bash 工具
-git 历史、分支、diff → bash 工具
+git 历史、分支 → bash 工具
+Diff 展示（"看 diff""与 master 的 diff""show me the diff"）：
+  → 必须运行 bash git diff 拿到原始输出
+  → 将完整 git diff 原始结果放入 \`\`\`diff 代码块，禁止改写成表格
+  → 禁止用 # 注释替代 --- +++ @@ 头部
+
 计算结果、哈希、编码 → bash 工具
 
 "我已经知道这段内容" ≠ "现在文件就是这样"。重新读取是正确行为。
