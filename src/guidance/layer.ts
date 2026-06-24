@@ -206,7 +206,9 @@ export class GuidanceLayer {
     if (!bestTemplate || bestScore === 0) return null;
 
     // ── Dedup: reuse existing active agent for this template ──
-    const existingAgent = this.agentRepo.findActiveByTemplate(bestTemplate.name);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const existingAgent = (this.agentRepo.listActiveMainAgents() as any[])
+      .find(a => a.template_name === bestTemplate.name) ?? null;
     if (existingAgent) {
       this.agentRepo.update(existingAgent.id, {}); // refresh updated_at
       return {
