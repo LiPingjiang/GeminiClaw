@@ -99,11 +99,13 @@ export class WorkingMemoryBuilder {
     ].join("\n")
   }
 
-  /** 渲染成可直接拼进 systemPrompt 的文本（带分区标题）。 */
+  /** 渲染成可直接拼进 systemPrompt 的文本（带分区标题）。
+   * globalFixed (AGENT.md) 由 buildSystemPrompt() 负责，此处不重复注入。
+   */
   renderSystemPrompt(agentId: string, date: string, agentName: string): string {
     const wm = this.build(agentId, date)
     const parts: string[] = []
-    if (wm.globalFixed) parts.push(wm.globalFixed)
+    // globalFixed intentionally omitted — already included via buildSystemPrompt()
     if (wm.agentFixed) {
       const header = agentName ? `## 当前助手身份（${agentName}）` : "## 当前助手身份"
       parts.push(`${header}\n${wm.agentFixed}`)
@@ -117,15 +119,16 @@ export class WorkingMemoryBuilder {
     return parts.join("\n\n")
   }
 
-  /** 仅渲染全局记忆（无 agent 上下文时使用，冷启动 / 全局会话）。 */
+  /** 仅渲染全局记忆（无 agent 上下文时使用，冷启动 / 全局会话）。
+   * globalFixed (AGENT.md) 由 buildSystemPrompt() 负责，此处不重复注入。
+   */
   renderGlobalOnly(date: string): string {
-    const globalFixed = readIf(this.paths.globalAgentMd())
     const globalLtm = readIf(this.paths.globalMemoryMd())
     const globalToday = readIf(this.paths.globalDaily(date))
     const globalNonFixed = [globalLtm, globalToday].filter(Boolean).join("\n\n")
 
     const parts: string[] = []
-    if (globalFixed) parts.push(globalFixed)
+    // globalFixed intentionally omitted — already included via buildSystemPrompt()
     if (globalNonFixed) parts.push(`---\n\n## 记忆\n### 全局长期记忆\n${globalNonFixed}`)
     return parts.join("\n\n")
   }
