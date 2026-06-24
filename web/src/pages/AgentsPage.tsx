@@ -1,6 +1,79 @@
 import { useEffect, useState } from 'react'
 import { Cpu, RefreshCw, Copy, Archive, X, ExternalLink, ChevronDown, ChevronRight, Lock, Edit3 } from 'lucide-react'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import { api, type Agent } from '@/lib/api'
+
+// ── MarkdownField: preview by default, click to edit ─────────────────────────
+function MarkdownField({ value, onChange, label, note, placeholder = '(empty — click to edit)', minHeight = 120 }: {
+  value: string
+  onChange: (v: string) => void
+  label?: string
+  note?: string
+  placeholder?: string
+  minHeight?: number
+}) {
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState('')
+  const [hovered, setHovered] = useState(false)
+
+  const startEdit = () => { setDraft(value); setEditing(true) }
+  const commit = () => { onChange(draft); setEditing(false) }
+  const cancel = () => setEditing(false)
+
+  return (
+    <div style={{ marginBottom: 14 }}>
+      {label && (
+        <div style={{ fontSize: 8, letterSpacing: '0.15em', color: 'var(--gc-text-label)', textTransform: 'uppercase', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
+          {label}
+          {note && <span style={{ color: 'var(--gc-text-dim)', fontSize: 8, fontWeight: 'normal', textTransform: 'none', letterSpacing: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{note}</span>}
+          {!editing && (
+            <Edit3 size={9} style={{ marginLeft: 'auto', flexShrink: 0, color: 'var(--gc-text-dim)', cursor: 'pointer' }} onClick={startEdit} />
+          )}
+        </div>
+      )}
+      {editing ? (
+        <div>
+          <textarea className="sp-input" value={draft} onChange={e => setDraft(e.target.value)}
+            autoFocus
+            style={{ width: '100%', padding: '6px 8px', fontSize: 11, lineHeight: 1.6, resize: 'vertical', fontFamily: "'Share Tech Mono', monospace", minHeight, boxSizing: 'border-box' }}
+            onKeyDown={e => { if (e.key === 'Escape') cancel() }}
+          />
+          <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
+            <button onClick={commit} className="sp-btn sp-btn-cyan" style={{ flex: 1, fontSize: 9, padding: '3px 8px' }}>SAVE</button>
+            <button onClick={cancel} className="sp-btn" style={{ flex: 1, fontSize: 9, padding: '3px 8px' }}>CANCEL</button>
+          </div>
+        </div>
+      ) : (
+        <div
+          onClick={startEdit}
+          onMouseEnter={() => setHovered(true)}
+          onMouseLeave={() => setHovered(false)}
+          style={{
+            cursor: 'text',
+            padding: '8px 10px',
+            minHeight,
+            background: 'var(--gc-panel-deep)',
+            border: `1px solid ${hovered ? 'var(--gc-border-hi)' : 'var(--gc-border)'}`,
+            transition: 'border-color 0.15s',
+            position: 'relative',
+          }}
+        >
+          {hovered && !value && (
+            <Edit3 size={10} style={{ position: 'absolute', top: 7, right: 8, color: 'var(--gc-text-dim)', opacity: 0.4, pointerEvents: 'none' }} />
+          )}
+          {value ? (
+            <div className="prose-space" style={{ fontSize: 11 }}>
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>{value}</ReactMarkdown>
+            </div>
+          ) : (
+            <span style={{ fontSize: 9, color: 'var(--gc-text-dim)', fontStyle: 'italic' }}>{placeholder}</span>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
 
 // ── Structured Prompt Layer Viewer ────────────────────────────────────────────
 type PromptData = Awaited<ReturnType<typeof api.getAgentSystemPrompt>>
@@ -140,7 +213,7 @@ export default function AgentsPage() {
   const [editDesc, setEditDesc] = useState('')
   const [saving, setSaving] = useState(false)
   const [copying, setCopying] = useState(false)
-  const [tab, setTab] = useState<'config' | 'prompt' | 'skills'>('config')
+  const [tab, setTab] = useState<'config' | 'prompt' | 'skills' | 'memory'>('config')
   const [agentConfig, setAgentConfig] = useState<{ skills: string[] | null; constants: Record<string, string | null>; model: string | null }>({ skills: null, constants: {}, model: null })
   const [configDirty, setConfigDirty] = useState(false)
   const [configSaving, setConfigSaving] = useState(false)
@@ -150,6 +223,11 @@ export default function AgentsPage() {
   const [skillsLoading, setSkillsLoading] = useState(false)
   const [models, setModels] = useState<string[]>([])
   const [creating, setCreating] = useState(false)
+  const [agentMdMem, setAgentMdMem] = useState('')
+  const [memoryMdMem, setMemoryMdMem] = useState('')
+  const [memLoading, setMemLoading] = useState(false)
+  const [memDirty, setMemDirty] = useState(false)
+  const [memSaving, setMemSaving] = useState(false)
 
   const load = async () => {
     setLoading(true)
@@ -163,6 +241,9 @@ export default function AgentsPage() {
     setSelectedId(id)
     setTab('config')
     setPromptData(null)
+    setAgentMdMem('')
+    setMemoryMdMem('')
+    setMemDirty(false)
     setDetailLoading(true)
     if (skills.length === 0) loadSkills() // pre-load for config tab skill checkboxes
     loadModels() // pre-load for model dropdown
@@ -210,6 +291,28 @@ export default function AgentsPage() {
     setModels(await api.getModels())
   }
 
+  const loadMemory = async () => {
+    const sid = detail?.session_id
+    if (!sid) return
+    setMemLoading(true)
+    try {
+      const d = await api.getSessionMemory(sid)
+      setAgentMdMem(d.agentMd)
+      setMemoryMdMem(d.memoryMd)
+      setMemDirty(false)
+    } catch { /* ignore */ }
+    setMemLoading(false)
+  }
+
+  const saveMemory = async () => {
+    const sid = detail?.session_id
+    if (!sid) return
+    setMemSaving(true)
+    await api.updateSessionMemory(sid, agentMdMem, memoryMdMem)
+    setMemDirty(false)
+    setMemSaving(false)
+  }
+
   const createAgent = async () => {
     const name = window.prompt('Agent 名称（留空使用默认名）', '')
     if (name === null) return // cancelled
@@ -222,11 +325,12 @@ export default function AgentsPage() {
     setCreating(false)
   }
 
-  const switchTab = (t: 'config' | 'prompt' | 'skills') => {
+  const switchTab = (t: 'config' | 'prompt' | 'skills' | 'memory') => {
     setTab(t)
     if (t === 'prompt' && !promptData) loadPrompt()
     if (t === 'skills' && skills.length === 0) loadSkills()
     if (t === 'config') loadModels()
+    if (t === 'memory') loadMemory()
   }
 
   const saveDetail = async () => {
@@ -339,10 +443,10 @@ export default function AgentsPage() {
               BACK
             </button>
             <div style={{ display: 'flex', gap: 0 }}>
-              {(['config', 'prompt', 'skills'] as const).map(t => (
+              {(['config', 'memory', 'prompt', 'skills'] as const).map(t => (
                 <button key={t} onClick={() => switchTab(t)}
                   style={{ background: 'none', border: 'none', borderBottom: `2px solid ${tab === t ? 'var(--gc-accent)' : 'transparent'}`, cursor: 'pointer', color: tab === t ? 'var(--gc-accent)' : 'var(--gc-text-dim)', fontSize: 9, letterSpacing: '0.1em', textTransform: 'uppercase', padding: '4px 10px' }}>
-                  {t === 'config' ? 'CONFIG' : t === 'prompt' ? 'PROMPT' : 'SKILLS'}
+                  {t === 'config' ? 'CONFIG' : t === 'memory' ? 'MEMORY' : t === 'prompt' ? 'PROMPT' : 'SKILLS'}
                 </button>
               ))}
             </div>
@@ -393,6 +497,38 @@ export default function AgentsPage() {
               <div style={{ marginTop: 12, fontSize: 8, color: 'var(--gc-text-dim)', lineHeight: 1.6 }}>
                 技能开关在 Config 标签页中按 agent 单独配置。
               </div>
+            </div>
+          )}
+
+          {detail && !detailLoading && tab === 'memory' && (
+            <div style={{ flex: 1, overflowY: 'auto', padding: 16 }}>
+              {memLoading ? (
+                <div style={{ fontSize: 9, color: 'var(--gc-text-dim)', letterSpacing: '0.1em' }}>LOADING…</div>
+              ) : !detail.session_id ? (
+                <div style={{ fontSize: 9, color: 'var(--gc-text-dim)' }}>此 agent 无关联 session，无法读取 memory 文件</div>
+              ) : (
+                <>
+                  <MarkdownField
+                    label="AGENT.MD"
+                    note={`agents/${detail.id}/AGENT.MD`}
+                    value={agentMdMem}
+                    onChange={v => { setAgentMdMem(v); setMemDirty(true) }}
+                    minHeight={160}
+                    placeholder="(empty — agent-specific identity, edited here)"
+                  />
+                  <MarkdownField
+                    label="MEMORY.MD"
+                    note={`agents/${detail.id}/MEMORY.MD`}
+                    value={memoryMdMem}
+                    onChange={v => { setMemoryMdMem(v); setMemDirty(true) }}
+                    minHeight={200}
+                    placeholder="(empty — agent long-term memory, written by triage)"
+                  />
+                  <button onClick={saveMemory} disabled={!memDirty || memSaving} className="sp-btn sp-btn-cyan" style={{ width: '100%', fontSize: 10 }}>
+                    {memSaving ? 'SAVING…' : memDirty ? 'SAVE MEMORY FILES ✱' : 'MEMORY SAVED'}
+                  </button>
+                </>
+              )}
             </div>
           )}
 
