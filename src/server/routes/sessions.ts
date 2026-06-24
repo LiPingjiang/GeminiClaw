@@ -57,6 +57,18 @@ export async function sessionsRoute(fastify, opts) {
     `).all(id, parseInt(limit), parseInt(offset));
         return reply.send({ session_id: id, messages, total: messages.length });
     });
+    // ── POST /v1/sessions ────────────────────────────────────────────────────────
+    // 创建空 session（供 copy agent 等场景使用）
+    fastify.post("/v1/sessions", async (request, reply) => {
+        if (!checkAuth(request, authToken)) {
+            return reply.status(401).send({ error: "Unauthorized" });
+        }
+        const { randomUUID } = await import("crypto");
+        const id = randomUUID();
+        const now = new Date().toISOString().replace("T", " ").slice(0, 19);
+        db.prepare(`INSERT INTO chat_sessions (id, created_at, updated_at) VALUES (?, ?, ?)`).run(id, now, now);
+        return reply.status(201).send({ sessionId: id });
+    });
     // ── PATCH /v1/sessions/:id/title ─────────────────────────────────────────────
     // 手动更新 session 标题
     fastify.patch("/v1/sessions/:id/title", async (request, reply) => {
@@ -99,5 +111,21 @@ export async function sessionsRoute(fastify, opts) {
         if (!title) return reply.status(500).send({ error: "LLM returned empty title" });
         db.prepare(`UPDATE chat_sessions SET title = ? WHERE id = ?`).run(title, id);
         return reply.send({ id, title });
+    });
+    // ── GET /v1/runs/subagent ─────────────────────────────────────────────────
+    // subagent_runs 历史记录（多 agent 委派产生，持久化在 SQLite）
+    fastify.get("/v1/runs/subagent", async (request, reply) => {
+        if (!checkAuth(request, authToken)) {
+            return reply.status(401).send({ error: "Unauthorized" });
+        }
+        const { limit = "50", offset = "0" } = request.query;
+        const rows = db.prepare(`
+            SELECT run_id, parent_session_id, parent_agent_id,
+                   task_titles, status, started_at, completed_at, error
+            FROM subagent_runs
+            ORDER BY started_at DESC
+            LIMIT ? OFFSET ?
+        `).all(parseInt(limit), parseInt(offset));
+        return reply.send({ runs: rows, total: rows.length });
     });
 }

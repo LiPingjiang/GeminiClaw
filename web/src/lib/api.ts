@@ -272,6 +272,40 @@ export const api = {
       headers: { 'Content-Type': 'application/json', ...authHeaders() },
       body: JSON.stringify({ title }),
     }).then(() => undefined).catch(() => undefined),
+
+  getAgent: (id: string): Promise<Agent & { session_id?: string; template_name?: string; description?: string; depth?: number }> =>
+    fetch(`/v1/agents/${encodeURIComponent(id)}`, { headers: authHeaders() })
+      .then(r => r.ok ? r.json() : Promise.reject())
+      .then((d: { agent?: Record<string, unknown> }) => {
+        const a = d.agent ?? d as Record<string, unknown>
+        return {
+          id: String(a.id ?? ''),
+          name: String(a.agent_name ?? a.name ?? ''),
+          session_id: a.session_id ? String(a.session_id) : undefined,
+          template_name: a.template_name ? String(a.template_name) : undefined,
+          description: a.description ? String(a.description) : undefined,
+          depth: typeof a.depth === 'number' ? a.depth : 0,
+          status: String(a.status ?? 'active'),
+          lastActive: a.updated_at ? String(a.updated_at) : undefined,
+        }
+      }),
+
+  updateAgent: (id: string, patch: { agent_name?: string; description?: string; status?: string }): Promise<void> =>
+    fetch(`/v1/agents/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify(patch),
+    }).then(() => undefined).catch(() => undefined),
+
+  createSession: (): Promise<{ sessionId: string }> =>
+    fetch('/v1/sessions', { method: 'POST', headers: authHeaders() })
+      .then(r => r.ok ? r.json() : Promise.reject()),
+
+  getSubagentRuns: (): Promise<Array<{ run_id: string; parent_session_id: string; task_titles: string; status: string; started_at: number; completed_at?: number; error?: string }>> =>
+    fetch('/v1/runs/subagent', { headers: authHeaders() })
+      .then(r => r.ok ? r.json() : { runs: [] })
+      .then((d: { runs?: unknown[] }) => (d.runs ?? []) as Array<{ run_id: string; parent_session_id: string; task_titles: string; status: string; started_at: number; completed_at?: number; error?: string }>)
+      .catch(() => []),
 }
 
 // ── Theme ──────────────────────────────────────────────────────

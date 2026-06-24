@@ -69,7 +69,7 @@ export async function agentsRoute(fastify, opts) {
         if (!agent)
             return reply.status(404).send({ error: "Agent not found" });
         const { agent_name, description, status } = request.body ?? {};
-        const validStatuses = ["active", "idle", "completed", "error"];
+        const validStatuses = ["active", "idle", "completed", "error", "archived"];
         if (status !== undefined && !validStatuses.includes(status)) {
             return reply.status(400).send({ error: `Invalid status: ${status}` });
         }

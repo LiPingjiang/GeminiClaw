@@ -6,6 +6,8 @@ export default function SessionsPage() {
   const [sessions, setSessions] = useState<Session[]>([])
   const [loading, setLoading] = useState(true)
   const [generating, setGenerating] = useState<Record<string, boolean>>({})
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editingValue, setEditingValue] = useState('')
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -18,6 +20,20 @@ export default function SessionsPage() {
   const handleDelete = async (id: string) => {
     await api.deleteSession(id)
     await load()
+  }
+
+  const startEditing = (s: Session) => {
+    setEditingId(s.id)
+    setEditingValue(s.title ?? '')
+  }
+
+  const commitEdit = async (id: string) => {
+    const val = editingValue.trim()
+    setEditingId(null)
+    if (val) {
+      await api.updateSessionTitle(id, val)
+      setSessions(prev => prev.map(s => s.id === id ? { ...s, title: val } : s))
+    }
   }
 
   const handleGenerateTitle = async (id: string) => {
@@ -64,7 +80,29 @@ export default function SessionsPage() {
                 onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
               >
                 <td style={{ padding: '8px 14px', color: 'var(--gc-text-dim)', fontSize: 10 }}>{s.id.slice(0, 8)}…</td>
-                <td style={{ padding: '8px 14px', color: 'var(--gc-text)' }}>{s.title ?? '(untitled)'}</td>
+                <td style={{ padding: '4px 14px', color: 'var(--gc-text)' }}>
+                  {editingId === s.id
+                    ? <input
+                        autoFocus
+                        className="sp-input"
+                        value={editingValue}
+                        onChange={e => setEditingValue(e.target.value)}
+                        onBlur={() => commitEdit(s.id)}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') commitEdit(s.id)
+                          if (e.key === 'Escape') setEditingId(null)
+                        }}
+                        style={{ width: '100%', padding: '3px 8px', fontSize: 11 }}
+                      />
+                    : <span
+                        onClick={() => startEditing(s)}
+                        title="Click to edit title"
+                        style={{ cursor: 'text', display: 'block', minWidth: 80 }}
+                      >
+                        {s.title ?? <span style={{ color: 'var(--gc-text-dim)' }}>(untitled)</span>}
+                      </span>
+                  }
+                </td>
                 <td style={{ padding: '8px 14px', color: 'var(--gc-text-mid)' }}>{s.message_count ?? '—'}</td>
                 <td style={{ padding: '8px 14px', color: 'var(--gc-text-dim)', fontSize: 10 }}>{new Date(s.updated_at.replace(' ', 'T') + 'Z').toLocaleString()}</td>
                 <td style={{ padding: '8px 14px' }}>
