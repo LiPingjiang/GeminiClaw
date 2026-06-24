@@ -635,7 +635,7 @@ export default function AgentsPage() {
                   <Copy size={11} />
                   {copying ? '…' : 'COPY'}
                 </button>
-                {detail.name !== '双子星' && (
+                {!['双子星', '管理员'].includes(detail.name) && (
                   <button onClick={archiveAgent} className="sp-btn" style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, borderColor: 'var(--gc-text-dim)', color: 'var(--gc-text-dim)' }}>
                     <Archive size={11} />
                     ARCHIVE
