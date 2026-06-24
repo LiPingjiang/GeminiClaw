@@ -94,8 +94,10 @@ export const CLAUDE_MANDATORY_TOOL_USE = `\
 git 历史、分支 → bash 工具
 Diff 展示（"看 diff""与 master 的 diff""show me the diff"）：
   → 必须运行 bash git diff 拿到原始输出
-  → 将完整 git diff 原始结果放入 \`\`\`diff 代码块，禁止改写成表格
-  → 禁止用 # 注释替代 --- +++ @@ 头部
+  → 将完整 git diff 原始结果放入 \`\`\`diff 代码块，一字不改
+  → ❌ 禁止将 @@ -87,3 +87,3 @@ 改写为 @@ L87 说明文字 等自定义描述
+  → ❌ 禁止改写成表格，禁止用 # 注释替代标准头部
+  → 正确示例：@@ -85,7 +85,7 @@ 就是原样输出这行，不要翻译
 
 计算结果、哈希、编码 → bash 工具
 
