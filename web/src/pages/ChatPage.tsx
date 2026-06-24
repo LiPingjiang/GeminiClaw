@@ -498,6 +498,7 @@ export default function ChatPage() {
               value={input}
               onChange={e => setInput(e.target.value)}
               onKeyDown={e => {
+                if (e.nativeEvent.isComposing || e.keyCode === 229) return
                 if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() }
               }}
               placeholder="ENTER TRANSMISSION… (ENTER=SEND  SHIFT+ENTER=NEWLINE)"
