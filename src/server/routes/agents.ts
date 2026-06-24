@@ -57,7 +57,18 @@ export async function agentsRoute(fastify, opts) {
             return reply.status(404).send({ error: "Session not found" });
         const templateName = request.body?.template_name ?? "base";
         const agentNameOverride = request.body?.agent_name ?? undefined;
-        const agent = agentRepo.createMainAgent(sessionId, templateName, agentNameOverride);
+        // 默认或显式指定"双子星"时，复用全局唯一的双子星实体
+        const isDefault = !agentNameOverride || agentNameOverride === "双子星";
+        if (isDefault) {
+            const existing = db.prepare(
+                `SELECT * FROM agents WHERE agent_name = '双子星' AND depth = 0 AND status = 'active' ORDER BY created_at ASC LIMIT 1`
+            ).get();
+            if (existing) {
+                db.prepare(`UPDATE chat_sessions SET main_agent_id = ? WHERE id = ?`).run(existing.id, sessionId);
+                return reply.status(201).send({ agent: existing });
+            }
+        }
+        const agent = agentRepo.createMainAgent(sessionId, templateName, agentNameOverride ?? "双子星");
         return reply.status(201).send({ agent });
     });
     // ── PATCH /v1/agents/:id ────────────────────────────────────────────────────
@@ -69,6 +80,9 @@ export async function agentsRoute(fastify, opts) {
         if (!agent)
             return reply.status(404).send({ error: "Agent not found" });
         const { agent_name, description, status } = request.body ?? {};
+        if (agent.agent_name === "双子星" && status === "archived") {
+            return reply.status(403).send({ error: "双子星 is a protected agent and cannot be archived" });
+        }
         const validStatuses = ["active", "idle", "completed", "error", "archived"];
         if (status !== undefined && !validStatuses.includes(status)) {
             return reply.status(400).send({ error: `Invalid status: ${status}` });

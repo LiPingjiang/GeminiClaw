@@ -83,12 +83,12 @@ export default function ChatPage() {
     setSessions(rawSessions.map(toItem))
     setAgents(agentList)
 
-    // One-time: bind every unbound session to "助手"
+    // One-time: bind every unbound session to "双子星"
     if (!autoBindDoneRef.current) {
       autoBindDoneRef.current = true
       const unbound = rawSessions.filter(s => !s.main_agent_id && !agentBySession.has(s.id))
       if (unbound.length > 0) {
-        await Promise.all(unbound.map(s => api.createSessionAgent(s.id, 'base', '助手')))
+        await Promise.all(unbound.map(s => api.createSessionAgent(s.id, 'base', '双子星')))
         const [newSessions, newAgents] = await Promise.all([api.getSessions(), api.getAgents()])
         const newById = new Map(newAgents.map(a => [a.id, a]))
         const newBySession = new Map(newAgents.filter(a => a.session_id).map(a => [a.session_id!, a]))
@@ -203,7 +203,7 @@ export default function ChatPage() {
         // Register a new agent for this session (only if session was just created)
         if (isNewSession) {
           setSelectedAgent(null)  // 清空过滤器，让新 session 可见
-          api.createSessionAgent(id, 'base').then(() => loadAll())
+          api.createSessionAgent(id, 'base', '双子星').then(() => loadAll())
         } else {
           loadAll()
         }
