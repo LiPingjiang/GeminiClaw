@@ -42,6 +42,7 @@ export function buildStrategy(
       compactThresholdBytes: config.memory.compactThresholdBytes,
       maxActiveTopics: config.memory.maxActiveTopics,
       contextTokenBudget: config.memory.contextTokenBudget ?? 120_000,
+      routingDefault: config.routing.default,
     })
   }
   return new BufferStrategy({ recentMessageLimit: config.memory.recentMessageLimit })

@@ -12,6 +12,7 @@ import { buildContext } from "../context.js"
 import { MemoryPaths } from "../paths.js"
 import { WorkingMemoryBuilder } from "../working-memory.js"
 import { logger as persistentLogger } from "../../utils/logger.js"
+import { buildSystemPrompt, type AgentConfig } from "../../system-prompt/builder.js"
 
 interface LayeredStrategyConfig {
   db: Db
@@ -24,6 +25,8 @@ interface LayeredStrategyConfig {
   compactThresholdBytes: number
   maxActiveTopics: number
   memoryRoot?: string
+  /** The routing model used to build the global system prompt (for per-agent override). */
+  routingDefault?: string
 }
 
 export class LayeredStrategy implements MemoryStrategy {
@@ -104,14 +107,29 @@ export class LayeredStrategy implements MemoryStrategy {
       }
     }
 
-    // 4. 组装 context（动态注入 workspace memory）
+    // 4. 组装 context（动态注入 workspace memory + per-agent prompt）
     const _date = new Date().toISOString().slice(0, 10)
     const _mem = agentId
       ? this.wm.renderSystemPrompt(agentId, _date, "")
       : this.wm.renderGlobalOnly(_date)
     const workspaceMem = _mem ? `\n\n---\n\n${_mem}` : ""
+
+    // Per-agent system prompt: rebuild if agent has custom config
+    let basePrompt = this.config.systemPrompt
+    if (agentId) {
+      const agentRow = this.db.prepare(`SELECT config FROM agents WHERE id = ? LIMIT 1`).get(agentId) as { config: string | null } | undefined
+      if (agentRow?.config) {
+        try {
+          const agentConfig: AgentConfig = JSON.parse(agentRow.config)
+          if (agentConfig.skills !== undefined || agentConfig.constants !== undefined || agentConfig.model !== undefined) {
+            basePrompt = buildSystemPrompt(this.config.routingDefault, agentConfig)
+          }
+        } catch { /* malformed config, use global */ }
+      }
+    }
+
     const messages = buildContext({
-      systemPrompt: this.config.systemPrompt + workspaceMem,
+      systemPrompt: basePrompt + workspaceMem,
       activeTopics,
       topicDocs,
       recentHistory,

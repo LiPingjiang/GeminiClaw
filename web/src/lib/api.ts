@@ -273,6 +273,17 @@ export const api = {
       body: JSON.stringify({ title }),
     }).then(() => undefined).catch(() => undefined),
 
+  getAgentConfig: (id: string): Promise<{ agentId: string; config: { skills: string[] | null; constants: Record<string, string | null>; model: string | null } }> =>
+    fetch(`/v1/agents/${encodeURIComponent(id)}/config`, { headers: authHeaders() })
+      .then(r => r.ok ? r.json() : Promise.reject()).catch(() => ({ agentId: id, config: { skills: null, constants: {}, model: null } })),
+
+  updateAgentConfig: (id: string, config: { skills?: string[] | null; constants?: Record<string, string | null>; model?: string | null }): Promise<void> =>
+    fetch(`/v1/agents/${encodeURIComponent(id)}/config`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify(config),
+    }).then(() => undefined).catch(() => undefined),
+
   getAgent: (id: string): Promise<Agent & { session_id?: string; template_name?: string; description?: string; depth?: number }> =>
     fetch(`/v1/agents/${encodeURIComponent(id)}`, { headers: authHeaders() })
       .then(r => r.ok ? r.json() : Promise.reject())

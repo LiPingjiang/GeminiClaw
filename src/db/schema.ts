@@ -145,4 +145,10 @@ export function migrate(db: Db): void {
       CREATE INDEX IF NOT EXISTS idx_chat_messages_session ON chat_messages(session_id, id);
     `)
   }
+
+  // Add per-agent config column (skills, constants overrides, model)
+  const agentColumns = db.prepare(`PRAGMA table_info(agents)`).all() as Array<{ name: string }>
+  if (!new Set(agentColumns.map(c => c.name)).has("config")) {
+    db.exec(`ALTER TABLE agents ADD COLUMN config TEXT`)
+  }
 }

@@ -147,6 +147,9 @@ export default function AgentsPage() {
   const [saving, setSaving] = useState(false)
   const [copying, setCopying] = useState(false)
   const [tab, setTab] = useState<'config' | 'prompt' | 'skills'>('config')
+  const [agentConfig, setAgentConfig] = useState<{ skills: string[] | null; constants: Record<string, string | null>; model: string | null }>({ skills: null, constants: {}, model: null })
+  const [configDirty, setConfigDirty] = useState(false)
+  const [configSaving, setConfigSaving] = useState(false)
   const [promptData, setPromptData] = useState<Awaited<ReturnType<typeof api.getAgentSystemPrompt>> | null>(null)
   const [promptLoading, setPromptLoading] = useState(false)
   const [skills, setSkills] = useState<Array<{ name: string; description: string }>>([])
@@ -165,15 +168,28 @@ export default function AgentsPage() {
     setTab('config')
     setPromptData(null)
     setDetailLoading(true)
+    if (skills.length === 0) loadSkills() // pre-load for config tab skill checkboxes
     try {
       const d = await api.getAgent(id)
       setDetail(d)
       setEditName(d.name)
       setEditDesc(d.description ?? '')
+      // Load per-agent config
+      const cfg = await api.getAgentConfig(d.id)
+      setAgentConfig(cfg.config)
+      setConfigDirty(false)
     } catch {
       setDetail(null)
     }
     setDetailLoading(false)
+  }
+
+  const saveAgentConfig = async () => {
+    if (!detail) return
+    setConfigSaving(true)
+    await api.updateAgentConfig(detail.id, agentConfig)
+    setConfigDirty(false)
+    setConfigSaving(false)
   }
 
   const loadPrompt = async () => {
@@ -384,9 +400,62 @@ export default function AgentsPage() {
                   rows={3} style={{ width: '100%', padding: '5px 8px', fontSize: 11, resize: 'vertical' }} />
               </div>
 
-              <button onClick={saveDetail} disabled={saving} className="sp-btn" style={{ width: '100%', marginBottom: 8 }}>
-                {saving ? 'SAVING…' : 'SAVE'}
+              <button onClick={saveDetail} disabled={saving} className="sp-btn" style={{ width: '100%', marginBottom: 12 }}>
+                {saving ? 'SAVING…' : 'SAVE NAME/DESC'}
               </button>
+
+              {/* Per-agent config */}
+              <div style={{ borderTop: '1px solid var(--gc-border)', paddingTop: 12, marginBottom: 12 }}>
+                <div style={{ fontSize: 8, letterSpacing: '0.12em', color: 'var(--gc-text-label)', textTransform: 'uppercase', marginBottom: 8 }}>Per-Agent 配置</div>
+
+                {/* Model override */}
+                <div style={{ marginBottom: 10 }}>
+                  <div style={{ fontSize: 8, color: 'var(--gc-text-dim)', marginBottom: 4 }}>路由模型（空=继承全局 routing.default）</div>
+                  <input className="sp-input" value={agentConfig.model ?? ''}
+                    onChange={e => { setAgentConfig(c => ({ ...c, model: e.target.value || null })); setConfigDirty(true) }}
+                    placeholder="e.g. mcli/claude-sonnet-4-6"
+                    style={{ width: '100%', padding: '4px 8px', fontSize: 10 }} />
+                </div>
+
+                {/* Skills whitelist */}
+                {skills.length > 0 && (
+                  <div style={{ marginBottom: 10 }}>
+                    <div style={{ fontSize: 8, color: 'var(--gc-text-dim)', marginBottom: 4 }}>
+                      技能（不勾选=禁用；全部不勾=不加载任何技能；留空复选框=继承全局所有技能）
+                    </div>
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 6 }}>
+                      <input type="checkbox"
+                        checked={agentConfig.skills === null}
+                        onChange={e => { setAgentConfig(c => ({ ...c, skills: e.target.checked ? null : [] })); setConfigDirty(true) }}
+                        id="skills-inherit" />
+                      <label htmlFor="skills-inherit" style={{ fontSize: 9, color: 'var(--gc-accent2)', cursor: 'pointer' }}>
+                        继承全局（加载所有技能）
+                      </label>
+                    </div>
+                    {agentConfig.skills !== null && skills.map(sk => (
+                      <div key={sk.name} style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 4 }}>
+                        <input type="checkbox"
+                          checked={(agentConfig.skills ?? []).includes(sk.name)}
+                          onChange={e => {
+                            const current = agentConfig.skills ?? []
+                            const next = e.target.checked ? [...current, sk.name] : current.filter(s => s !== sk.name)
+                            setAgentConfig(c => ({ ...c, skills: next }))
+                            setConfigDirty(true)
+                          }}
+                          id={`skill-${sk.name}`} />
+                        <label htmlFor={`skill-${sk.name}`} style={{ fontSize: 9, color: 'var(--gc-text)', cursor: 'pointer' }}>
+                          {sk.name}
+                          <span style={{ marginLeft: 6, color: 'var(--gc-text-dim)', fontSize: 8 }}>{sk.description.slice(0, 30)}</span>
+                        </label>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <button onClick={saveAgentConfig} disabled={!configDirty || configSaving} className="sp-btn sp-btn-cyan" style={{ width: '100%', fontSize: 10 }}>
+                  {configSaving ? 'SAVING…' : configDirty ? 'SAVE AGENT CONFIG ✱' : 'AGENT CONFIG SAVED'}
+                </button>
+              </div>
 
               <div style={{ display: 'flex', gap: 8 }}>
                 <button onClick={copyAgent} disabled={copying} className="sp-btn sp-btn-cyan" style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}>

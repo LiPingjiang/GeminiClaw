@@ -127,6 +127,33 @@ export async function agentsRoute(fastify, opts) {
         const updated = taskRepo.getById(request.params.id);
         return reply.send({ task: updated });
     });
+    // ── GET /v1/agents/:id/config ────────────────────────────────────────────────
+    fastify.get("/v1/agents/:id/config", async (request, reply) => {
+        if (!checkAuth(request, authToken)) return reply.status(401).send({ error: "Unauthorized" });
+        const agent = agentRepo.getById(request.params.id);
+        if (!agent) return reply.status(404).send({ error: "Agent not found" });
+        const raw = (agent as any).config;
+        let config = { skills: null, constants: {}, model: null };
+        if (raw) {
+            try { config = { ...config, ...JSON.parse(raw) }; } catch { /* ignore */ }
+        }
+        return reply.send({ agentId: agent.id, config });
+    });
+    // ── PATCH /v1/agents/:id/config ──────────────────────────────────────────────
+    fastify.patch("/v1/agents/:id/config", async (request, reply) => {
+        if (!checkAuth(request, authToken)) return reply.status(401).send({ error: "Unauthorized" });
+        const agent = agentRepo.getById(request.params.id);
+        if (!agent) return reply.status(404).send({ error: "Agent not found" });
+        const body = request.body as { skills?: string[] | null; constants?: Record<string, string | null>; model?: string | null };
+        // Merge with existing config
+        const existing = (() => { try { return JSON.parse((agent as any).config ?? "{}") } catch { return {} } })();
+        const merged = { ...existing, ...body };
+        // Remove nulled-out top-level keys to keep clean
+        if (merged.skills === null) merged.skills = null;  // keep null (means inherit global)
+        db.prepare(`UPDATE agents SET config = ?, updated_at = datetime('now') WHERE id = ?`)
+          .run(JSON.stringify(merged), agent.id);
+        return reply.send({ agentId: agent.id, config: merged });
+    });
     // ── GET /v1/agents/:id/system-prompt ─────────────────────────────────────────
     // 返回 agent 系统 prompt 的结构化分层数据（各层内容 + 元信息）
     fastify.get("/v1/agents/:id/system-prompt", async (request, reply) => {

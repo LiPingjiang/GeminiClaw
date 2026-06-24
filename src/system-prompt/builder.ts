@@ -6,8 +6,8 @@
  *   2. universal  — code constants injected for all models
  *   3. model-spec — code constants injected conditionally by model family
  *
- * This module owns the "how to build the prompt" logic.
- * AGENT.md owns the "who am I and what do I know" content.
+ * Per-agent config (AgentConfig) allows overriding skills, constants, and model
+ * at the agent level. Falls back to global defaults when not specified.
  */
 
 import { existsSync, readFileSync, readdirSync, statSync } from "fs"
@@ -24,6 +24,25 @@ import {
 } from "./constants.js"
 import { detectModelFamily, type ModelFamily } from "./families.js"
 
+// ── Per-agent config type ─────────────────────────────────────────────────
+
+export interface AgentConfig {
+  /** Whitelist of skill names to load. null/undefined = all global skills. [] = none. */
+  skills?: string[] | null
+  /** Override specific code constants. null value = disable that constant. */
+  constants?: Partial<Record<ConstantKey, string | null>>
+  /** Override routing model for this agent. null/undefined = use global routing.default. */
+  model?: string | null
+}
+
+export type ConstantKey =
+  | "TOOL_USE_ENFORCEMENT"
+  | "PREREQUISITE_CHECKS"
+  | "GROUNDING_VERIFICATION"
+  | "CLAUDE_MANDATORY_TOOL_USE"
+  | "CLAUDE_ACT_DONT_ASK"
+  | "STRICT_MANDATORY_TOOL_USE"
+
 // ── Identity: load AGENT.md ───────────────────────────────────────────────
 
 function loadIdentity(): string {
@@ -34,9 +53,9 @@ function loadIdentity(): string {
   return "你是 GeminiClaw，一个智能 AI 助手。回答简洁、准确、有帮助。"
 }
 
-// ── Skills: existing logic, unchanged ────────────────────────────────────
+// ── Skills: per-agent whitelist or global ────────────────────────────────
 
-function loadSkillsPrompt(skillsDir: string): string {
+function loadSkillsPrompt(skillsDir: string, allowedSkills?: string[] | null): string {
   if (!existsSync(skillsDir)) return ""
   let entries: string[]
   try {
@@ -47,6 +66,8 @@ function loadSkillsPrompt(skillsDir: string): string {
   const parts: string[] = []
   for (const entry of entries) {
     if (entry.startsWith(".")) continue
+    // Per-agent whitelist filter (null/undefined = allow all)
+    if (allowedSkills !== null && allowedSkills !== undefined && !allowedSkills.includes(entry)) continue
     const entryPath = join(skillsDir, entry)
     try {
       if (!statSync(entryPath).isDirectory()) continue
@@ -69,49 +90,61 @@ function loadSkillsPrompt(skillsDir: string): string {
   return "\n\n---\n\n## 可用技能\n\n" + parts.join("\n\n---\n\n")
 }
 
-// ── Model-specific guidance blocks ───────────────────────────────────────
+// ── Constants: per-agent override with fallback ───────────────────────────
 
-function getModelGuidance(family: ModelFamily): string {
-  switch (family) {
-    case "claude":
-      // Lightweight: mandatory tool use targeting Claude's specific failure mode
-      // (answering from in-context memory instead of re-fetching)
-      // + act-don't-ask for clarity
-      return [CLAUDE_MANDATORY_TOOL_USE, CLAUDE_ACT_DONT_ASK].join("\n\n")
+/** Resolve a constant: agent override > global. null = disabled. */
+function resolveConstant(
+  key: ConstantKey,
+  globalValue: string,
+  agentConstants?: AgentConfig["constants"],
+): string {
+  if (!agentConstants || !(key in agentConstants)) return globalValue
+  const override = agentConstants[key]
+  return override ?? "" // null/empty = disabled
+}
 
-    case "gemini":
-    case "gpt":
-    case "unknown":
-      // Strict: full NEVER-from-memory guidance for models more prone to hallucination
-      return STRICT_MANDATORY_TOOL_USE
+// ── Model-specific guidance ───────────────────────────────────────────────
+
+function getModelGuidance(
+  family: ModelFamily,
+  agentConstants?: AgentConfig["constants"],
+): string {
+  if (family === "claude") {
+    const mandatory = resolveConstant("CLAUDE_MANDATORY_TOOL_USE", CLAUDE_MANDATORY_TOOL_USE, agentConstants)
+    const actDontAsk = resolveConstant("CLAUDE_ACT_DONT_ASK", CLAUDE_ACT_DONT_ASK, agentConstants)
+    return [mandatory, actDontAsk].filter(Boolean).join("\n\n")
   }
+  return resolveConstant("STRICT_MANDATORY_TOOL_USE", STRICT_MANDATORY_TOOL_USE, agentConstants)
 }
 
 // ── Main export ───────────────────────────────────────────────────────────
 
 /**
- * Build the full system prompt.
+ * Build the full system prompt, optionally with per-agent overrides.
  *
  * @param routingDefault  e.g. "mcli/claude-opus-4-6" from config.routing.default
- *                        If omitted, universal-only guidance is used.
+ * @param agentConfig     per-agent overrides for skills, constants, model
  */
-export function buildSystemPrompt(routingDefault?: string): string {
-  const family = routingDefault ? detectModelFamily(routingDefault) : "unknown"
+export function buildSystemPrompt(routingDefault?: string, agentConfig?: AgentConfig): string {
+  // Effective model: agent override > global routing
+  const effectiveModel = agentConfig?.model ?? routingDefault
+  const family = effectiveModel ? detectModelFamily(effectiveModel) : "unknown"
+  const agentConstants = agentConfig?.constants
 
   const parts: string[] = [
     // 1. Identity (user-managed)
     loadIdentity(),
 
-    // 2. Universal guidance (all models)
-    TOOL_USE_ENFORCEMENT,
-    PREREQUISITE_CHECKS,
-    GROUNDING_VERIFICATION,
+    // 2. Universal guidance (all models) — per-agent overrideable
+    resolveConstant("TOOL_USE_ENFORCEMENT", TOOL_USE_ENFORCEMENT, agentConstants),
+    resolveConstant("PREREQUISITE_CHECKS", PREREQUISITE_CHECKS, agentConstants),
+    resolveConstant("GROUNDING_VERIFICATION", GROUNDING_VERIFICATION, agentConstants),
 
-    // 3. Model-family-specific guidance
-    getModelGuidance(family),
+    // 3. Model-family-specific guidance — per-agent overrideable
+    getModelGuidance(family, agentConstants),
 
-    // 4. Skills (existing, cwd-scoped)
-    loadSkillsPrompt(join(process.cwd(), "skills")),
+    // 4. Skills — per-agent whitelist (null/undefined = all, [] = none)
+    loadSkillsPrompt(join(process.cwd(), "skills"), agentConfig?.skills),
   ]
 
   return parts.filter(Boolean).join("\n\n")
