@@ -259,6 +259,19 @@ export const api = {
       .then(r => r.ok ? r.json() : { data: [] })
       .then((d: { data?: { id: string }[] }) => (d.data ?? []).map(m => m.id))
       .catch(() => []),
+
+  generateSessionTitle: (sessionId: string): Promise<{ title: string }> =>
+    fetch(`/v1/sessions/${encodeURIComponent(sessionId)}/title/generate`, {
+      method: 'POST',
+      headers: authHeaders(),
+    }).then(r => r.ok ? r.json() : Promise.reject(new Error('Failed'))),
+
+  updateSessionTitle: (sessionId: string, title: string): Promise<void> =>
+    fetch(`/v1/sessions/${encodeURIComponent(sessionId)}/title`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ title }),
+    }).then(() => undefined).catch(() => undefined),
 }
 
 // ── Theme ──────────────────────────────────────────────────────

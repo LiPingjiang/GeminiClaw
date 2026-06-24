@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Trash2, RefreshCw } from 'lucide-react'
+import { Trash2, RefreshCw, Sparkles } from 'lucide-react'
 import { api, type Session } from '@/lib/api'
 
 export default function SessionsPage() {
   const [sessions, setSessions] = useState<Session[]>([])
   const [loading, setLoading] = useState(true)
+  const [generating, setGenerating] = useState<Record<string, boolean>>({})
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -17,6 +18,18 @@ export default function SessionsPage() {
   const handleDelete = async (id: string) => {
     await api.deleteSession(id)
     await load()
+  }
+
+  const handleGenerateTitle = async (id: string) => {
+    setGenerating(prev => ({ ...prev, [id]: true }))
+    try {
+      const { title } = await api.generateSessionTitle(id)
+      setSessions(prev => prev.map(s => s.id === id ? { ...s, title } : s))
+    } catch {
+      // ignore
+    } finally {
+      setGenerating(prev => ({ ...prev, [id]: false }))
+    }
   }
 
   return (
@@ -33,7 +46,7 @@ export default function SessionsPage() {
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11, fontFamily: "'Share Tech Mono', monospace" }}>
           <thead>
             <tr style={{ background: 'var(--gc-panel)' }}>
-              {['Session ID', 'Title', 'Messages', 'Updated', ''].map(h => (
+              {['Session ID', 'Title', 'Messages', 'Updated', '', ''].map(h => (
                 <th key={h} style={{ padding: '6px 14px', textAlign: 'left', fontSize: 9, letterSpacing: '0.15em', color: 'var(--gc-text-label)', textTransform: 'uppercase', borderBottom: '1px solid var(--gc-border)', fontWeight: 'normal' }}>{h}</th>
               ))}
             </tr>
@@ -54,6 +67,18 @@ export default function SessionsPage() {
                 <td style={{ padding: '8px 14px', color: 'var(--gc-text)' }}>{s.title ?? '(untitled)'}</td>
                 <td style={{ padding: '8px 14px', color: 'var(--gc-text-mid)' }}>{s.message_count ?? '—'}</td>
                 <td style={{ padding: '8px 14px', color: 'var(--gc-text-dim)', fontSize: 10 }}>{new Date(s.updated_at.replace(' ', 'T') + 'Z').toLocaleString()}</td>
+                <td style={{ padding: '8px 14px' }}>
+                  <button
+                    onClick={() => handleGenerateTitle(s.id)}
+                    disabled={generating[s.id]}
+                    title="Generate title with AI"
+                    style={{ background: 'none', border: 'none', cursor: generating[s.id] ? 'wait' : 'pointer', color: 'var(--gc-text-dim)', padding: 0, transition: 'color 0.15s' }}
+                    onMouseEnter={e => { if (!generating[s.id]) (e.currentTarget.style.color = 'var(--gc-accent2)') }}
+                    onMouseLeave={e => (e.currentTarget.style.color = 'var(--gc-text-dim)')}
+                  >
+                    <Sparkles size={12} style={{ animation: generating[s.id] ? 'blink 1s step-end infinite' : 'none' }} />
+                  </button>
+                </td>
                 <td style={{ padding: '8px 14px' }}>
                   <button onClick={() => handleDelete(s.id)} title="Delete session"
                     style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--gc-text-dim)', padding: 0, transition: 'color 0.15s' }}
