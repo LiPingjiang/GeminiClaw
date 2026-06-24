@@ -167,6 +167,39 @@ Evolution happens in the background. It never interrupts your work.
 
 ---
 
+## System Prompt Architecture
+
+Inspired by [Hermes-agent](https://github.com/NousResearch/hermes-agent)'s `stable / context / volatile` three-tier design. The system prompt is assembled from three sources at startup — not hardcoded in a single file:
+
+```
+buildSystemPrompt("mcli/claude-opus-4-6")
+  │
+  ├── ~/.gemeniclaw/AGENT.md          ← identity + domain knowledge  (user-managed)
+  │
+  ├── Universal guidance              ← code constants, all models
+  │     ├── TOOL_USE_ENFORCEMENT      — act, don't describe
+  │     ├── PREREQUISITE_CHECKS       — gather context before acting
+  │     └── GROUNDING_VERIFICATION   — claims backed by tool output
+  │
+  └── Model-family guidance           ← injected conditionally by detected family
+        ├── claude  → lightweight mandatory-tool-use
+        │             (targets the "answer from in-context memory" failure mode)
+        └── gemini / gpt → strict NEVER-from-memory block
+```
+
+**Key design decisions:**
+
+| Concern | Approach |
+|---|---|
+| Identity / domain knowledge | `~/.gemeniclaw/AGENT.md` — user-owned, not version-controlled |
+| Behavioral rules | `src/system-prompt/constants.ts` — code constants, in git |
+| Model-conditional injection | `detectModelFamily("mcli/claude-opus-4-6")` → `"claude"` |
+| Per-agent identity | `~/.gemeniclaw/agents/{id}/AGENT.md` — unchanged |
+
+The separation means behavioral rules survive prompt rewrites and can be unit-tested independently of `AGENT.md` content.
+
+---
+
 ## Memory: Layered Topics
 
 <p align="center">
@@ -339,6 +372,10 @@ src/
 ├── server/               ← Fastify HTTP server + routes
 ├── providers/            ← LLM provider adapters (Anthropic, mcli, Friday)
 ├── memory/               ← session + layered long-term memory (SQLite)
+├── system-prompt/        ← layered system prompt builder (model-conditional injection)
+│   ├── builder.ts        ← buildSystemPrompt(routingDefault?) — main entry
+│   ├── constants.ts      ← behavioral guidance blocks (code-owned, version-controlled)
+│   └── families.ts       ← model family detection (claude / gemini / gpt / unknown)
 ├── tools/                ← 25 built-in tools (exec, read, write, browser, delegate_to...)
 ├── multi-agent/          ← cross-agent delegation (mailbox, lifecycle-bus, result-injector)
 ├── agents/               ← named agent templates (config-driven)
@@ -350,6 +387,11 @@ src/
 ├── guidance/             ← agent gate + guidance layer
 ├── cli/                  ← TUI client (gc watch)
 └── config/               ← config loader (Zod schema, reads config.yaml)
+
+scripts/
+├── replay-session.ts          ← replay a session turn against Claude, save prompt + response
+├── verify-prompt-behavior.mjs ← A/B compare two system prompts (no tools, fast)
+└── verify-prompt-full.mjs     ← A/B compare with real bash tool execution (complete)
 ```
 
 ---
@@ -377,6 +419,11 @@ src/
 | Evolution: ApprovalGate + auto-approve by risk level | ✅ |
 | Skill Evolution: conversation → ReflectionCandidate | ✅ |
 | Skill Evolution: long-session task decomposition (distill + rolling segment) | ✅ |
+| System prompt: 3-layer architecture (identity / universal / model-family) | ✅ |
+| System prompt: model-family detection + conditional guidance injection | ✅ |
+| Dev tools: session replay (`scripts/replay-session.ts`) | ✅ |
+| Dev tools: system prompt A/B verification with real bash tools | ✅ |
+| Dev tools: generalized replay system (`src/replay/`) | 🔧 planned |
 | 680 tests across 66 files, all passing | ✅ |
 
 ---
@@ -390,6 +437,72 @@ pnpm build          # compile TypeScript
 pnpm test           # run all tests (vitest, 680 tests, 66 files)
 pnpm start          # production (node dist/index.js)
 ```
+
+---
+
+## Development Tools
+
+### Session Replay
+
+Replay a specific turn of a conversation against Claude and inspect the exact prompt sent and response received. Useful for diagnosing unexpected agent behavior.
+
+```bash
+# Replay session up to message id 844, save to /tmp/
+npx tsx scripts/replay-session.ts <sessionId> <upToMsgId>
+
+# Example
+npx tsx scripts/replay-session.ts 5fbb3c60-17c6-43bd-b503-04abfc8c250b 844
+# Output saved to /tmp/replay-5fbb3c60-msg844.json
+# Fields: request.systemPrompt, request.messages, responseText, response.usage
+```
+
+**Limitation:** Tool call outputs are not currently persisted to the database (known issue). The replay context will be missing tool results from previous turns, which means `contextFaithfulness` may be lower than the original session. This is reported in the output.
+
+### System Prompt A/B Verification
+
+Verify that a change to the system prompt produces the expected behavior change. Two variants:
+
+**Fast (no tool execution):**
+```bash
+# Compare old vs new system prompt — text only, ~5s
+node scripts/verify-prompt-behavior.mjs
+```
+
+**Complete (with real bash tool execution):**
+```bash
+pnpm build   # required: loads from dist/
+
+# Runs 4 scenarios in parallel:
+#   Scenario A — Claude has file content in tool_result context, asks for 20 lines
+#   Scenario B — No prior context, asks for 20 lines from scratch
+# Each scenario: old prompt vs new prompt
+node scripts/verify-prompt-full.mjs
+# Output saved to /tmp/verify_full_v2.json
+```
+
+The script runs assertions and prints a verdict:
+```
+✅ [A] 新prompt 重新调了 bash
+✅ [A] 新prompt bash 读到 ≥15 行代码
+✅ [A] 新prompt 最终回复 ≥15 行
+✅ [B] 两个 prompt 都拿到了 ≥20 行代码
+结论: ✅ 验证通过
+```
+
+### Planned: Generalized Replay System
+
+A unified `src/replay/` module is planned (Task #3) that will combine session replay and A/B prompt comparison into a single CLI:
+
+```bash
+# Future API (not yet implemented)
+npx tsx src/replay/index.ts \
+  --session 5fbb3c60 \
+  --at 844 \
+  --compare \       # prompt A = AGENT.md only, prompt B = current buildSystemPrompt()
+  --tools           # execute real bash commands
+```
+
+It will report `contextFaithfulness` (0–1) alongside behavior diffs, making missing tool outputs explicit rather than silently partial.
 
 ---
 
