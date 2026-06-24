@@ -34,7 +34,7 @@ function ContentPre({ text, empty }: { text: string; empty?: string }) {
 }
 
 function StructuredPrompt({ data }: { data: PromptData }) {
-  const { layers, model, modelFamily, totalChars, architectureLimits } = data
+  const { layers, model, modelFamily, totalChars } = data
   return (
     <div>
       {/* Header */}
@@ -102,12 +102,6 @@ function StructuredPrompt({ data }: { data: PromptData }) {
               </div>
             ))}
       </LayerBlock>
-
-      {/* Architecture limits */}
-      <div style={{ padding: '8px 10px', background: 'var(--gc-error-bg)', border: '1px solid var(--gc-error-border)', fontSize: 8, color: 'var(--gc-text-dim)', lineHeight: 1.8 }}>
-        <div style={{ color: 'var(--gc-red)', letterSpacing: '0.1em', marginBottom: 4, textTransform: 'uppercase' }}>✗ 架构限制（当前不支持）</div>
-        {architectureLimits.map((l, i) => <div key={i}>· {l}</div>)}
-      </div>
     </div>
   )
 }
@@ -154,6 +148,8 @@ export default function AgentsPage() {
   const [promptLoading, setPromptLoading] = useState(false)
   const [skills, setSkills] = useState<Array<{ name: string; description: string }>>([])
   const [skillsLoading, setSkillsLoading] = useState(false)
+  const [models, setModels] = useState<string[]>([])
+  const [creating, setCreating] = useState(false)
 
   const load = async () => {
     setLoading(true)
@@ -169,6 +165,7 @@ export default function AgentsPage() {
     setPromptData(null)
     setDetailLoading(true)
     if (skills.length === 0) loadSkills() // pre-load for config tab skill checkboxes
+    loadModels() // pre-load for model dropdown
     try {
       const d = await api.getAgent(id)
       setDetail(d)
@@ -208,10 +205,28 @@ export default function AgentsPage() {
     setSkillsLoading(false)
   }
 
+  const loadModels = async () => {
+    if (models.length > 0) return
+    setModels(await api.getModels())
+  }
+
+  const createAgent = async () => {
+    const name = window.prompt('Agent 名称（留空使用默认名）', '')
+    if (name === null) return // cancelled
+    setCreating(true)
+    try {
+      const { sessionId } = await api.createSession()
+      await api.createSessionAgent(sessionId, 'base', name.trim() || undefined)
+      await load()
+    } catch { /* ignore */ }
+    setCreating(false)
+  }
+
   const switchTab = (t: 'config' | 'prompt' | 'skills') => {
     setTab(t)
     if (t === 'prompt' && !promptData) loadPrompt()
     if (t === 'skills' && skills.length === 0) loadSkills()
+    if (t === 'config') loadModels()
   }
 
   const saveDetail = async () => {
@@ -246,14 +261,19 @@ export default function AgentsPage() {
 
   return (
     <div style={{ display: 'flex', height: '100%', overflow: 'hidden' }}>
-      {/* ── Agent list ── */}
-      <div style={{ flex: 1, padding: 24, overflowY: 'auto', background: 'var(--gc-bg)' }}>
+      {/* ── Agent list (only when no agent selected) ── */}
+      {!selectedId && <div style={{ flex: 1, padding: 24, overflowY: 'auto', background: 'var(--gc-bg)' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
           <div style={{ fontSize: 9, letterSpacing: '0.2em', color: 'var(--gc-text-label)', textTransform: 'uppercase' }}>◈ UNIT REGISTRY</div>
-          <button onClick={load} disabled={loading} className="sp-btn sp-btn-cyan" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <RefreshCw size={10} style={{ animation: loading ? 'spin 1s linear infinite' : 'none' }} />
-            REFRESH
-          </button>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button onClick={createAgent} disabled={creating} className="sp-btn sp-btn-cyan" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              + NEW AGENT
+            </button>
+            <button onClick={load} disabled={loading} className="sp-btn" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <RefreshCw size={10} style={{ animation: loading ? 'spin 1s linear infinite' : 'none' }} />
+              REFRESH
+            </button>
+          </div>
         </div>
 
         {loading && <div style={{ fontSize: 9, color: 'var(--gc-text-dim)', letterSpacing: '0.1em' }}>LOADING…</div>}
@@ -307,12 +327,17 @@ export default function AgentsPage() {
             <div style={{ fontSize: 9, letterSpacing: '0.15em', textTransform: 'uppercase' }}>NO UNITS ACTIVE</div>
           </div>
         )}
-      </div>
+      </div>}
 
-      {/* ── Detail panel ── */}
+      {/* ── Detail panel (full area) ── */}
       {selectedId && (
-        <div style={{ width: 320, borderLeft: '1px solid var(--gc-border)', background: 'var(--gc-panel)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-          <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--gc-border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ flex: 1, background: 'var(--gc-panel)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--gc-border)', display: 'flex', alignItems: 'center', gap: 12 }}>
+            <button onClick={() => { setSelectedId(null); setDetail(null) }}
+              style={{ background: 'none', border: '1px solid var(--gc-border)', cursor: 'pointer', color: 'var(--gc-text-dim)', padding: '3px 10px', fontSize: 9, letterSpacing: '0.1em', display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0 }}>
+              <X size={10} />
+              BACK
+            </button>
             <div style={{ display: 'flex', gap: 0 }}>
               {(['config', 'prompt', 'skills'] as const).map(t => (
                 <button key={t} onClick={() => switchTab(t)}
@@ -321,10 +346,11 @@ export default function AgentsPage() {
                 </button>
               ))}
             </div>
-            <button onClick={() => { setSelectedId(null); setDetail(null) }}
-              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--gc-text-dim)', padding: 0 }}>
-              <X size={14} />
-            </button>
+            {detail && !detailLoading && (
+              <span style={{ marginLeft: 'auto', fontSize: 10, color: 'var(--gc-accent2)', fontFamily: "'Share Tech Mono', monospace", overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {detail.name}
+              </span>
+            )}
           </div>
 
           {detailLoading && <div style={{ padding: 20, fontSize: 9, color: 'var(--gc-text-dim)', letterSpacing: '0.1em' }}>LOADING…</div>}
@@ -347,16 +373,25 @@ export default function AgentsPage() {
                 ? <div style={{ fontSize: 9, color: 'var(--gc-text-dim)' }}>LOADING…</div>
                 : skills.length === 0
                   ? <div style={{ fontSize: 9, color: 'var(--gc-text-dim)' }}>暂无技能（skills/ 目录为空）</div>
-                  : skills.map(sk => (
-                      <div key={sk.name} style={{ marginBottom: 10, padding: 10, background: 'var(--gc-panel-deep)', border: '1px solid var(--gc-border)' }}>
-                        <div style={{ fontSize: 10, color: 'var(--gc-accent2)', marginBottom: 3 }}>{sk.name}</div>
-                        <div style={{ fontSize: 9, color: 'var(--gc-text-dim)', lineHeight: 1.5 }}>{sk.description}</div>
-                        <div style={{ marginTop: 6, fontSize: 8, color: 'var(--gc-text-dim)', letterSpacing: '0.05em' }}>全局启用（per-agent 开关：架构不支持）</div>
-                      </div>
-                    ))
+                  : skills.map(sk => {
+                      const inheritAll = agentConfig.skills === null
+                      const enabled = inheritAll || agentConfig.skills!.includes(sk.name)
+                      return (
+                        <div key={sk.name} style={{ marginBottom: 10, padding: 10, background: 'var(--gc-panel-deep)', border: `1px solid ${enabled ? 'var(--gc-border)' : 'var(--gc-border-dim)'}`, opacity: enabled ? 1 : 0.5 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
+                            <span style={{ fontSize: 9, color: enabled ? 'var(--gc-green)' : 'var(--gc-red)' }}>{enabled ? '✓' : '✗'}</span>
+                            <span style={{ fontSize: 10, color: 'var(--gc-accent2)' }}>{sk.name}</span>
+                            <span style={{ marginLeft: 'auto', fontSize: 8, color: 'var(--gc-text-dim)' }}>
+                              {inheritAll ? '继承全局' : enabled ? '此 agent 已启用' : '此 agent 已禁用'}
+                            </span>
+                          </div>
+                          <div style={{ fontSize: 9, color: 'var(--gc-text-dim)', lineHeight: 1.5 }}>{sk.description}</div>
+                        </div>
+                      )
+                    })
               }
-              <div style={{ marginTop: 12, fontSize: 8, color: 'var(--gc-text-dim)', letterSpacing: '0.05em', lineHeight: 1.6 }}>
-                技能当前全局启用。per-agent 技能开关需要架构支持（规划中）。
+              <div style={{ marginTop: 12, fontSize: 8, color: 'var(--gc-text-dim)', lineHeight: 1.6 }}>
+                技能开关在 Config 标签页中按 agent 单独配置。
               </div>
             </div>
           )}
@@ -410,11 +445,13 @@ export default function AgentsPage() {
 
                 {/* Model override */}
                 <div style={{ marginBottom: 10 }}>
-                  <div style={{ fontSize: 8, color: 'var(--gc-text-dim)', marginBottom: 4 }}>路由模型（空=继承全局 routing.default）</div>
-                  <input className="sp-input" value={agentConfig.model ?? ''}
+                  <div style={{ fontSize: 8, color: 'var(--gc-text-dim)', marginBottom: 4 }}>路由模型</div>
+                  <select className="sp-input" value={agentConfig.model ?? ''}
                     onChange={e => { setAgentConfig(c => ({ ...c, model: e.target.value || null })); setConfigDirty(true) }}
-                    placeholder="e.g. mcli/claude-sonnet-4-6"
-                    style={{ width: '100%', padding: '4px 8px', fontSize: 10 }} />
+                    style={{ width: '100%', padding: '4px 8px', fontSize: 10 }}>
+                    <option value="">（继承全局 routing.default）</option>
+                    {models.map(m => <option key={m} value={m}>{m}</option>)}
+                  </select>
                 </div>
 
                 {/* Skills whitelist */}

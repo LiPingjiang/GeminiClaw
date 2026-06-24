@@ -325,7 +325,6 @@ export const api = {
       memory: { label: string; items: Array<{ name: string; file: string; editable: boolean; editPath?: string; chars: number; content: string; exists: boolean }> }
       topics: { label: string; editable: false; count: number; items: Array<{ id: string; title: string; summary: string }> }
     }
-    architectureLimits: string[]
   }> =>
     fetch(`/v1/agents/${encodeURIComponent(agentId)}/system-prompt`, { headers: authHeaders() })
       .then(r => r.ok ? r.json() : Promise.reject()),

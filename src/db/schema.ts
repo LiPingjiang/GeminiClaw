@@ -151,4 +151,9 @@ export function migrate(db: Db): void {
   if (!new Set(agentColumns.map(c => c.name)).has("config")) {
     db.exec(`ALTER TABLE agents ADD COLUMN config TEXT`)
   }
+
+  // Add archived column to chat_sessions (soft-delete: 0 = active, 1 = archived)
+  if (!sessionColNames.has("archived")) {
+    db.exec(`ALTER TABLE chat_sessions ADD COLUMN archived INTEGER NOT NULL DEFAULT 0`)
+  }
 }

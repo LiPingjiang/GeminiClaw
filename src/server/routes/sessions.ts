@@ -17,6 +17,7 @@ export async function sessionsRoute(fastify, opts) {
         const rows = db.prepare(`
       SELECT id, title, created_at, updated_at, message_count, main_agent_id
       FROM chat_sessions
+      WHERE COALESCE(archived, 0) = 0
       ORDER BY updated_at DESC
       LIMIT ? OFFSET ?
     `).all(parseInt(limit), parseInt(offset));
@@ -57,7 +58,7 @@ export async function sessionsRoute(fastify, opts) {
     `).all(id, parseInt(limit), parseInt(offset));
         return reply.send({ session_id: id, messages, total: messages.length });
     });
-    // ── DELETE /v1/sessions/:id ───────────────────────────────────────────────────
+    // ── DELETE /v1/sessions/:id ── (soft-delete: archive, not permanently delete)
     fastify.delete("/v1/sessions/:id", async (request, reply) => {
         if (!checkAuth(request, authToken)) {
             return reply.status(401).send({ error: "Unauthorized" });
@@ -65,10 +66,8 @@ export async function sessionsRoute(fastify, opts) {
         const { id } = request.params;
         const session = db.prepare(`SELECT id FROM chat_sessions WHERE id = ?`).get(id);
         if (!session) return reply.status(404).send({ error: "Session not found" });
-        db.prepare(`DELETE FROM chat_messages WHERE session_id = ?`).run(id);
-        db.prepare(`DELETE FROM agents WHERE session_id = ?`).run(id);
-        db.prepare(`DELETE FROM chat_sessions WHERE id = ?`).run(id);
-        return reply.send({ deleted: id });
+        db.prepare(`UPDATE chat_sessions SET archived = 1, updated_at = datetime('now') WHERE id = ?`).run(id);
+        return reply.send({ archived: id });
     });
     // ── DELETE /v1/sessions/batch ─────────────────────────────────────────────────
     // 批量删除消息数 < maxMessages 的 session

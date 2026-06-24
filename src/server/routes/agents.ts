@@ -263,11 +263,6 @@ export async function agentsRoute(fastify, opts) {
                     items: activeTopics.map(t => ({ id: t.id, title: t.title, summary: t.summary })),
                 },
             },
-            architectureLimits: [
-                "per-agent 技能开关：skills 从 skills/ 目录全局加载，无法按 agent 启用/禁用",
-                "per-agent 代码常量：所有 agent 共享同一套行为规则常量",
-                "per-agent 路由模型：所有 agent 使用 config.routing.default，不支持独立配置",
-            ],
         });
     });
     // ── GET /v1/skills ────────────────────────────────────────────────────────────

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Trash2, RefreshCw, Sparkles } from 'lucide-react'
+import { Archive, RefreshCw, Sparkles } from 'lucide-react'
 import { api, type Session } from '@/lib/api'
 
 export default function SessionsPage() {
@@ -18,7 +18,7 @@ export default function SessionsPage() {
   useEffect(() => { load() }, [load])
 
   const handleDelete = async (id: string) => {
-    if (!confirm('删除这个 session？此操作不可撤销')) return
+    if (!confirm('归档这个 session？归档后将从列表中隐藏')) return
     await api.deleteSession(id)
     await load()
   }
@@ -130,12 +130,12 @@ export default function SessionsPage() {
                   </button>
                 </td>
                 <td style={{ padding: '8px 14px' }}>
-                  <button onClick={() => handleDelete(s.id)} title="Delete session"
+                  <button onClick={() => handleDelete(s.id)} title="归档 session"
                     style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--gc-text-dim)', padding: 0, transition: 'color 0.15s' }}
-                    onMouseEnter={e => (e.currentTarget.style.color = 'var(--gc-red)')}
+                    onMouseEnter={e => (e.currentTarget.style.color = 'var(--gc-accent2)')}
                     onMouseLeave={e => (e.currentTarget.style.color = 'var(--gc-text-dim)')}
                   >
-                    <Trash2 size={12} />
+                    <Archive size={12} />
                   </button>
                 </td>
               </tr>
