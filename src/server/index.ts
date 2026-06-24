@@ -264,7 +264,7 @@ export async function buildServer(
   // REST API routes for sessions, agents, runs
   if (db) {
     await fastify.register(sessionsRoute, { db, authToken: config.server.authToken, router })
-    await fastify.register(agentsRoute, { db, authToken: config.server.authToken })
+    await fastify.register(agentsRoute, { db, authToken: config.server.authToken, routingDefault: config.routing.default })
   }
   const runStore = new RunStore()
   await fastify.register(runsRoute, {

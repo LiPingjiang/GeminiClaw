@@ -305,7 +305,17 @@ export const api = {
     fetch(`/v1/sessions/batch?maxMessages=${maxMessages}`, { method: 'DELETE', headers: authHeaders() })
       .then(r => r.ok ? r.json() : { deleted: 0 }).catch(() => ({ deleted: 0 })),
 
-  getAgentSystemPrompt: (agentId: string): Promise<{ systemPrompt: string; agentName: string; baseLength: number; workspaceLength: number }> =>
+  getAgentSystemPrompt: (agentId: string): Promise<{
+    agentId: string; agentName: string; model: string; modelFamily: string; totalChars: number
+    layers: {
+      constants: { label: string; editable: false; items: Array<{ name: string; scope: string; chars: number; content: string }> }
+      globalIdentity: { label: string; editable: true; file: string; chars: number; content: string }
+      agentFixed: { label: string; editable: true; file: string; chars: number; content: string; exists: boolean }
+      memory: { label: string; items: Array<{ name: string; file: string; editable: boolean; editPath?: string; chars: number; content: string; exists: boolean }> }
+      topics: { label: string; editable: false; count: number; items: Array<{ id: string; title: string; summary: string }> }
+    }
+    architectureLimits: string[]
+  }> =>
     fetch(`/v1/agents/${encodeURIComponent(agentId)}/system-prompt`, { headers: authHeaders() })
       .then(r => r.ok ? r.json() : Promise.reject()),
 

@@ -10,7 +10,7 @@ function checkAuth(request, authToken) {
     return typeof auth === "string" && auth === `Bearer ${authToken}`;
 }
 export async function agentsRoute(fastify, opts) {
-    const { db, authToken } = opts;
+    const { db, authToken, routingDefault } = opts;
     const agentRepo = new AgentRepository(db);
     const taskRepo = new TaskRepository(db);
     // ── GET /v1/agents ──────────────────────────────────────────────────────────
@@ -128,29 +128,119 @@ export async function agentsRoute(fastify, opts) {
         return reply.send({ task: updated });
     });
     // ── GET /v1/agents/:id/system-prompt ─────────────────────────────────────────
-    // 生成 agent 完整的系统 prompt（identity + 代码常量 + workspace 记忆）
+    // 返回 agent 系统 prompt 的结构化分层数据（各层内容 + 元信息）
     fastify.get("/v1/agents/:id/system-prompt", async (request, reply) => {
         if (!checkAuth(request, authToken)) return reply.status(401).send({ error: "Unauthorized" });
         const agent = agentRepo.getById(request.params.id);
         if (!agent) return reply.status(404).send({ error: "Agent not found" });
         const { buildSystemPrompt } = await import("../../system-prompt/builder.js");
+        const { detectModelFamily } = await import("../../system-prompt/families.js");
+        const {
+            TOOL_USE_ENFORCEMENT, PREREQUISITE_CHECKS, GROUNDING_VERIFICATION,
+            CLAUDE_MANDATORY_TOOL_USE, CLAUDE_ACT_DONT_ASK, STRICT_MANDATORY_TOOL_USE,
+        } = await import("../../system-prompt/constants.js");
         const { WorkingMemoryBuilder } = await import("../../memory/working-memory.js");
         const { MemoryPaths } = await import("../../memory/paths.js");
+        const { existsSync, readFileSync } = await import("fs");
+        const { join } = await import("path");
+        const { default: os } = await import("os");
+        const model = routingDefault ?? "unknown";
+        const family = detectModelFamily(model);
+        const root = join(os.homedir(), ".gemeniclaw");
+        const date = new Date().toISOString().slice(0, 10);
         const paths = new MemoryPaths();
         const wm = new WorkingMemoryBuilder(paths);
-        const date = new Date().toISOString().slice(0, 10);
-        // Read routing config for model family detection
-        const configRow = db.prepare("SELECT 1").get(); // just check db is accessible
-        void configRow;
-        const base = buildSystemPrompt(); // will use default routing from config
+        const wmData = wm.build(agent.id, date);
+        // Read daily memory files directly (renderSystemPrompt doesn't include globalFixed anymore)
+        const globalDailyPath = join(root, "memory", "global", "daily", `${date}.md`);
+        const agentDailyPath = join(root, "agents", agent.id, "daily", `${date}.md`);
+        const read = (p: string) => existsSync(p) ? readFileSync(p, "utf-8").trim() : "";
+        // Layer 0: code constants
+        const isStrict = family !== "claude";
+        const constantsLayer = [
+            { name: "TOOL_USE_ENFORCEMENT", content: TOOL_USE_ENFORCEMENT, scope: "all-models" },
+            { name: "PREREQUISITE_CHECKS", content: PREREQUISITE_CHECKS, scope: "all-models" },
+            { name: "GROUNDING_VERIFICATION", content: GROUNDING_VERIFICATION, scope: "all-models" },
+            isStrict
+                ? { name: "STRICT_MANDATORY_TOOL_USE", content: STRICT_MANDATORY_TOOL_USE, scope: `model-family:${family}` }
+                : { name: "CLAUDE_MANDATORY_TOOL_USE", content: CLAUDE_MANDATORY_TOOL_USE, scope: "model-family:claude" },
+            ...(!isStrict ? [{ name: "CLAUDE_ACT_DONT_ASK", content: CLAUDE_ACT_DONT_ASK, scope: "model-family:claude" }] : []),
+        ];
+        // Layer 1: global identity
+        const globalAgentMdPath = join(root, "AGENT.md");
+        const globalAgentMd = read(globalAgentMdPath);
+        // Layer 2: agent fixed memory
+        const agentAgentMdPath = join(root, "agents", agent.id, "AGENT.md");
+        const agentAgentMd = wmData.agentFixed; // already read by WorkingMemory
+        // Layer 3: non-fixed memory
+        const globalMemoryPath = join(root, "memory", "global", "MEMORY.md");
+        const agentMemoryPath = join(root, "agents", agent.id, "MEMORY.md");
+        const globalDaily = read(globalDailyPath);
+        const agentDaily = read(agentDailyPath);
+        // Layer 4: active topics from DB
+        const activeTopics = db.prepare(`
+            SELECT id, title, summary FROM memory_topics WHERE active = 1
+            ORDER BY last_accessed_at DESC LIMIT 20
+        `).all() as Array<{ id: string; title: string; summary: string }>;
+        // Assemble full prompt for total char count
+        const base = buildSystemPrompt(model);
         const workspace = wm.renderSystemPrompt(agent.id, date, agent.agent_name);
-        const full = workspace ? base + "\n\n---\n\n" + workspace : base;
+        const totalChars = base.length + (workspace ? workspace.length + 8 : 0);
         return reply.send({
             agentId: agent.id,
             agentName: agent.agent_name,
-            systemPrompt: full,
-            baseLength: base.length,
-            workspaceLength: workspace.length,
+            model,
+            modelFamily: family,
+            totalChars,
+            layers: {
+                constants: {
+                    label: "代码常量（不可修改，版本控制）",
+                    editable: false,
+                    items: constantsLayer.map(c => ({
+                        name: c.name,
+                        scope: c.scope,
+                        chars: c.content.length,
+                        content: c.content,
+                    })),
+                },
+                globalIdentity: {
+                    label: "全局身份（Config > AGENT.MD 修改）",
+                    editable: true,
+                    editPath: "config:agent-md",
+                    file: globalAgentMdPath,
+                    chars: globalAgentMd.length,
+                    content: globalAgentMd,
+                },
+                agentFixed: {
+                    label: "Agent 固定记忆（此处可修改）",
+                    editable: true,
+                    editPath: "agent:agent-md",
+                    file: agentAgentMdPath,
+                    chars: agentAgentMd.length,
+                    content: agentAgentMd,
+                    exists: existsSync(agentAgentMdPath),
+                },
+                memory: {
+                    label: "非固定记忆（triage 自动管理，可手动编辑）",
+                    items: [
+                        { name: "全局 MEMORY.MD", file: globalMemoryPath, editable: true, editPath: "config:memory-md", chars: wmData.globalNonFixed.length, content: wmData.globalNonFixed, exists: existsSync(globalMemoryPath) },
+                        { name: `全局今日记忆 (${date})`, file: globalDailyPath, editable: false, chars: globalDaily.length, content: globalDaily, exists: existsSync(globalDailyPath) },
+                        { name: "Agent MEMORY.MD", file: agentMemoryPath, editable: true, editPath: "agent:memory-md", chars: agentAgentMd ? wmData.agentNonFixed.length : 0, content: wmData.agentNonFixed, exists: existsSync(agentMemoryPath) },
+                        { name: `Agent 今日记忆 (${date})`, file: agentDailyPath, editable: false, chars: agentDaily.length, content: agentDaily, exists: existsSync(agentDailyPath) },
+                    ],
+                },
+                topics: {
+                    label: "话题记忆（LayeredStrategy 自动管理，只读）",
+                    editable: false,
+                    count: activeTopics.length,
+                    items: activeTopics.map(t => ({ id: t.id, title: t.title, summary: t.summary })),
+                },
+            },
+            architectureLimits: [
+                "per-agent 技能开关：skills 从 skills/ 目录全局加载，无法按 agent 启用/禁用",
+                "per-agent 代码常量：所有 agent 共享同一套行为规则常量",
+                "per-agent 路由模型：所有 agent 使用 config.routing.default，不支持独立配置",
+            ],
         });
     });
     // ── GET /v1/skills ────────────────────────────────────────────────────────────

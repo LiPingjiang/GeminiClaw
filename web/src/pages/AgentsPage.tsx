@@ -1,6 +1,116 @@
 import { useEffect, useState } from 'react'
-import { Cpu, RefreshCw, Copy, Archive, X, ExternalLink } from 'lucide-react'
+import { Cpu, RefreshCw, Copy, Archive, X, ExternalLink, ChevronDown, ChevronRight, Lock, Edit3 } from 'lucide-react'
 import { api, type Agent } from '@/lib/api'
+
+// ── Structured Prompt Layer Viewer ────────────────────────────────────────────
+type PromptData = Awaited<ReturnType<typeof api.getAgentSystemPrompt>>
+
+function LayerBlock({ label, editable, chars, note, children, defaultOpen = false }: {
+  label: string; editable: boolean; chars: number; note?: string; children?: React.ReactNode; defaultOpen?: boolean
+}) {
+  const [open, setOpen] = useState(defaultOpen)
+  return (
+    <div style={{ marginBottom: 10, border: '1px solid var(--gc-border)', overflow: 'hidden' }}>
+      <div
+        onClick={() => setOpen(o => !o)}
+        style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px', background: 'var(--gc-panel)', cursor: 'pointer', userSelect: 'none' }}
+      >
+        {open ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
+        <span style={{ flex: 1, fontSize: 9, letterSpacing: '0.1em', color: 'var(--gc-text)', textTransform: 'uppercase' }}>{label}</span>
+        {editable
+          ? <Edit3 size={9} style={{ color: 'var(--gc-accent2)' }} />
+          : <Lock size={9} style={{ color: 'var(--gc-text-dim)' }} />}
+        <span style={{ fontSize: 8, color: 'var(--gc-text-dim)', marginLeft: 4 }}>{chars > 0 ? `${chars}c` : 'empty'}</span>
+      </div>
+      {note && <div style={{ padding: '3px 10px', fontSize: 8, color: 'var(--gc-accent2-dim)', background: 'var(--gc-panel-deep)', borderBottom: '1px solid var(--gc-border)' }}>{note}</div>}
+      {open && children && <div style={{ padding: 10, background: 'var(--gc-panel-deep)' }}>{children}</div>}
+    </div>
+  )
+}
+
+function ContentPre({ text, empty }: { text: string; empty?: string }) {
+  if (!text) return <span style={{ fontSize: 9, color: 'var(--gc-text-dim)', fontStyle: 'italic' }}>{empty ?? '(empty)'}</span>
+  return <pre style={{ margin: 0, fontSize: 9, color: 'var(--gc-assistant-text)', whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: 1.5, fontFamily: "'Share Tech Mono', monospace" }}>{text}</pre>
+}
+
+function StructuredPrompt({ data }: { data: PromptData }) {
+  const { layers, model, modelFamily, totalChars, architectureLimits } = data
+  return (
+    <div>
+      {/* Header */}
+      <div style={{ marginBottom: 10, padding: '6px 10px', background: 'var(--gc-panel)', border: '1px solid var(--gc-border)', fontSize: 9, color: 'var(--gc-text-dim)' }}>
+        <span style={{ color: 'var(--gc-text)' }}>Model:</span> {model}
+        <span style={{ marginLeft: 10, color: 'var(--gc-text)' }}>Family:</span> {modelFamily}
+        <span style={{ marginLeft: 10, color: 'var(--gc-text)' }}>Total:</span> {totalChars.toLocaleString()} chars → Claude
+      </div>
+
+      {/* Layer 0: Code constants */}
+      <LayerBlock label={layers.constants.label} editable={false}
+        chars={layers.constants.items.reduce((s, i) => s + i.chars, 0)}
+        note="src/system-prompt/constants.ts（版本控制，需改代码）">
+        {layers.constants.items.map(item => (
+          <div key={item.name} style={{ marginBottom: 8 }}>
+            <div style={{ display: 'flex', gap: 8, marginBottom: 3 }}>
+              <span style={{ fontSize: 8, color: 'var(--gc-accent)', letterSpacing: '0.1em', textTransform: 'uppercase' }}>{item.name}</span>
+              <span style={{ fontSize: 8, color: 'var(--gc-text-dim)' }}>{item.scope}</span>
+              <span style={{ fontSize: 8, color: 'var(--gc-text-dim)', marginLeft: 'auto' }}>{item.chars}c</span>
+            </div>
+            <ContentPre text={item.content} />
+          </div>
+        ))}
+      </LayerBlock>
+
+      {/* Layer 1: Global identity */}
+      <LayerBlock label={layers.globalIdentity.label} editable={true}
+        chars={layers.globalIdentity.chars}
+        note={`${layers.globalIdentity.file} | Config > AGENT.MD 页面修改`}
+        defaultOpen>
+        <ContentPre text={layers.globalIdentity.content} empty="（文件为空）" />
+      </LayerBlock>
+
+      {/* Layer 2: Agent fixed memory */}
+      <LayerBlock label={layers.agentFixed.label} editable={true}
+        chars={layers.agentFixed.chars}
+        note={`${layers.agentFixed.file}${layers.agentFixed.exists ? '' : ' [不存在，需先创建]'} | Agents > CONFIG 面板修改`}>
+        <ContentPre text={layers.agentFixed.content} empty="（未设置 agent 专属身份）" />
+      </LayerBlock>
+
+      {/* Layer 3: Non-fixed memory */}
+      <div style={{ marginBottom: 10, border: '1px solid var(--gc-border)' }}>
+        <div style={{ padding: '6px 10px', background: 'var(--gc-panel)', fontSize: 9, color: 'var(--gc-text)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+          {layers.memory.label}
+        </div>
+        {layers.memory.items.map(item => (
+          <LayerBlock key={item.name} label={item.name} editable={item.editable}
+            chars={item.chars}
+            note={`${item.file}${item.exists ? '' : ' [不存在]'}${!item.editable ? ' | 只读，由 triage 自动写入' : ''}`}>
+            <ContentPre text={item.content} empty="（空）" />
+          </LayerBlock>
+        ))}
+      </div>
+
+      {/* Layer 4: Topics */}
+      <LayerBlock label={layers.topics.label} editable={false}
+        chars={0}
+        note={`${layers.topics.count} 个活跃话题（LayeredStrategy 按相关性动态加载，不在 system prompt 中直接显示）`}>
+        {layers.topics.count === 0
+          ? <span style={{ fontSize: 9, color: 'var(--gc-text-dim)', fontStyle: 'italic' }}>（无活跃话题）</span>
+          : layers.topics.items.map(t => (
+              <div key={t.id} style={{ marginBottom: 6 }}>
+                <div style={{ fontSize: 9, color: 'var(--gc-accent2)' }}>{t.title}</div>
+                <div style={{ fontSize: 8, color: 'var(--gc-text-dim)', lineHeight: 1.4 }}>{t.summary}</div>
+              </div>
+            ))}
+      </LayerBlock>
+
+      {/* Architecture limits */}
+      <div style={{ padding: '8px 10px', background: 'var(--gc-error-bg)', border: '1px solid var(--gc-error-border)', fontSize: 8, color: 'var(--gc-text-dim)', lineHeight: 1.8 }}>
+        <div style={{ color: 'var(--gc-red)', letterSpacing: '0.1em', marginBottom: 4, textTransform: 'uppercase' }}>✗ 架构限制（当前不支持）</div>
+        {architectureLimits.map((l, i) => <div key={i}>· {l}</div>)}
+      </div>
+    </div>
+  )
+}
 
 type AgentDetail = Agent & { session_id?: string; template_name?: string; description?: string; depth?: number }
 
@@ -37,9 +147,9 @@ export default function AgentsPage() {
   const [saving, setSaving] = useState(false)
   const [copying, setCopying] = useState(false)
   const [tab, setTab] = useState<'config' | 'prompt' | 'skills'>('config')
-  const [systemPrompt, setSystemPrompt] = useState('')
+  const [promptData, setPromptData] = useState<Awaited<ReturnType<typeof api.getAgentSystemPrompt>> | null>(null)
   const [promptLoading, setPromptLoading] = useState(false)
-  const [skills, setSkills] = useState<Array<{ name: string; description: string; enabled: boolean }>>([])
+  const [skills, setSkills] = useState<Array<{ name: string; description: string }>>([])
   const [skillsLoading, setSkillsLoading] = useState(false)
 
   const load = async () => {
@@ -53,7 +163,7 @@ export default function AgentsPage() {
   const openDetail = async (id: string) => {
     setSelectedId(id)
     setTab('config')
-    setSystemPrompt('')
+    setPromptData(null)
     setDetailLoading(true)
     try {
       const d = await api.getAgent(id)
@@ -69,10 +179,10 @@ export default function AgentsPage() {
   const loadPrompt = async () => {
     if (!detail) return
     setPromptLoading(true)
+    setPromptData(null)
     try {
-      const r = await api.getAgentSystemPrompt(detail.id)
-      setSystemPrompt(r.systemPrompt)
-    } catch { setSystemPrompt('(error loading)') }
+      setPromptData(await api.getAgentSystemPrompt(detail.id))
+    } catch { /* ignore */ }
     setPromptLoading(false)
   }
 
@@ -84,7 +194,7 @@ export default function AgentsPage() {
 
   const switchTab = (t: 'config' | 'prompt' | 'skills') => {
     setTab(t)
-    if (t === 'prompt' && !systemPrompt) loadPrompt()
+    if (t === 'prompt' && !promptData) loadPrompt()
     if (t === 'skills' && skills.length === 0) loadSkills()
   }
 
@@ -205,12 +315,13 @@ export default function AgentsPage() {
 
           {detail && !detailLoading && tab === 'prompt' && (
             <div style={{ flex: 1, overflowY: 'auto', padding: 12 }}>
-              {promptLoading
-                ? <div style={{ fontSize: 9, color: 'var(--gc-text-dim)' }}>GENERATING…</div>
-                : systemPrompt
-                  ? <pre style={{ margin: 0, fontSize: 10, color: 'var(--gc-assistant-text)', whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: 1.6, fontFamily: "'Share Tech Mono', monospace" }}>{systemPrompt}</pre>
-                  : <button onClick={loadPrompt} className="sp-btn sp-btn-cyan" style={{ fontSize: 9 }}>LOAD PROMPT</button>
-              }
+              {promptLoading && <div style={{ fontSize: 9, color: 'var(--gc-text-dim)' }}>LOADING…</div>}
+              {!promptLoading && !promptData && (
+                <button onClick={loadPrompt} className="sp-btn sp-btn-cyan" style={{ fontSize: 9, width: '100%' }}>
+                  LOAD STRUCTURED PROMPT
+                </button>
+              )}
+              {promptData && <StructuredPrompt data={promptData} />}
             </div>
           )}
 
@@ -224,7 +335,7 @@ export default function AgentsPage() {
                       <div key={sk.name} style={{ marginBottom: 10, padding: 10, background: 'var(--gc-panel-deep)', border: '1px solid var(--gc-border)' }}>
                         <div style={{ fontSize: 10, color: 'var(--gc-accent2)', marginBottom: 3 }}>{sk.name}</div>
                         <div style={{ fontSize: 9, color: 'var(--gc-text-dim)', lineHeight: 1.5 }}>{sk.description}</div>
-                        <div style={{ marginTop: 6, fontSize: 8, color: 'var(--gc-green)', letterSpacing: '0.1em' }}>✅ ACTIVE (global)</div>
+                        <div style={{ marginTop: 6, fontSize: 8, color: 'var(--gc-text-dim)', letterSpacing: '0.05em' }}>全局启用（per-agent 开关：架构不支持）</div>
                       </div>
                     ))
               }

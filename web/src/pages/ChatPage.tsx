@@ -308,7 +308,14 @@ export default function ChatPage() {
     if (mem.agentId) {
       try {
         const r = await api.getAgentSystemPrompt(mem.agentId)
-        setConfigSystemPrompt(r.systemPrompt)
+        // Build full prompt text from structured layers for display
+        const parts = [
+          r.layers.constants.items.map(i => i.content).join('\n\n'),
+          r.layers.globalIdentity.content,
+          r.layers.agentFixed.content,
+          r.layers.memory.items.map(i => i.content).filter(Boolean).join('\n\n'),
+        ].filter(Boolean)
+        setConfigSystemPrompt(`[Model: ${r.model} | Family: ${r.modelFamily} | Total: ${r.totalChars}c]\n\n` + parts.join('\n\n---\n\n'))
       } catch { setConfigSystemPrompt('(error)') }
     } else setConfigSystemPrompt('(no agent for this session)')
     setConfigPromptLoading(false)
