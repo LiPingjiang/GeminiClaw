@@ -190,7 +190,7 @@ export async function buildServer(
     toolRegistry: makeRegistryAdapter() as any,
     config: {
       maxTurns: (config.agent as { maxTurns?: number } | undefined)?.maxTurns ?? 50,
-      systemPrompt: loadSystemPrompt(),
+      systemPrompt: loadSystemPrompt(config.routing.default),
       // 工具调用守护：同一工具连续失败/无进展时 warn/halt
       guardrails: {
         sameToolFailureWarnAfter: 3,
