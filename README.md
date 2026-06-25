@@ -250,6 +250,10 @@ Supported providers:
 
 GeminiClaw ships a local Web Dashboard served at `http://localhost:18888` alongside the API — no separate deploy needed.
 
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/502dec60-f090-4675-898f-a4eadee6adde" alt="Web Dashboard — Space Dark" width="600" />
+</p>
+
 **Five pages:**
 
 | Page | What it does |
@@ -267,6 +271,10 @@ GeminiClaw ships a local Web Dashboard served at `http://localhost:18888` alongs
 | **Space Dark** (default) | Space anime aesthetic — amber/cyan on near-black, scan-line texture, monospace |
 | **Day Command** | Light terminal — crisp amber-on-cream, high contrast |
 | **Deep Sea** | Dark blue-green, teal accents |
+
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/4d75fab1-81a2-4271-b196-9cb49b4e6ba7" alt="Web Dashboard — Day Command (light)" width="600" />
+</p>
 
 **Protected agents** — two system agents that cannot be archived:
 
