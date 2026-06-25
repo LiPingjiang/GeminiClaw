@@ -246,6 +246,43 @@ Supported providers:
 
 ---
 
+## Web Dashboard
+
+GeminiClaw ships a local Web Dashboard served at `http://localhost:18888` alongside the API — no separate deploy needed.
+
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/502dec60-f090-4675-898f-a4eadee6adde" alt="Web Dashboard — Space Dark" width="600" />
+</p>
+
+**Five pages:**
+
+| Page | What it does |
+|------|-------------|
+| **Chat** | Streaming conversation with tool-call cards; session list with agent filter |
+| **Sessions** | Manage all sessions — soft-archive, AI-generated titles, inline rename, bulk-clean |
+| **Agents** | Browse agents; CONFIG / MEMORY / PROMPT / SKILLS tabs; per-agent model + skill override |
+| **Runs** | Sub-agent run history |
+| **Config** | Auth token, global AGENT.md, global MEMORY.md |
+
+**Three built-in themes** — switchable in the sidebar, persisted to localStorage:
+
+| Theme | Style |
+|-------|-------|
+| **Space Dark** (default) | Space anime aesthetic — amber/cyan on near-black, scan-line texture, monospace |
+| **Day Command** | Light terminal — crisp amber-on-cream, high contrast |
+| **Deep Sea** | Dark blue-green, teal accents |
+
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/4d75fab1-81a2-4271-b196-9cb49b4e6ba7" alt="Web Dashboard — Day Command (light)" width="600" />
+</p>
+
+**Protected agents** — two system agents that cannot be archived:
+
+- **双子星** — global default assistant; every new session is automatically linked to it (no new agent record created per session)
+- **管理员** — system administrator; knows the skill file format and paths, authorized to install/update/delete skills via file tools
+
+---
+
 ## Quick Start
 
 ```bash
@@ -260,9 +297,14 @@ pnpm install
 cp config.example.yaml config.yaml
 # Fill in your API keys and provider settings
 
-# 4. Run
+# 4. Build web dashboard (optional)
+pnpm --filter web build    # outputs to web/dist/ — served by the gateway
+
+# 5. Run
 pnpm dev          # development (tsx watch)
 pnpm build && pnpm start   # production
+
+# Web dashboard → http://localhost:18888
 ```
 
 ---
@@ -274,20 +316,45 @@ POST /v1/agent/chat             — Chat (non-streaming)
 POST /v1/agent/stream           — Chat (SSE streaming with tool events)
 GET  /v1/health                 — Health check
 
+# Sessions
+GET    /v1/sessions                        — List active sessions (archived filtered)
+POST   /v1/sessions                        — Create session
+GET    /v1/sessions/:id/messages           — Get message history
+DELETE /v1/sessions/:id                    — Soft-archive session
+DELETE /v1/sessions/batch?maxMessages=N    — Bulk-archive sessions with < N messages
+PATCH  /v1/sessions/:id/title              — Set title manually
+POST   /v1/sessions/:id/title/generate     — AI-generate title from conversation
+
+# Agents
+GET    /v1/agents                          — List all agents
+GET    /v1/agents/:id                      — Get agent detail
+POST   /v1/sessions/:id/agents             — Link session to agent (reuses 双子星/管理员)
+PATCH  /v1/agents/:id                      — Update name/description/status (protected agents reject archive)
+GET    /v1/agents/:id/config               — Get per-agent config (skills, model, constants)
+PATCH  /v1/agents/:id/config               — Update per-agent config
+GET    /v1/agents/:id/system-prompt        — Get full structured system prompt with all layers
+
+# Memory
+GET    /v1/memory/global                   — Read ~/.gemeniclaw/AGENT.md + MEMORY.md
+PATCH  /v1/memory/global                   — Write global memory files
+GET    /v1/sessions/:id/memory             — Read agent AGENT.md + MEMORY.md for session
+PATCH  /v1/sessions/:id/memory             — Write agent memory files
+
+# Skills
+GET    /v1/project-skills                  — List skills in skills/ directory
+GET    /v1/models                          — List available models from all providers
+
+# Evolution
 GET  /v1/evolution/status       — Twin-system evolution state
 POST /v1/evolution/run          — Trigger one evolution cycle manually
 POST /v1/evolution/intents      — Add user intent
 GET  /v1/evolution/candidates   — Peek at intent queue
-
 GET  /v1/evolution/approvals    — List pending approvals
 POST /v1/evolution/approvals/:id/approve  — Approve a high-risk intent
 POST /v1/evolution/approvals/:id/reject   — Reject an intent
 
 GET  /v1/skill-evolution/status — Skill evolution engine state
 POST /v1/skill-evolution/scan   — Trigger skill extraction from conversations
-GET  /v1/skills                 — List extracted skills
-GET  /v1/skills/:name           — Get skill detail
-
 GET  /v1/trace/live             — SSE live trace stream (for gc watch TUI)
 ```
 
@@ -369,7 +436,7 @@ channels:
 src/
 ├── index.ts              ← entry point (config load + server start)
 ├── agent/                ← AgentLoop (tool orchestration, parallel calls, budget)
-├── server/               ← Fastify HTTP server + routes
+├── server/               ← Fastify HTTP server + routes (serves API + web/dist/)
 ├── providers/            ← LLM provider adapters (Anthropic, mcli, Friday)
 ├── memory/               ← session + layered long-term memory (SQLite)
 ├── system-prompt/        ← layered system prompt builder (model-conditional injection)
@@ -378,16 +445,25 @@ src/
 │   └── families.ts       ← model family detection (claude / gemini / gpt / unknown)
 ├── tools/                ← 25 built-in tools (exec, read, write, browser, delegate_to...)
 ├── multi-agent/          ← cross-agent delegation (mailbox, lifecycle-bus, result-injector)
-├── agents/               ← named agent templates (config-driven)
+├── agents/               ← agent repository (SQLite-backed, DB-tracked UUIDs)
 ├── channels/             ← channel adapters (QQBot WebSocket/Webhook)
 ├── twin-system/          ← self-evolution engine (factory DI + all components)
 ├── skill-evolution/      ← conversation → skill distillation engine
+├── skills/               ← skill loader (scans skills/ dir, injects into system prompt per turn)
 ├── evolution-core/       ← evolution orchestrator + engine
 ├── mesh/                 ← agent mesh (bus, pool, receptionist)
 ├── guidance/             ← agent gate + guidance layer
 ├── cli/                  ← TUI client (gc watch)
 └── config/               ← config loader (Zod schema, reads config.yaml)
 
+web/                      ← Local Web Dashboard (React 19 + Vite, served at :18888)
+├── src/
+│   ├── pages/            ← Chat / Sessions / Agents / Runs / Config
+│   ├── components/       ← Sidebar (theme switcher), DiffBlock, MarkdownField...
+│   └── lib/api.ts        ← REST + SSE client, theme persistence
+└── dist/                 ← built output (served as SPA by Fastify static)
+
+skills/                   ← Skill definitions (each skill: skills/<name>/SKILL.md)
 scripts/
 ├── replay-session.ts          ← replay a session turn against Claude, save prompt + response
 ├── verify-prompt-behavior.mjs ← A/B compare two system prompts (no tools, fast)
@@ -424,6 +500,15 @@ scripts/
 | Dev tools: session replay (`scripts/replay-session.ts`) | ✅ |
 | Dev tools: system prompt A/B verification with real bash tools | ✅ |
 | Dev tools: generalized replay system (`src/replay/`) | 🔧 planned |
+| **Web Dashboard** (React 19 + Vite, served at :18888) | ✅ |
+| Web: Chat page — SSE streaming, tool-call cards, session list | ✅ |
+| Web: Sessions — soft-archive, AI title generation, inline rename | ✅ |
+| Web: Agents — CONFIG / MEMORY / PROMPT / SKILLS tabs, per-agent model + skill override | ✅ |
+| Web: Config — global AGENT.md / MEMORY.md with markdown preview/edit | ✅ |
+| Web: 3 themes — Space Dark / Day Command (light) / Deep Sea | ✅ |
+| Protected agents: 双子星 (default) + 管理员 (skill admin), non-archivable | ✅ |
+| Per-agent config: skills whitelist, model override, constants | ✅ |
+| Skill management via 管理员 agent (file-tool authorized, no restart needed) | ✅ |
 | 680 tests across 66 files, all passing | ✅ |
 
 ---
